@@ -1,0 +1,75 @@
+{
+  "jobs": [
+    {
+      "id": "3a2617433fa6377fae004c3444e7b7bf",
+      "originalName": "test.pdf",
+      "provider": "openai",
+      "status": "error",
+      "createdAt": "2026-04-22T16:41:49.355Z",
+      "updatedAt": "2026-04-22T16:41:56.674Z",
+      "progress": {
+        "stage": "translate",
+        "current": 0,
+        "total": 1
+      },
+      "meta": {
+        "totalPages": 1,
+        "processedPages": 1
+      },
+      "error": "OpenAI kota/limit (429). Biraz sonra tekrar dene ya da ücretsiz çeviriyi seç."
+    },
+    {
+      "id": "ad2872310c2f7f06a31b2cf9d29806ed",
+      "originalName": "nature_essay_100_words.pdf",
+      "provider": "free",
+      "status": "error",
+      "createdAt": "2026-04-22T16:42:07.349Z",
+      "updatedAt": "2026-04-22T16:43:25.069Z",
+      "progress": {
+        "stage": "translate",
+        "current": 0,
+        "total": 1
+      },
+      "meta": {
+        "totalPages": 1,
+        "processedPages": 1
+      },
+      "error": "MyMemory hata: 429 Too Many Requests (limit). Biraz bekleyip tekrar dene ya da OpenAI seç."
+    },
+    {
+      "id": "6d01205f3131c01d3baf039176f5fc54",
+      "originalName": "test.pdf",
+      "provider": "free",
+      "status": "error",
+      "createdAt": "2026-04-22T16:42:11.646Z",
+      "updatedAt": "2026-04-22T16:43:28.859Z",
+      "progress": {
+        "stage": "translate",
+        "current": 0,
+        "total": 1
+      },
+      "meta": {
+        "totalPages": 1,
+        "processedPages": 1
+      },
+      "error": "MyMemory hata: 429 Too Many Requests (limit). Biraz bekleyip tekrar dene ya da OpenAI seç."
+    },
+    {
+      "id": "fa1c72a2025d3d0ff56f3e32496bbbb3",
+      "originalName": "digital_connectivity_report.pdf",
+      "provider": "free",
+      "status": "processing",
+      "createdAt": "2026-04-22T16:55:16.166Z",
+      "updatedAt": "2026-04-22T16:55:16.371Z",
+      "progress": {
+        "stage": "translate",
+        "current": 0,
+        "total": 8
+      },
+      "meta": {
+        "totalPages": 2,
+        "processedPages": 2
+      }
+    }
+  ]
+}
