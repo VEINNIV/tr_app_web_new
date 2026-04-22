@@ -1,0 +1,175 @@
+/* ========================================================================
+   Navbar — Clean monochrome design
+   ======================================================================== */
+
+.navbar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 100;
+  height: var(--navbar-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-6);
+  background: rgba(250, 250, 250, 0.8);
+  backdrop-filter: var(--backdrop-blur);
+  -webkit-backdrop-filter: var(--backdrop-blur);
+  border-bottom: 1px solid var(--color-border);
+  transition: all var(--duration-normal) var(--ease-out);
+}
+
+.navbarScrolled {
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 1px 0 rgba(0,0,0,0.06), var(--shadow-xs);
+}
+
+.navBrand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  text-decoration: none;
+  color: var(--color-text-primary);
+}
+
+.navLogo {
+  width: 34px; height: 34px;
+  border-radius: var(--radius-md);
+  background: var(--color-accent);
+  display: grid;
+  place-items: center;
+  font-weight: var(--font-weight-black);
+  font-size: var(--font-size-xs);
+  color: white;
+  letter-spacing: -0.04em;
+}
+
+.navTitle {
+  font-size: 1rem;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: -0.02em;
+  color: var(--color-text-primary);
+}
+
+.navLinks {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.navLink {
+  padding: 6px var(--space-3);
+  border-radius: var(--radius-full);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  transition: all var(--duration-fast) var(--ease-out);
+  text-decoration: none;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: var(--font-family);
+}
+
+.navLink:hover {
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
+}
+
+.navLinkActive {
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
+  font-weight: var(--font-weight-semibold);
+}
+
+.navIconBtn {
+  display: grid;
+  place-items: center;
+  width: 34px; height: 34px;
+  border-radius: var(--radius-full);
+  color: var(--color-text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+  font-family: var(--font-family);
+}
+.navIconBtn:hover {
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
+}
+
+.navCta {
+  padding: 8px var(--space-5);
+  border-radius: var(--radius-full);
+  background: var(--color-accent);
+  color: white;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  border: none;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+  text-decoration: none;
+  box-shadow: 0 1px 4px rgba(17,24,39,0.15);
+}
+
+.navCta:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 12px rgba(17,24,39,0.22);
+  background: var(--color-accent-hover);
+  color: white;
+}
+
+.navAvatar {
+  width: 34px; height: 34px;
+  border-radius: var(--radius-full);
+  background: var(--color-bg-alt);
+  border: 1.5px solid var(--color-border-strong);
+  display: grid;
+  place-items: center;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+  text-decoration: none;
+}
+
+.navAvatar:hover {
+  border-color: var(--color-accent);
+  background: var(--color-accent-light);
+}
+
+.navMenu {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.mobileToggle {
+  display: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-primary);
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  transition: background var(--duration-fast);
+}
+.mobileToggle:hover { background: var(--color-surface-hover); }
+
+@media (max-width: 768px) {
+  .navLinks { display: none; }
+  .mobileToggle { display: block; }
+  .navLinksOpen {
+    display: flex;
+    flex-direction: column;
+    position: absolute;
+    top: var(--navbar-height);
+    left: 0; right: 0;
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+    padding: var(--space-4);
+    box-shadow: var(--shadow-lg);
+    animation: fadeInDown var(--duration-normal) var(--ease-out);
+  }
+}
