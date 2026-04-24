@@ -51,3 +51,18 @@
 .resultBtnPrimary { background: var(--color-accent); color: white; border-color: transparent; }
 .resultBtnPrimary:hover { box-shadow: 0 4px 20px rgba(17,24,39,0.25); transform: translateY(-1px); color: white; }
 @media (max-width: 640px) { .langGrid { grid-template-columns: repeat(3, 1fr); } .langAuto { grid-column: span 3; } }
+
+/* Demo modu bildirimi — AI henüz bağlı değil */
+.demoNotice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: rgba(90,200,250,0.07);
+  border: 1px solid rgba(90,200,250,0.18);
+  border-radius: var(--radius-lg);
+  font-size: var(--font-size-sm);
+  color: var(--color-info);
+  margin-top: var(--space-5);
+}
+

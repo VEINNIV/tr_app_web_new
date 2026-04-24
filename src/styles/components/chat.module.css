@@ -1,7 +1,35 @@
+/* ========================================================================
+   TransLingua — Chat Page Styles
+   AI sohbet arayüzü, doküman seçici ve mesaj kabarcıkları
+   ======================================================================== */
+
+/* Sayfa ana konteyneri — tam yükseklik flex sütun */
 .chatPage { padding: calc(var(--navbar-height) + var(--space-8)) var(--space-6) var(--space-6); max-width: 900px; margin: 0 auto; height: calc(100vh - var(--space-6)); display: flex; flex-direction: column; }
-.chatHeader { margin-bottom: var(--space-5); }
+
+/* Başlık satırı — title + doküman seçici */
+.chatHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-3); flex-wrap: wrap; }
 .chatTitle { font-size: var(--font-size-xl); font-weight: var(--font-weight-bold); }
 .chatDesc { font-size: var(--font-size-sm); color: var(--color-text-secondary); }
+
+/* Demo modu bildirim çubuğu */
+.demoBar { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-4); background: rgba(90,200,250,0.07); border: 1px solid rgba(90,200,250,0.18); border-radius: var(--radius-lg); font-size: var(--font-size-xs); color: var(--color-info); margin-bottom: var(--space-4); }
+
+/* Doküman seçici buton */
+.docPickerWrapper { position: relative; flex-shrink: 0; }
+.docPickerBtn { display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-4); background: var(--color-surface); border: 1px solid var(--color-border-strong); border-radius: var(--radius-full); font-size: var(--font-size-sm); font-family: var(--font-family); cursor: pointer; color: var(--color-text-primary); transition: all var(--duration-fast) var(--ease-out); max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.docPickerBtn:hover { border-color: var(--color-accent); }
+.chevronOpen { transform: rotate(180deg); transition: transform var(--duration-fast) var(--ease-out); }
+
+/* Dropdown */
+.docPickerDropdown { position: absolute; top: calc(100% + 6px); right: 0; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-xl); box-shadow: var(--shadow-lg); min-width: 240px; padding: var(--space-2); z-index: 100; }
+.docPickerItem { display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: var(--space-3) var(--space-3); border-radius: var(--radius-md); border: none; background: none; font-family: var(--font-family); font-size: var(--font-size-sm); cursor: pointer; color: var(--color-text-primary); text-align: left; transition: background var(--duration-fast) var(--ease-out); }
+.docPickerItem:hover { background: var(--color-surface-hover); }
+.docPickerItemActive { background: var(--color-accent-light); color: var(--color-accent); }
+.docPickerItemName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; }
+.docPickerEmpty { padding: var(--space-4) var(--space-3); font-size: var(--font-size-sm); color: var(--color-text-tertiary); }
+.docPickerEmpty a { color: var(--color-accent); }
+
+/* Sohbet mesaj alanı */
 .chatBody { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-4) 0; }
 .msgRow { display: flex; gap: var(--space-3); max-width: 85%; animation: fadeInUp 0.3s var(--ease-out) both; }
 .msgUser { align-self: flex-end; flex-direction: row-reverse; }
@@ -12,18 +40,25 @@
 .msgBubbleUser { background: var(--color-accent); color: white; border-bottom-right-radius: var(--radius-sm); }
 .msgBubbleAi { background: var(--color-surface); border: 1px solid var(--color-border); border-bottom-left-radius: var(--radius-sm); }
 .msgTime { font-size: var(--font-size-xs); color: var(--color-text-tertiary); margin-top: var(--space-1); }
+
+/* Yazıyor göstergesi */
 .typing { display: flex; gap: 4px; padding: var(--space-4); }
 .typingDot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-text-tertiary); }
 .typingDot:nth-child(1) { animation: typingDot 1.4s infinite 0s; }
 .typingDot:nth-child(2) { animation: typingDot 1.4s infinite 0.2s; }
 .typingDot:nth-child(3) { animation: typingDot 1.4s infinite 0.4s; }
+
+/* Giriş alanı */
 .chatInput { display: flex; gap: var(--space-3); padding: var(--space-4); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-xl); margin-top: auto; }
 .inputField { flex: 1; border: none; outline: none; font-size: var(--font-size-base); font-family: var(--font-family); color: var(--color-text-primary); background: transparent; resize: none; min-height: 20px; max-height: 120px; }
 .inputField::placeholder { color: var(--color-text-tertiary); }
 .sendBtn { width: 40px; height: 40px; border-radius: 50%; background: var(--color-accent); color: white; border: none; display: grid; place-items: center; cursor: pointer; transition: all var(--duration-fast) var(--ease-out); flex-shrink: 0; align-self: flex-end; }
 .sendBtn:hover { transform: scale(1.05); box-shadow: var(--shadow-glow); }
 .sendBtn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+/* Boş durum */
 .emptyChat { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: var(--color-text-tertiary); }
 .emptyChatIcon { margin-bottom: var(--space-4); opacity: 0.3; }
 .emptyChatText { font-size: var(--font-size-md); font-weight: var(--font-weight-semibold); color: var(--color-text-secondary); margin-bottom: var(--space-2); }
 .emptyChatHint { font-size: var(--font-size-sm); }
+

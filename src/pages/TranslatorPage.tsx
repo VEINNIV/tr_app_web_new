@@ -1,10 +1,17 @@
+/**
+ * TransLingua — TranslatorPage (Çeviri Sayfası)
+ *
+ * Kullanıcının PDF belgelerini yükleyip çeviriye gönderdiği
+ * adım adım sihirbaz arayüzü. Supabase Storage + DB entegrasyonu vardır.
+ * AI motoru: bağlandığında translateDocument() ve detectLanguage() devreye girer.
+ */
 import { useState, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, FileText, X, Check, AlertCircle, Download, MessageSquare, ArrowRight, Globe } from 'lucide-react';
+import { Upload, FileText, X, Check, AlertCircle, Download, MessageSquare, ArrowRight, Globe, Sparkles } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { translateDocument, detectLanguage } from '../lib/gemini';
+import { translateDocument, detectLanguage } from '../lib/ai';
 import { SUPPORTED_LANGUAGES, TARGET_LANGUAGE } from '../lib/constants';
 import type { TranslationStep } from '../types';
 import styles from '../styles/components/translator.module.css';
@@ -22,6 +29,7 @@ export default function TranslatorPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
 
+  // ── Sürükle-bırak yöneticileri ──────────────────────────────
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault(); e.stopPropagation();
     if (e.type === 'dragenter' || e.type === 'dragover') setDragActive(true);
@@ -39,24 +47,35 @@ export default function TranslatorPage() {
     if (f) setFile(f);
   };
 
+  /** Byte cinsinden boyutu okunabilir formata çevirir */
   const formatSize = (bytes: number) => {
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
+  /**
+   * Ana çeviri akışı:
+   * 1. Dosyayı Supabase Storage'a yükle
+   * 2. Veritabanında doküman kaydı oluştur
+   * 3. Metin çıkar
+   * 4. Dil tespiti yap (veya kullanıcı seçimini kullan)
+   * 5. AI ile çevir
+   * 6. Çeviri kaydını oluştur
+   * 7. Doküman durumunu güncelle ve krediyi düş
+   */
   const startTranslation = async () => {
     if (!file || !profile) return;
     setStep('progress'); setProgress(0); setError('');
 
     try {
-      // Step 1: Upload to Supabase Storage
+      // Adım 1: Supabase Storage'a yükle
       setStatusText('Dosya yükleniyor'); setDetailText(file.name); setProgress(10);
       const filePath = `${profile.id}/${Date.now()}_${file.name}`;
       const { error: uploadErr } = await supabase.storage.from('originals').upload(filePath, file);
       if (uploadErr) throw new Error('Dosya yüklenemedi: ' + uploadErr.message);
 
-      // Step 2: Create document record
+      // Adım 2: Doküman kaydı oluştur
       setStatusText('Doküman kaydediliyor'); setProgress(20);
       const { data: docData, error: docErr } = await supabase.from('documents').insert({
         user_id: profile.id,
@@ -68,11 +87,11 @@ export default function TranslatorPage() {
       if (docErr) throw new Error('Doküman oluşturulamadı');
       const docId = docData.id;
 
-      // Step 3: Extract text (demo - read file as text)
+      // Adım 3: Metin çıkar (demo — dosyayı düz metin olarak oku)
       setStatusText('Metin çıkarılıyor'); setDetailText('PDF analiz ediliyor...'); setProgress(30);
       const text = await file.text();
 
-      // Step 4: Detect language
+      // Adım 4: Dil tespiti
       setStatusText('Dil tespit ediliyor'); setProgress(40);
       let detectedLang = sourceLang;
       if (sourceLang === 'auto') {
@@ -80,12 +99,12 @@ export default function TranslatorPage() {
         setDetailText(`Tespit edilen dil: ${detectedLang}`);
       }
 
-      // Step 5: Translate
+      // Adım 5: AI ile çevir
       setStatusText('Çevriliyor'); setDetailText('AI çevirisi devam ediyor...'); setProgress(50);
       const translated = await translateDocument(text.slice(0, 10000), detectedLang, TARGET_LANGUAGE.code);
       setProgress(80);
 
-      // Step 6: Create translation record
+      // Adım 6: Çeviri kaydı oluştur
       setStatusText('Sonuç kaydediliyor'); setProgress(90);
       await supabase.from('translations').insert({
         document_id: docId, user_id: profile.id,
@@ -95,10 +114,8 @@ export default function TranslatorPage() {
         credits_used: 1,
       });
 
-      // Step 7: Update document status
+      // Adım 7: Dokümanı güncelle ve krediyi düş
       await supabase.from('documents').update({ status: 'completed', original_language: detectedLang }).eq('id', docId);
-
-      // Deduct credits
       await supabase.from('profiles').update({ credits_remaining: Math.max(0, profile.credits_remaining - 1) }).eq('id', profile.id);
 
       setProgress(100); setResultDocId(docId); setStep('result');
@@ -117,6 +134,7 @@ export default function TranslatorPage() {
       <h1 className={styles.pageTitle}>Belge Çevir</h1>
       <p className={styles.pageDesc}>PDF belgenizi yükleyin, AI ile profesyonel çeviri alın.</p>
 
+      {/* İlerleme adım çubuğu */}
       <div className={styles.steps}>
         {[0, 1, 2, 3].map(i => (
           <div key={i} className={`${styles.step} ${i < stepIndex ? styles.stepDone : ''} ${i === stepIndex ? styles.stepActive : ''}`} />
@@ -124,12 +142,14 @@ export default function TranslatorPage() {
       </div>
 
       <AnimatePresence mode="wait">
-        {/* Upload & Config Step */}
+        {/* Yükleme ve Yapılandırma Adımı */}
         {(step === 'upload' || step === 'config') && (
           <motion.div key="upload" className={styles.card} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
-            <div className={`${styles.dropzone} ${dragActive ? styles.dropzoneActive : ''}`}
+            <div
+              className={`${styles.dropzone} ${dragActive ? styles.dropzoneActive : ''}`}
               onDragEnter={handleDrag} onDragLeave={handleDrag} onDragOver={handleDrag} onDrop={handleDrop}
-              onClick={() => fileInputRef.current?.click()}>
+              onClick={() => fileInputRef.current?.click()}
+            >
               <input ref={fileInputRef} type="file" accept="application/pdf" onChange={handleFileSelect} hidden />
               <div className={styles.dropIcon}><Upload size={28} /></div>
               <div className={styles.dropTitle}>PDF dosyanızı sürükleyin veya seçin</div>
@@ -168,6 +188,12 @@ export default function TranslatorPage() {
               </div>
             )}
 
+            {/* Demo modu bildirimi */}
+            <div className={styles.demoNotice}>
+              <Sparkles size={14} />
+              <span>AI motoru entegrasyon aşamasında. Dosya yükleme ve kayıt işlemleri aktif.</span>
+            </div>
+
             <div className={styles.actions}>
               <button className={styles.btnPrimary} onClick={startTranslation} disabled={!file}>
                 Çeviriyi Başlat
@@ -176,7 +202,7 @@ export default function TranslatorPage() {
           </motion.div>
         )}
 
-        {/* Progress Step */}
+        {/* İşlem Adımı */}
         {step === 'progress' && (
           <motion.div key="progress" className={styles.card} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
             <div className={styles.progressSection}>
@@ -194,7 +220,7 @@ export default function TranslatorPage() {
           </motion.div>
         )}
 
-        {/* Result Step */}
+        {/* Sonuç Adımı */}
         {step === 'result' && (
           <motion.div key="result" className={styles.card} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
             <div className={styles.resultSection}>
