@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
-import { Mail, Lock, User, ArrowLeft } from 'lucide-react';
+import { Mail, Lock, User, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import styles from '../styles/components/auth.module.css';
 
@@ -17,6 +17,7 @@ export default function AuthPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { signIn, signUp, signInWithGoogle, user } = useAuth();
@@ -54,6 +55,8 @@ export default function AuthPage() {
       {/* ── Left Panel ─── */}
       <div className={styles.authLeft}>
         <div className={styles.authLeftBg} />
+        <div className={styles.floatingOrb1} />
+        <div className={styles.floatingOrb2} />
 
         <div className={styles.authLeftLogo}>
           <div className={styles.authLeftLogoMark}>TL</div>
@@ -138,13 +141,21 @@ export default function AuthPage() {
               <input
                 id="password"
                 className={styles.input}
-                type="password"
+                type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 placeholder="En az 6 karakter"
                 required
                 minLength={6}
               />
+              <button
+                type="button"
+                className={styles.passwordToggle}
+                onClick={() => setShowPassword(!showPassword)}
+                tabIndex={-1}
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
             </div>
           </div>
 

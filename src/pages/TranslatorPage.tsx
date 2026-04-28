@@ -8,7 +8,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, FileText, X, Check, AlertCircle, Download, MessageSquare, ArrowRight, Globe, Sparkles } from 'lucide-react';
+import { Upload, FileText, X, Check, AlertCircle, Download, MessageSquare, ArrowRight, Globe, Sparkles, Search } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { translateDocument, detectLanguage } from '../lib/ai';
@@ -172,7 +172,7 @@ export default function TranslatorPage() {
                 <div className={styles.configLabel}><Globe size={16} /> Kaynak Dil</div>
                 <div className={styles.langGrid}>
                   <button className={`${styles.langOption} ${styles.langAuto} ${sourceLang === 'auto' ? styles.langSelected : ''}`} onClick={() => setSourceLang('auto')}>
-                    🔍 Otomatik Algıla
+                    <Search size={14} /> Otomatik Algıla
                   </button>
                   {SUPPORTED_LANGUAGES.map(l => (
                     <button key={l.code} className={`${styles.langOption} ${sourceLang === l.code ? styles.langSelected : ''}`} onClick={() => setSourceLang(l.code)}>

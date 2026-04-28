@@ -47,10 +47,21 @@ export const STATUS_LABELS: Record<string, string> = {
   pending: 'Beklemede', extracting: 'Metin çıkarılıyor', translating: 'Çevriliyor',
   generating: 'PDF oluşturuluyor', completed: 'Tamamlandı', error: 'Hata',
   uploaded: 'Yüklendi', processing: 'İşleniyor',
+  draft: 'Taslak',
 };
 
-export const CREDIT_COSTS = { TRANSLATION_PER_PAGE: 1, CHAT_PER_QUESTION: 0.5 };
+export const CREDIT_COSTS = {
+  TRANSLATION_PER_PAGE: 1,
+  CHAT_PER_QUESTION: 0.5,
+  STUDY_NOTES_PER_SOURCE: 0.5,
+};
+
 export const APP_NAME = 'TransLingua';
 export const APP_TAGLINE = 'Gelişmiş AI ile Belge Çevirisi';
 export const APP_DESCRIPTION = 'Belgelerinizi yapay zeka ile saniyeler içinde Türkçe\'ye çevirin.';
 
+export const STUDY_SUBJECTS = [
+  'Matematik', 'Fizik', 'Kimya', 'Biyoloji', 'Tarih', 'Coğrafya',
+  'Edebiyat', 'Felsefe', 'İngilizce', 'Hukuk', 'Tıp', 'Mühendislik',
+  'Ekonomi', 'İşletme', 'Psikoloji', 'Sosyoloji', 'Diğer',
+];

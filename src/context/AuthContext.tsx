@@ -8,6 +8,7 @@ interface AuthContextType {
   user: SupabaseUser | null;
   profile: User | null;
   loading: boolean;
+  isAdmin: boolean;
   signUp: (email: string, password: string, fullName: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
@@ -24,27 +25,74 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const fetchProfile = async (userId: string) => {
-    const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
-    if (data) setProfile(data as User);
+    try {
+      const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
+      if (error) {
+        console.error('Error fetching profile:', error);
+      }
+      if (data) setProfile(data as User);
+    } catch (err) {
+      console.error('Exception fetching profile:', err);
+    }
   };
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session: s } }) => {
-      setSession(s);
-      setUser(s?.user ?? null);
-      if (s?.user) fetchProfile(s.user.id);
-      setLoading(false);
+    let mounted = true;
+
+    // Safety fallback: force loading to false after 3 seconds
+    const fallbackTimer = setTimeout(() => {
+      if (mounted) setLoading(false);
+    }, 3000);
+
+    const initSession = async () => {
+      try {
+        const { data: { session: s }, error } = await supabase.auth.getSession();
+        if (error) {
+          console.error('Error getting session:', error);
+          if (mounted) setLoading(false);
+          return;
+        }
+        if (mounted) {
+          setSession(s);
+          setUser(s?.user ?? null);
+        }
+        if (s?.user && mounted) {
+          await fetchProfile(s.user.id);
+        }
+      } catch (err) {
+        console.error('Unhandled session error:', err);
+      } finally {
+        if (mounted) setLoading(false);
+        clearTimeout(fallbackTimer);
+      }
+    };
+
+    initSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, s) => {
+      try {
+        if (mounted) {
+          setSession(s);
+          setUser(s?.user ?? null);
+        }
+        if (s?.user && mounted) {
+          await fetchProfile(s.user.id);
+        } else if (mounted) {
+          setProfile(null);
+        }
+      } catch (err) {
+        console.error('Auth state change error:', err);
+      } finally {
+        if (mounted) setLoading(false);
+        clearTimeout(fallbackTimer);
+      }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
-      setSession(s);
-      setUser(s?.user ?? null);
-      if (s?.user) fetchProfile(s.user.id);
-      else setProfile(null);
-      setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+      clearTimeout(fallbackTimer);
+    };
   }, []);
 
   const signUp = async (email: string, password: string, fullName: string) => {
@@ -77,8 +125,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (user) await fetchProfile(user.id);
   };
 
+  const isAdmin = profile?.role === 'admin';
+
   return (
-    <AuthContext.Provider value={{ session, user, profile, loading, signUp, signIn, signInWithGoogle, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ session, user, profile, loading, isAdmin, signUp, signIn, signInWithGoogle, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,8 +1,8 @@
 /**
  * TransLingua — AI Servis Katmanı
  *
- * Bu modül, belge çevirisi, dil tespiti ve doküman soru-cevap
- * işlemleri için kullanılan özel AI motorumuza erişimi sağlar.
+ * Bu modül, belge çevirisi, dil tespiti, doküman soru-cevap
+ * ve ders notu çıkarma işlemleri için kullanılan AI motorumuza erişimi sağlar.
  *
  * NOT: AI motoru henüz bağlı değil. Bağlandığında buradaki
  * fonksiyonlar otomatik olarak devreye girecek.
@@ -119,4 +119,36 @@ export async function askAboutDocument(
   const systemPrompt = `Sen akıllı bir doküman asistanısın. Kullanıcı bir belge yükledi ve bu belge hakkında sorular soruyor. Türkçe yanıt ver, detaylı ve yardımsever ol. Aşağıdaki belge içeriğini bağlam olarak kullan.`;
   const prompt = `Belge İçeriği:\n${documentText.slice(0, 30000)}\n\n---\n\nKullanıcı Sorusu: ${question}`;
   return callAI(prompt, systemPrompt);
+}
+
+/**
+ * Birden fazla kaynak (görsel/belge metinleri) inceleyerek
+ * yapılandırılmış ders notu oluşturur.
+ *
+ * @param contents - Her dosyanın çıkarılmış metni
+ * @param subject - Ders/konu adı (opsiyonel)
+ * @param title - Not başlığı (opsiyonel)
+ */
+export async function generateStudyNotes(
+  contents: string[],
+  subject?: string,
+  title?: string
+): Promise<string> {
+  const subjectStr = subject ? ` Konu: ${subject}.` : '';
+  const titleStr = title ? ` Başlık: ${title}.` : '';
+
+  const systemPrompt = `Sen uzman bir eğitim asistanısın. Öğrencinin gönderdiği ders materyallerini (ders notları, kitap sayfaları, sunum slaytları vb.) analiz ederek kapsamlı, yapılandırılmış ve anlaşılır ders notları oluştur.${subjectStr}${titleStr}
+
+Notları şu formatta oluştur:
+- Başlıklar ve alt başlıklar kullan
+- Önemli kavramları kalın yaz
+- Madde işaretleriyle özetler ekle
+- Tanımları vurgula
+- İlişkileri ve bağlantıları göster
+- Varsa formülleri ve denklemleri koru
+- Sonuna kısa bir özet ekle
+- Türkçe yaz`;
+
+  const combined = contents.map((c, i) => `--- Kaynak ${i + 1} ---\n${c}`).join('\n\n');
+  return callAI(combined, systemPrompt);
 }

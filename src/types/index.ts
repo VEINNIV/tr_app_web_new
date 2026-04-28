@@ -1,10 +1,13 @@
 // TransLingua — TypeScript Type Definitions
 
+export type UserRole = 'user' | 'subscriber' | 'admin';
+
 export interface User {
   id: string;
   email: string;
   full_name: string | null;
   avatar_url: string | null;
+  role: UserRole;
   plan: Plan;
   credits_remaining: number;
   credits_monthly_limit: number;
@@ -72,7 +75,7 @@ export interface CreditTransaction {
   created_at: string;
 }
 
-export type CreditAction = 'translation' | 'chat' | 'monthly_reset' | 'purchase';
+export type CreditAction = 'translation' | 'chat' | 'monthly_reset' | 'purchase' | 'admin_grant';
 
 export interface PricingPlan {
   id: Plan;
@@ -89,6 +92,34 @@ export interface SupportedLanguage {
   name: string;
   nativeName: string;
   flag: string;
+}
+
+// Study notes module types
+export type StudySessionStatus = 'draft' | 'processing' | 'completed' | 'error';
+
+export interface StudySession {
+  id: string;
+  user_id: string;
+  title: string;
+  subject: string | null;
+  source_count: number;
+  generated_notes: string | null;
+  status: StudySessionStatus;
+  credits_used: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StudySource {
+  id: string;
+  session_id: string;
+  user_id: string;
+  file_name: string;
+  storage_path: string;
+  file_type: string;
+  file_size_bytes: number;
+  sort_order: number;
+  created_at: string;
 }
 
 // Translation wizard step type

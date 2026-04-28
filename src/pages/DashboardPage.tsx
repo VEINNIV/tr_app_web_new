@@ -5,10 +5,13 @@
  * Kullanıcı istatistiklerini, kredi durumunu, hızlı işlemleri
  * ve son belgeleri gerçek zamanlı olarak Supabase'den çeker.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FileText, Languages, MessageSquare, Plus, Clock, TrendingUp, CreditCard, FolderOpen, ArrowRight, Sparkles } from 'lucide-react';
+import {
+  FileText, Languages, MessageSquare, Plus, Clock, TrendingUp,
+  CreditCard, FolderOpen, ArrowRight, Sparkles, BookOpen, Shield,
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { STATUS_LABELS } from '../lib/constants';
@@ -24,11 +27,46 @@ const fadeUp = {
   }),
 };
 
+/** Animated counter hook */
+function useAnimatedCounter(target: number, duration = 800) {
+  const [count, setCount] = useState(0);
+  const prevTarget = useRef(0);
+
+  useEffect(() => {
+    if (target === prevTarget.current) return;
+    prevTarget.current = target;
+
+    const start = 0;
+    const startTime = performance.now();
+
+    const animate = (now: number) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      // Ease out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setCount(Math.round(start + (target - start) * eased));
+      if (progress < 1) requestAnimationFrame(animate);
+    };
+
+    requestAnimationFrame(animate);
+  }, [target, duration]);
+
+  return count;
+}
+
 export default function DashboardPage() {
-  const { profile } = useAuth();
+  const { profile, isAdmin } = useAuth();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [totalTranslations, setTotalTranslations] = useState(0);
   const [loading, setLoading] = useState(true);
+
+  // Animated counters
+  const animDocCount = useAnimatedCounter(documents.length);
+  const animTransCount = useAnimatedCounter(totalTranslations);
+  const animCreditsRemaining = useAnimatedCounter(profile?.credits_remaining ?? 0);
+  const animCreditsUsed = useAnimatedCounter(
+    (profile?.credits_monthly_limit ?? 0) - (profile?.credits_remaining ?? 0)
+  );
 
   useEffect(() => {
     if (!profile) return;
@@ -70,6 +108,20 @@ export default function DashboardPage() {
   // İlk defa giriş yapıyorsa (hiç doküman yoksa) onboarding göster
   const isFirstTime = !loading && documents.length === 0;
 
+  // Hızlı işlemler
+  const quickActions = [
+    { to: '/translate', icon: <Languages size={22} />, title: 'Yeni Çeviri', desc: 'PDF yükle ve çevir', bg: 'var(--color-accent-light)', color: 'var(--color-accent)' },
+    { to: '/documents', icon: <FolderOpen size={22} />, title: 'Dokümanlarım', desc: 'Tüm belgelerini gör', bg: 'var(--color-success-bg)', color: 'var(--color-success)' },
+    { to: '/study-notes', icon: <BookOpen size={22} />, title: 'Ders Notu', desc: 'Görsellerden not çıkar', bg: 'rgba(139,92,246,0.08)', color: '#8b5cf6' },
+    { to: '/chat', icon: <MessageSquare size={22} />, title: 'AI Asistan', desc: 'Belgene soru sor', bg: 'var(--color-info-bg)', color: 'var(--color-info)' },
+  ];
+
+  if (isAdmin) {
+    quickActions.push({
+      to: '/admin', icon: <Shield size={22} />, title: 'Admin Panel', desc: 'Kullanıcıları yönet', bg: 'rgba(99,102,241,0.08)', color: '#6366f1',
+    });
+  }
+
   return (
     <div className={styles.dashboard}>
 
@@ -80,7 +132,9 @@ export default function DashboardPage() {
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.5 }}
       >
+        <div className={styles.welcomeMesh} aria-hidden="true" />
         <div className={styles.welcomeOrb} />
+        <div className={styles.welcomeOrb2} />
         <div className={styles.welcomeContent}>
           <p className={styles.welcomeGreeting}>Hoş geldiniz 👋</p>
           <h1 className={styles.welcomeName}>{displayName}</h1>
@@ -94,10 +148,10 @@ export default function DashboardPage() {
       {/* ── İstatistik Kartları ──────────────────────────────── */}
       <div className={styles.statsGrid}>
         {[
-          { icon: <FileText size={20} />, value: documents.length, label: 'Toplam Doküman', bg: 'var(--color-accent-light)', color: 'var(--color-accent)' },
-          { icon: <Languages size={20} />, value: totalTranslations, label: 'Tamamlanan Çeviri', bg: 'var(--color-success-bg)', color: 'var(--color-success)' },
-          { icon: <CreditCard size={20} />, value: profile.credits_remaining, label: 'Kalan Kredi', bg: 'var(--color-warning-bg)', color: 'var(--color-warning)' },
-          { icon: <TrendingUp size={20} />, value: (profile.credits_monthly_limit - profile.credits_remaining), label: 'Kullanılan Kredi', bg: 'var(--color-info-bg)', color: 'var(--color-info)' },
+          { icon: <FileText size={20} />, value: animDocCount, label: 'Toplam Doküman', bg: 'var(--color-accent-light)', color: 'var(--color-accent)' },
+          { icon: <Languages size={20} />, value: animTransCount, label: 'Tamamlanan Çeviri', bg: 'var(--color-success-bg)', color: 'var(--color-success)' },
+          { icon: <CreditCard size={20} />, value: animCreditsRemaining, label: 'Kalan Kredi', bg: 'var(--color-warning-bg)', color: 'var(--color-warning)' },
+          { icon: <TrendingUp size={20} />, value: animCreditsUsed, label: 'Kullanılan Kredi', bg: 'var(--color-info-bg)', color: 'var(--color-info)' },
         ].map((s, i) => (
           <motion.div key={i} className={styles.statCard} variants={fadeUp} initial="hidden" animate="visible" custom={i}>
             <div className={styles.statIcon} style={{ background: s.bg, color: s.color }}>{s.icon}</div>
@@ -114,7 +168,12 @@ export default function DashboardPage() {
           <span className={styles.creditValue}>{profile.credits_remaining} / {profile.credits_monthly_limit} kalan</span>
         </div>
         <div className={styles.creditTrack}>
-          <div className={styles.creditFill} style={{ width: `${creditPercent}%` }} />
+          <motion.div
+            className={styles.creditFill}
+            initial={{ width: 0 }}
+            animate={{ width: `${creditPercent}%` }}
+            transition={{ duration: 1, ease: 'easeOut', delay: 0.5 }}
+          />
         </div>
         {profile.credits_reset_at && (
           <div className={styles.creditReset}>
@@ -126,11 +185,7 @@ export default function DashboardPage() {
       {/* ── Hızlı İşlemler ──────────────────────────────────── */}
       <h2 className={styles.sectionTitle}><Plus size={18} /> Hızlı İşlemler</h2>
       <div className={styles.quickActions}>
-        {[
-          { to: '/translate', icon: <Languages size={22} />, title: 'Yeni Çeviri', desc: 'PDF yükle ve çevir', bg: 'var(--color-accent-light)', color: 'var(--color-accent)' },
-          { to: '/documents', icon: <FolderOpen size={22} />, title: 'Dokümanlarım', desc: 'Tüm belgelerini gör', bg: 'var(--color-success-bg)', color: 'var(--color-success)' },
-          { to: '/chat', icon: <MessageSquare size={22} />, title: 'AI Asistan', desc: 'Belgene soru sor', bg: 'var(--color-info-bg)', color: 'var(--color-info)' },
-        ].map((a, i) => (
+        {quickActions.map((a, i) => (
           <motion.div key={i} variants={fadeUp} initial="hidden" animate="visible" custom={i + 5}>
             <Link to={a.to} className={styles.actionCard}>
               <div className={styles.actionIcon} style={{ background: a.bg, color: a.color }}>{a.icon}</div>
@@ -155,7 +210,7 @@ export default function DashboardPage() {
           <p className={styles.onboardingDesc}>
             Platformumuza hoş geldiniz! İlk belgenizi yükleyerek
             yapay zeka destekli çeviri deneyimini keşfedebilirsiniz.
-            Ücretsiz planınızda 5 sayfa çeviri hakkınız mevcut.
+            Ücretsiz planınızda {profile.credits_monthly_limit} sayfa çeviri hakkınız mevcut.
           </p>
           <Link to="/translate" className={styles.onboardingCta}>
             İlk Çevirime Başla <ArrowRight size={16} />

@@ -27,6 +27,26 @@
   pointer-events: none;
 }
 
+.floatingOrb1 {
+  position: absolute;
+  width: 200px; height: 200px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.02);
+  top: 10%; right: 15%;
+  pointer-events: none;
+  animation: floatSlow 8s ease-in-out infinite;
+}
+
+.floatingOrb2 {
+  position: absolute;
+  width: 300px; height: 300px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.015);
+  bottom: 20%; left: 10%;
+  pointer-events: none;
+  animation: floatSlow 12s ease-in-out infinite reverse;
+}
+
 .authLeftLogo {
   position: relative;
   z-index: 1;
@@ -156,7 +176,7 @@
 
 .input {
   width: 100%;
-  padding: 12px 14px 12px 42px;
+  padding: 12px 42px 12px 42px;
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-md);
   font-size: var(--font-size-base);
@@ -168,10 +188,29 @@
 }
 .input:focus {
   border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px var(--color-accent-medium);
+  box-shadow: 0 0 0 3px var(--color-accent-light);
 }
 .input::placeholder {
   color: var(--color-text-tertiary);
+}
+
+.passwordToggle {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  padding: 4px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  transition: color var(--duration-fast);
+}
+.passwordToggle:hover {
+  color: var(--color-text-primary);
 }
 
 .submitBtn {

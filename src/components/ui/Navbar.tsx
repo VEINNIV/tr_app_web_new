@@ -1,6 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Menu, X, LogOut } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  Menu, X, LogOut, Settings, LayoutDashboard, Languages, FolderOpen,
+  MessageSquare, BookOpen, Shield, ChevronDown, User,
+} from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import styles from '../../styles/components/navbar.module.css';
 
@@ -11,28 +15,33 @@ const handleAnchorClick = (id: string) => (e: React.MouseEvent) => {
   if (el) {
     el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } else {
-    // If on a different page, navigate to landing then scroll
     window.location.href = `/#${id}`;
   }
 };
 
 export default function Navbar() {
-  const { user, profile, signOut } = useAuth();
+  const { user, profile, isAdmin, signOut } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const [scrolled, setScrolled] = useState(false);
+  const [scrolled, setScrolled] = useState(() => typeof window !== 'undefined' ? window.scrollY > 20 : false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [activeSection, setActiveSection] = useState('');
+  const profileRef = useRef<HTMLDivElement>(null);
+  const lastScrollY = useRef(0);
 
   useEffect(() => {
     const onScroll = () => {
-      setScrolled(window.scrollY > 10);
+      const currentScrollY = window.scrollY;
+
+      lastScrollY.current = currentScrollY;
+      setScrolled(currentScrollY > 20);
 
       // Track active section for landing page
       const sections = ['features', 'how-it-works', 'pricing'];
       for (const id of sections.reverse()) {
         const el = document.getElementById(id);
-        if (el && window.scrollY >= el.offsetTop - 100) {
+        if (el && currentScrollY >= el.offsetTop - 100) {
           setActiveSection(id); return;
         }
       }
@@ -42,7 +51,19 @@ export default function Navbar() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  useEffect(() => setMobileOpen(false), [location]);
+  // Close mobile/profile menu on route change
+  useEffect(() => { setMobileOpen(false); setProfileOpen(false); }, [location]);
+
+  // Close profile dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
+        setProfileOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -57,68 +78,289 @@ export default function Navbar() {
 
   const isLanding = location.pathname === '/';
 
+  const authLinks = [
+    { to: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={16} /> },
+    { to: '/translate', label: 'Çeviri', icon: <Languages size={16} /> },
+    { to: '/documents', label: 'Dokümanlar', icon: <FolderOpen size={16} /> },
+    { to: '/study-notes', label: 'Ders Notu', icon: <BookOpen size={16} /> },
+    { to: '/chat', label: 'AI Chat', icon: <MessageSquare size={16} /> },
+  ];
+
+  const guestLinks = [
+    { id: 'features', label: 'Özellikler' },
+    { id: 'how-it-works', label: 'Nasıl Çalışır' },
+    { id: 'pricing', label: 'Fiyatlandırma' },
+  ];
+
   return (
-    <nav className={`${styles.navbar} ${scrolled ? styles.navbarScrolled : ''}`}>
-      <Link to="/" className={styles.navBrand}>
-        <div className={styles.navLogo}>TL</div>
-        <span className={styles.navTitle}>TransLingua</span>
-      </Link>
+    <>
+      <nav 
+        className={`${styles.navbarWrapper} ${scrolled ? styles.navbarScrolled : ''}`}
+      >
+        <motion.div 
+          className={styles.navbarInner}
+          layout
+          transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+        >
+          {/* Logo */}
+          <Link to="/" className={styles.navBrand}>
+            <motion.div
+              className={styles.navLogo}
+              whileHover={{ scale: 1.05, rotate: -2 }}
+              whileTap={{ scale: 0.95 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 17 }}
+            >
+              TL
+            </motion.div>
+            <span className={styles.navTitle}>TransLingua</span>
+          </Link>
 
-      <div className={`${styles.navLinks} ${mobileOpen ? styles.navLinksOpen : ''}`}>
-        {user ? (
-          <>
-            <Link to="/dashboard" className={`${styles.navLink} ${isActive('/dashboard') ? styles.navLinkActive : ''}`}>Dashboard</Link>
-            <Link to="/translate" className={`${styles.navLink} ${isActive('/translate') ? styles.navLinkActive : ''}`}>Çeviri</Link>
-            <Link to="/documents" className={`${styles.navLink} ${isActive('/documents') ? styles.navLinkActive : ''}`}>Dokümanlar</Link>
-            <Link to="/chat" className={`${styles.navLink} ${isActive('/chat') ? styles.navLinkActive : ''}`}>AI Chat</Link>
-          </>
-        ) : (
-          <>
-            <a
-              href="#features"
-              className={`${styles.navLink} ${isLanding && activeSection === 'features' ? styles.navLinkActive : ''}`}
-              onClick={handleAnchorClick('features')}
-            >
-              Özellikler
-            </a>
-            <a
-              href="#how-it-works"
-              className={`${styles.navLink} ${isLanding && activeSection === 'how-it-works' ? styles.navLinkActive : ''}`}
-              onClick={handleAnchorClick('how-it-works')}
-            >
-              Nasıl Çalışır
-            </a>
-            <a
-              href="#pricing"
-              className={`${styles.navLink} ${isLanding && activeSection === 'pricing' ? styles.navLinkActive : ''}`}
-              onClick={handleAnchorClick('pricing')}
-            >
-              Fiyatlandırma
-            </a>
-          </>
-        )}
-      </div>
+          {/* Desktop Links */}
+          <div className={styles.navLinks}>
+            {isLanding ? (
+              guestLinks.map(link => {
+                const active = activeSection === link.id;
+                return (
+                  <a
+                    key={link.id}
+                    href={`#${link.id}`}
+                    className={`${styles.navLink} ${active ? styles.navLinkActive : ''}`}
+                    onClick={handleAnchorClick(link.id)}
+                  >
+                    {active && (
+                      <motion.div
+                        className={styles.navLinkIndicator}
+                        layoutId="nav-indicator"
+                        transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                      />
+                    )}
+                    <span className={styles.navLinkContent}>
+                      {link.label}
+                    </span>
+                  </a>
+                );
+              })
+            ) : (
+              user && authLinks.map(link => {
+                const active = isActive(link.to);
+                return (
+                  <Link
+                    key={link.to}
+                    to={link.to}
+                    className={`${styles.navLink} ${active ? styles.navLinkActive : ''}`}
+                  >
+                    {active && (
+                      <motion.div
+                        className={styles.navLinkIndicator}
+                        layoutId="nav-indicator"
+                        transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                      />
+                    )}
+                    <span className={styles.navLinkContent}>
+                      {link.icon}
+                      <span>{link.label}</span>
+                    </span>
+                  </Link>
+                );
+              })
+            )}
+          </div>
 
-      <div className={styles.navMenu}>
-        {user ? (
-          <>
-            <button onClick={handleSignOut} className={styles.navIconBtn} title="Çıkış Yap">
-              <LogOut size={18} />
+          {/* Right Menu */}
+          <div className={styles.navMenu}>
+            {user ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                {isLanding && (
+                  <Link to="/dashboard" className={styles.navLinkAuth} style={{ padding: '0.4rem 0.8rem', borderRadius: '8px', background: 'var(--color-surface)', border: '1px solid var(--color-border)', fontSize: '0.8125rem' }}>
+                    Dashboard'a Dön
+                  </Link>
+                )}
+                <div className={styles.profileWrapper} ref={profileRef}>
+                <button
+                  className={styles.profileBtn}
+                  onClick={() => setProfileOpen(!profileOpen)}
+                >
+                  <div className={styles.navAvatar}>{initials}</div>
+                  <div className={styles.profileInfo}>
+                    <span className={styles.profileName}>
+                      {profile?.full_name || user.email?.split('@')[0]}
+                    </span>
+                    <span className={styles.profilePlan}>
+                      {profile?.plan?.toUpperCase()} Plan
+                    </span>
+                  </div>
+                  <ChevronDown
+                    size={14}
+                    className={`${styles.profileChevron} ${profileOpen ? styles.profileChevronOpen : ''}`}
+                  />
+                </button>
+
+                <AnimatePresence>
+                  {profileOpen && (
+                    <motion.div
+                      className={styles.profileDropdown}
+                      initial={{ opacity: 0, y: 15, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                      transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
+                    >
+                    <div className={styles.dropdownHeader}>
+                      <div className={styles.dropdownAvatar}>{initials}</div>
+                      <div>
+                        <div className={styles.dropdownName}>{profile?.full_name || 'Kullanıcı'}</div>
+                        <div className={styles.dropdownEmail}>{user.email}</div>
+                      </div>
+                    </div>
+
+                    <div className={styles.dropdownDivider} />
+
+                    <Link to="/settings" className={styles.dropdownItem} onClick={() => setProfileOpen(false)}>
+                      <Settings size={15} />
+                      <span>Ayarlar</span>
+                    </Link>
+
+                    {isAdmin && (
+                      <Link to="/admin" className={`${styles.dropdownItem} ${styles.dropdownItemAdmin}`} onClick={() => setProfileOpen(false)}>
+                        <Shield size={15} />
+                        <span>Admin Panel</span>
+                      </Link>
+                    )}
+
+                    <div className={styles.dropdownDivider} />
+
+                    <button className={`${styles.dropdownItem} ${styles.dropdownItemDanger}`} onClick={handleSignOut}>
+                      <LogOut size={15} />
+                      <span>Çıkış Yap</span>
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+            </div>
+          ) : (
+            <>
+              <Link to="/auth" className={styles.navLinkAuth}>Giriş Yap</Link>
+              <Link to="/auth?mode=register" className={styles.navCta}>
+                Ücretsiz Başla
+              </Link>
+            </>
+          )}
+
+            {/* Mobile Toggle */}
+            <button
+              className={styles.mobileToggle}
+              onClick={() => setMobileOpen(!mobileOpen)}
+              aria-label="Menü"
+            >
+              <motion.div
+                animate={{ rotate: mobileOpen ? 90 : 0 }}
+                transition={{ type: 'spring', stiffness: 300 }}
+              >
+                {mobileOpen ? <X size={22} /> : <Menu size={22} />}
+              </motion.div>
             </button>
-            <Link to="/settings" className={styles.navAvatar} title={profile?.full_name || user.email || ''}>
-              {initials}
-            </Link>
-          </>
-        ) : (
+          </div>
+        </motion.div>
+      </nav>
+
+      {/* Mobile Drawer */}
+      <AnimatePresence>
+        {mobileOpen && (
           <>
-            <Link to="/auth" className={styles.navLink}>Giriş Yap</Link>
-            <Link to="/auth?mode=register" className={styles.navCta}>Ücretsiz Başla</Link>
+            <motion.div
+              className={styles.mobileOverlay}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setMobileOpen(false)}
+            />
+            <motion.div
+              className={styles.mobileDrawer}
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+            >
+              <div className={styles.mobileDrawerHeader}>
+                <span className={styles.mobileDrawerTitle}>Menü</span>
+                <button className={styles.mobileDrawerClose} onClick={() => setMobileOpen(false)}>
+                  <X size={20} />
+                </button>
+              </div>
+
+              {user && profile && (
+                <div className={styles.mobileProfile}>
+                  <div className={styles.navAvatar}>{initials}</div>
+                  <div>
+                    <div className={styles.mobileProfileName}>{profile.full_name || 'Kullanıcı'}</div>
+                    <div className={styles.mobileProfilePlan}>{profile.plan.toUpperCase()} Plan</div>
+                  </div>
+                </div>
+              )}
+
+              <div className={styles.mobileLinks}>
+                {isLanding && (
+                  <>
+                    {guestLinks.map(link => (
+                      <a
+                        key={link.id}
+                        href={`#${link.id}`}
+                        className={styles.mobileLink}
+                        onClick={(e) => { handleAnchorClick(link.id)(e); setMobileOpen(false); }}
+                      >
+                        <span>{link.label}</span>
+                      </a>
+                    ))}
+                    <div className={styles.mobileDivider} />
+                  </>
+                )}
+
+                {user ? (
+                  <>
+                    {authLinks.map(link => (
+                      <Link
+                        key={link.to}
+                        to={link.to}
+                        className={`${styles.mobileLink} ${isActive(link.to) ? styles.mobileLinkActive : ''}`}
+                        onClick={() => setMobileOpen(false)}
+                      >
+                        {link.icon}
+                        <span>{link.label}</span>
+                      </Link>
+                    ))}
+                    <div className={styles.mobileDivider} />
+                    <Link to="/settings" className={styles.mobileLink} onClick={() => setMobileOpen(false)}>
+                      <Settings size={16} />
+                      <span>Ayarlar</span>
+                    </Link>
+                    {isAdmin && (
+                      <Link to="/admin" className={`${styles.mobileLink} ${styles.mobileLinkAdmin}`} onClick={() => setMobileOpen(false)}>
+                        <Shield size={16} />
+                        <span>Admin Panel</span>
+                      </Link>
+                    )}
+                    <div className={styles.mobileDivider} />
+                    <button className={`${styles.mobileLink} ${styles.mobileLinkDanger}`} onClick={() => { handleSignOut(); setMobileOpen(false); }}>
+                      <LogOut size={16} />
+                      <span>Çıkış Yap</span>
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <Link to="/auth" className={styles.mobileLink} onClick={() => setMobileOpen(false)}>
+                      <User size={16} />
+                      <span>Giriş Yap</span>
+                    </Link>
+                    <Link to="/auth?mode=register" className={`${styles.mobileLink} ${styles.mobileLinkCta}`} onClick={() => setMobileOpen(false)}>
+                      Ücretsiz Başla
+                    </Link>
+                  </>
+                )}
+              </div>
+            </motion.div>
           </>
         )}
-        <button className={styles.mobileToggle} onClick={() => setMobileOpen(!mobileOpen)} aria-label="Menü">
-          {mobileOpen ? <X size={22} /> : <Menu size={22} />}
-        </button>
-      </div>
-    </nav>
+      </AnimatePresence>
+    </>
   );
 }
