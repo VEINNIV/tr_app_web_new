@@ -12,6 +12,10 @@ import { Upload, FileText, X, Check, AlertCircle, Download, MessageSquare, Arrow
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { translateDocument, detectLanguage } from '../lib/ai';
+import * as pdfjsLib from 'pdfjs-dist';
+
+// Set up PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 import { SUPPORTED_LANGUAGES, TARGET_LANGUAGE } from '../lib/constants';
 import type { TranslationStep } from '../types';
 import styles from '../styles/components/translator.module.css';
@@ -87,9 +91,27 @@ export default function TranslatorPage() {
       if (docErr) throw new Error('Doküman oluşturulamadı');
       const docId = docData.id;
 
-      // Adım 3: Metin çıkar (demo — dosyayı düz metin olarak oku)
+      // Adım 3: Metin çıkar (PDF Parsing)
       setStatusText('Metin çıkarılıyor'); setDetailText('PDF analiz ediliyor...'); setProgress(30);
-      const text = await file.text();
+      
+      let text = '';
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        let fullText = '';
+        
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const textContent = await page.getTextContent();
+          const pageText = textContent.items.map((item: any) => item.str).join(' ');
+          fullText += pageText + '\n\n';
+        }
+        text = fullText.trim();
+        
+        if (!text) throw new Error('PDF içinde okunabilir metin bulunamadı.');
+      } catch (pdfErr) {
+        throw new Error('PDF okuma hatası: ' + (pdfErr instanceof Error ? pdfErr.message : 'Bilinmeyen hata'));
+      }
 
       // Adım 4: Dil tespiti
       setStatusText('Dil tespit ediliyor'); setProgress(40);

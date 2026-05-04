@@ -5,6 +5,7 @@
  * görüntülediği ve oturumunu kapattığı sayfa.
  */
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { User, CreditCard, LogOut, Shield } from 'lucide-react';
@@ -13,10 +14,26 @@ import styles from '../styles/components/settings.module.css';
 
 export default function SettingsPage() {
   const { profile, signOut, refreshProfile } = useAuth();
+  const navigate = useNavigate();
   const [fullName, setFullName] = useState(profile?.full_name || '');
   const [saving, setSaving] = useState(false);
 
-  if (!profile) return null;
+  if (!profile) {
+    return (
+      <div className={styles.page} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ width: 36, height: 36, border: '3px solid var(--color-border)', borderTopColor: 'var(--color-accent)', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 1rem' }} />
+          <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>Yükleniyor...</p>
+        </div>
+      </div>
+    );
+  }
+
+  /** Çıkış yap ve ana sayfaya yönlendir */
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/');
+  };
 
   /** Profil adını Supabase'e kaydeder */
   const handleSave = async () => {
@@ -139,7 +156,7 @@ export default function SettingsPage() {
         <p className={styles.rowLabel} style={{ marginBottom: '1rem' }}>
           Oturumunuzu kapattığınızda verileriniz güvende kalır.
         </p>
-        <button className={styles.btnDanger} onClick={signOut}>
+        <button className={styles.btnDanger} onClick={handleSignOut}>
           Çıkış Yap
         </button>
       </div>

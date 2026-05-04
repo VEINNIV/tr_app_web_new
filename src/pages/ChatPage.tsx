@@ -111,6 +111,17 @@ export default function ChatPage() {
   const initials = profile?.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2) || '?';
   const selectedDoc = documents.find(d => d.id === selectedDocId);
 
+  if (!profile) {
+    return (
+      <div className={styles.chatPage} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ width: 36, height: 36, border: '3px solid var(--color-border)', borderTopColor: 'var(--color-accent)', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 1rem' }} />
+          <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>Yükleniyor...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={styles.chatPage}>
 

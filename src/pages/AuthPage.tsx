@@ -25,7 +25,8 @@ export default function AuthPage() {
 
   useEffect(() => {
     if (user) navigate('/dashboard', { replace: true });
-  }, [user, navigate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

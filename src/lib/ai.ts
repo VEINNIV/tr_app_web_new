@@ -4,14 +4,13 @@
  * Bu modül, belge çevirisi, dil tespiti, doküman soru-cevap
  * ve ders notu çıkarma işlemleri için kullanılan AI motorumuza erişimi sağlar.
  *
- * NOT: AI motoru henüz bağlı değil. Bağlandığında buradaki
- * fonksiyonlar otomatik olarak devreye girecek.
+ * Gemini API kullanılarak çalışır.
  */
 
 // Ortam değişkeninden API anahtarını oku
 const AI_API_KEY = import.meta.env.VITE_AI_API_KEY;
 
-// API uç noktası (AI bağlandığında güncellenecek)
+// API uç noktası
 const AI_API_URL = import.meta.env.VITE_AI_API_URL || '';
 
 /** Temel AI yanıt yapısı */
@@ -19,6 +18,18 @@ interface AIResponse {
   candidates?: Array<{
     content?: { parts?: Array<{ text?: string }> };
   }>;
+  error?: {
+    message?: string;
+    code?: number;
+  };
+}
+
+/**
+ * AI motorunun kullanılabilir olup olmadığını kontrol eder.
+ * Hem API key hem de URL tanımlı olmalıdır.
+ */
+function isAIAvailable(): boolean {
+  return !!(AI_API_KEY && AI_API_KEY !== 'YOUR_AI_API_KEY_HERE' && AI_API_URL);
 }
 
 /**
@@ -30,8 +41,8 @@ interface AIResponse {
  * @throws API bağlantı hatası veya geçersiz yanıt durumunda hata fırlatır
  */
 export async function callAI(prompt: string, systemInstruction?: string): Promise<string> {
-  // AI anahtarı tanımlı değilse demo modu mesajı döndür
-  if (!AI_API_KEY || AI_API_KEY === 'YOUR_AI_API_KEY_HERE') {
+  // AI anahtarı veya URL tanımlı değilse demo modu mesajı döndür
+  if (!isAIAvailable()) {
     return generateDemoResponse(prompt);
   }
 
@@ -44,21 +55,37 @@ export async function callAI(prompt: string, systemInstruction?: string): Promis
     body.systemInstruction = { parts: [{ text: systemInstruction }] };
   }
 
-  const res = await fetch(`${AI_API_URL}?key=${AI_API_KEY}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  try {
+    const res = await fetch(`${AI_API_URL}?key=${AI_API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
 
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`AI API hatası (${res.status}): ${errText}`);
+    if (!res.ok) {
+      const errData = await res.json().catch(() => null);
+      const errMsg = errData?.error?.message || `HTTP ${res.status}`;
+      console.error('AI API hatası:', errMsg);
+      throw new Error(`AI API hatası (${res.status}): ${errMsg}`);
+    }
+
+    const data: AIResponse = await res.json();
+
+    if (data.error) {
+      throw new Error(`AI API hatası: ${data.error.message || 'Bilinmeyen hata'}`);
+    }
+
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) throw new Error('AI boş yanıt döndürdü');
+    return text;
+  } catch (err) {
+    // Network hatalarını yakala
+    if (err instanceof TypeError && err.message.includes('fetch')) {
+      console.error('AI API bağlantı hatası:', err);
+      throw new Error('AI servisine bağlanılamadı. İnternet bağlantınızı kontrol edin.');
+    }
+    throw err;
   }
-
-  const data: AIResponse = await res.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error('AI boş yanıt döndürdü');
-  return text;
 }
 
 /**

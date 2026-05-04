@@ -1,16 +1,13 @@
 /**
- * TransLingua — DashboardPage (Ana Panel)
- *
- * Kullanıcının giriş yaptıktan sonra yönlendirildiği merkezi sayfa.
- * Kullanıcı istatistiklerini, kredi durumunu, hızlı işlemleri
- * ve son belgeleri gerçek zamanlı olarak Supabase'den çeker.
+ * TransLingua — DashboardPage
  */
 import { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
-  FileText, Languages, MessageSquare, Plus, Clock, TrendingUp,
-  CreditCard, FolderOpen, ArrowRight, Sparkles, BookOpen, Shield,
+  FileText, Languages, MessageSquare, Clock,
+  Zap, BookOpen, Shield, ArrowRight, ChevronRight,
+  Activity, Coins, CheckCircle2, LayoutDashboard,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -18,226 +15,263 @@ import { STATUS_LABELS } from '../lib/constants';
 import type { Document } from '../types';
 import styles from '../styles/components/dashboard.module.css';
 
-/** Sıralı solma animasyonu — her kart için gecikme hesaplanır */
-const fadeUp = {
-  hidden: { opacity: 0, y: 20 },
-  visible: (i: number) => ({
-    opacity: 1, y: 0,
-    transition: { delay: i * 0.08, duration: 0.5, ease: 'easeOut' as const },
-  }),
+const stagger = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.07 } },
 };
 
-/** Animated counter hook */
-function useAnimatedCounter(target: number, duration = 800) {
+const item = {
+  hidden: { opacity: 0, y: 16 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' as const } },
+};
+
+function useAnimatedCounter(target: number, duration = 900) {
   const [count, setCount] = useState(0);
-  const prevTarget = useRef(0);
-
+  const prev = useRef(0);
   useEffect(() => {
-    if (target === prevTarget.current) return;
-    prevTarget.current = target;
-
-    const start = 0;
-    const startTime = performance.now();
-
-    const animate = (now: number) => {
-      const elapsed = now - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      // Ease out cubic
-      const eased = 1 - Math.pow(1 - progress, 3);
-      setCount(Math.round(start + (target - start) * eased));
-      if (progress < 1) requestAnimationFrame(animate);
+    if (target === prev.current) return;
+    prev.current = target;
+    const t0 = performance.now();
+    const tick = (now: number) => {
+      const p = Math.min((now - t0) / duration, 1);
+      const e = 1 - Math.pow(1 - p, 3);
+      setCount(Math.round(target * e));
+      if (p < 1) requestAnimationFrame(tick);
     };
-
-    requestAnimationFrame(animate);
+    requestAnimationFrame(tick);
   }, [target, duration]);
-
   return count;
 }
 
 export default function DashboardPage() {
-  const { profile, isAdmin } = useAuth();
+  const { profile, isAdmin, loading: authLoading, refreshProfile } = useAuth();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [totalTranslations, setTotalTranslations] = useState(0);
   const [loading, setLoading] = useState(true);
 
-  // Animated counters
-  const animDocCount = useAnimatedCounter(documents.length);
-  const animTransCount = useAnimatedCounter(totalTranslations);
-  const animCreditsRemaining = useAnimatedCounter(profile?.credits_remaining ?? 0);
-  const animCreditsUsed = useAnimatedCounter(
-    (profile?.credits_monthly_limit ?? 0) - (profile?.credits_remaining ?? 0)
-  );
+  const cDocs = useAnimatedCounter(documents.length);
+  const cTrans = useAnimatedCounter(totalTranslations);
+  const cCredits = useAnimatedCounter(profile?.credits_remaining ?? 0);
+  const cUsed = useAnimatedCounter((profile?.credits_monthly_limit ?? 0) - (profile?.credits_remaining ?? 0));
 
   useEffect(() => {
     if (!profile) return;
-
-    const fetchData = async () => {
+    const fetch = async () => {
       setLoading(true);
-
-      // Son 5 belgeyi çek
-      const { data: docs } = await supabase
-        .from('documents')
-        .select('*')
-        .eq('user_id', profile.id)
-        .order('created_at', { ascending: false })
-        .limit(5);
-
-      // Toplam tamamlanan çeviri sayısını çek
-      const { count } = await supabase
-        .from('translations')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', profile.id)
-        .eq('status', 'completed');
-
+      const { data: docs } = await supabase.from('documents').select('*').eq('user_id', profile.id).order('created_at', { ascending: false }).limit(5);
+      const { count } = await supabase.from('translations').select('*', { count: 'exact', head: true }).eq('user_id', profile.id).eq('status', 'completed');
       if (docs) setDocuments(docs as Document[]);
       if (count !== null) setTotalTranslations(count);
       setLoading(false);
     };
-
-    fetchData();
+    fetch();
   }, [profile]);
 
-  // Profil yüklenene kadar boş döndür
-  if (!profile) return null;
+  if (authLoading || !profile) {
+    return (
+      <div className={styles.dashboard} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+        <div style={{ textAlign: 'center' }}>
+          {authLoading ? (
+            <>
+              <div style={{ width: 36, height: 36, border: '3px solid var(--color-border)', borderTopColor: 'var(--color-accent)', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 1rem' }} />
+              <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>Yükleniyor...</p>
+            </>
+          ) : (
+            <>
+              <p style={{ color: 'var(--color-text-secondary)', marginBottom: '1rem' }}>Profil yüklenemedi.</p>
+              <button onClick={refreshProfile} style={{ padding: '0.5rem 1.25rem', background: 'var(--color-accent)', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>Yeniden Dene</button>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   const creditPercent = profile.credits_monthly_limit > 0
     ? Math.round((profile.credits_remaining / profile.credits_monthly_limit) * 100)
     : 0;
   const displayName = profile.full_name || profile.email.split('@')[0];
-
-  // İlk defa giriş yapıyorsa (hiç doküman yoksa) onboarding göster
+  const firstName = displayName.split(' ')[0];
   const isFirstTime = !loading && documents.length === 0;
 
-  // Hızlı işlemler
-  const quickActions = [
-    { to: '/translate', icon: <Languages size={22} />, title: 'Yeni Çeviri', desc: 'PDF yükle ve çevir', bg: 'var(--color-accent-light)', color: 'var(--color-accent)' },
-    { to: '/documents', icon: <FolderOpen size={22} />, title: 'Dokümanlarım', desc: 'Tüm belgelerini gör', bg: 'var(--color-success-bg)', color: 'var(--color-success)' },
-    { to: '/study-notes', icon: <BookOpen size={22} />, title: 'Ders Notu', desc: 'Görsellerden not çıkar', bg: 'rgba(139,92,246,0.08)', color: '#8b5cf6' },
-    { to: '/chat', icon: <MessageSquare size={22} />, title: 'AI Asistan', desc: 'Belgene soru sor', bg: 'var(--color-info-bg)', color: 'var(--color-info)' },
+  const stats = [
+    { icon: FileText, value: cDocs, label: 'Belge', color: '#6366f1' },
+    { icon: CheckCircle2, value: cTrans, label: 'Çeviri', color: '#10b981' },
+    { icon: Coins, value: cCredits, label: 'Kredi', color: '#f59e0b' },
+    { icon: Activity, value: cUsed, label: 'Kullanılan', color: '#ec4899' },
   ];
 
-  if (isAdmin) {
-    quickActions.push({
-      to: '/admin', icon: <Shield size={22} />, title: 'Admin Panel', desc: 'Kullanıcıları yönet', bg: 'rgba(99,102,241,0.08)', color: '#6366f1',
-    });
-  }
+  const actions = [
+    { to: '/translate', Icon: Languages, label: 'Yeni Çeviri', desc: 'PDF yükle, dil seç', accent: '#6366f1' },
+    { to: '/documents', Icon: FileText, label: 'Belgelerim', desc: 'Tüm dosyalarım', accent: '#10b981' },
+    { to: '/study-notes', Icon: BookOpen, label: 'Ders Notu', desc: 'Görsellerden not', accent: '#8b5cf6' },
+    { to: '/chat', Icon: MessageSquare, label: 'AI Chat', desc: 'Belgeye soru sor', accent: '#0ea5e9' },
+    ...(isAdmin ? [{ to: '/admin', Icon: Shield, label: 'Admin', desc: 'Kullanıcı yönet', accent: '#f43f5e' }] : []),
+  ];
 
   return (
     <div className={styles.dashboard}>
 
-      {/* ── Karşılama Kartı ─────────────────────────────────── */}
+      {/* ── Header row ── */}
       <motion.div
-        className={styles.welcomeCard}
-        initial={{ opacity: 0, scale: 0.96 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.5 }}
+        className={styles.header}
+        initial={{ opacity: 0, y: -12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
       >
-        <div className={styles.welcomeMesh} aria-hidden="true" />
-        <div className={styles.welcomeOrb} />
-        <div className={styles.welcomeOrb2} />
-        <div className={styles.welcomeContent}>
-          <p className={styles.welcomeGreeting}>Hoş geldiniz 👋</p>
-          <h1 className={styles.welcomeName}>{displayName}</h1>
-          <span className={styles.welcomePlan}>{profile.plan.toUpperCase()} Plan</span>
+        <div className={styles.headerLeft}>
+          <div className={styles.headerIcon}>
+            <LayoutDashboard size={18} />
+          </div>
+          <div>
+            <h1 className={styles.headerTitle}>{firstName}</h1>
+            <p className={styles.headerSub}>Kontrol panelinize hoş geldiniz</p>
+          </div>
         </div>
-        <Link to="/translate" className={styles.welcomeCta}>
-          Yeni Çeviri Başlat <ArrowRight size={16} />
-        </Link>
+        <div className={styles.headerRight}>
+          <span className={styles.planBadge}>{profile.plan.toUpperCase()}</span>
+          <Link to="/translate" className={styles.primaryBtn}>
+            <Zap size={14} />
+            Çeviri Başlat
+          </Link>
+        </div>
       </motion.div>
 
-      {/* ── İstatistik Kartları ──────────────────────────────── */}
-      <div className={styles.statsGrid}>
-        {[
-          { icon: <FileText size={20} />, value: animDocCount, label: 'Toplam Doküman', bg: 'var(--color-accent-light)', color: 'var(--color-accent)' },
-          { icon: <Languages size={20} />, value: animTransCount, label: 'Tamamlanan Çeviri', bg: 'var(--color-success-bg)', color: 'var(--color-success)' },
-          { icon: <CreditCard size={20} />, value: animCreditsRemaining, label: 'Kalan Kredi', bg: 'var(--color-warning-bg)', color: 'var(--color-warning)' },
-          { icon: <TrendingUp size={20} />, value: animCreditsUsed, label: 'Kullanılan Kredi', bg: 'var(--color-info-bg)', color: 'var(--color-info)' },
-        ].map((s, i) => (
-          <motion.div key={i} className={styles.statCard} variants={fadeUp} initial="hidden" animate="visible" custom={i}>
-            <div className={styles.statIcon} style={{ background: s.bg, color: s.color }}>{s.icon}</div>
-            <div className={styles.statValue}>{s.value}</div>
-            <div className={styles.statLabel}>{s.label}</div>
+      {/* ── Stats row ── */}
+      <motion.div
+        className={styles.statsRow}
+        variants={stagger}
+        initial="hidden"
+        animate="visible"
+      >
+        {stats.map(({ icon: Icon, value, label, color }) => (
+          <motion.div key={label} className={styles.statCard} variants={item}>
+            <div className={styles.statTop}>
+              <div className={styles.statIconWrap} style={{ color }}>
+                <Icon size={16} strokeWidth={2.5} />
+              </div>
+              <span className={styles.statLabel}>{label}</span>
+            </div>
+            <div className={styles.statNum}>{value}</div>
           </motion.div>
         ))}
-      </div>
+      </motion.div>
 
-      {/* ── Aylık Kredi Kullanım Çubuğu ─────────────────────── */}
-      <motion.div className={styles.creditBar} variants={fadeUp} initial="hidden" animate="visible" custom={4}>
-        <div className={styles.creditHeader}>
-          <span className={styles.creditLabel}>Aylık Kredi Kullanımı</span>
-          <span className={styles.creditValue}>{profile.credits_remaining} / {profile.credits_monthly_limit} kalan</span>
+      {/* ── Credit bar ── */}
+      <motion.div
+        className={styles.creditCard}
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2, duration: 0.4 }}
+      >
+        <div className={styles.creditTop}>
+          <div>
+            <div className={styles.creditTitle}>Aylık Kredi</div>
+            {profile.credits_reset_at && (
+              <div className={styles.creditSub}>
+                {new Date(profile.credits_reset_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })} tarihinde sıfırlanır
+              </div>
+            )}
+          </div>
+          <div className={styles.creditNum}>
+            <span className={styles.creditRemain}>{profile.credits_remaining}</span>
+            <span className={styles.creditTotal}> / {profile.credits_monthly_limit}</span>
+          </div>
         </div>
         <div className={styles.creditTrack}>
           <motion.div
             className={styles.creditFill}
+            style={{ '--pct': `${creditPercent}%` } as React.CSSProperties}
             initial={{ width: 0 }}
             animate={{ width: `${creditPercent}%` }}
-            transition={{ duration: 1, ease: 'easeOut', delay: 0.5 }}
+            transition={{ duration: 1.1, ease: 'easeOut', delay: 0.3 }}
           />
         </div>
-        {profile.credits_reset_at && (
-          <div className={styles.creditReset}>
-            Sıfırlama: {new Date(profile.credits_reset_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })}
-          </div>
-        )}
+        <div className={styles.creditFooter}>
+          <span>{profile.credits_monthly_limit - profile.credits_remaining} kredi kullanıldı</span>
+          <span>%{creditPercent} kaldı</span>
+        </div>
       </motion.div>
 
-      {/* ── Hızlı İşlemler ──────────────────────────────────── */}
-      <h2 className={styles.sectionTitle}><Plus size={18} /> Hızlı İşlemler</h2>
-      <div className={styles.quickActions}>
-        {quickActions.map((a, i) => (
-          <motion.div key={i} variants={fadeUp} initial="hidden" animate="visible" custom={i + 5}>
-            <Link to={a.to} className={styles.actionCard}>
-              <div className={styles.actionIcon} style={{ background: a.bg, color: a.color }}>{a.icon}</div>
-              <div>
-                <div className={styles.actionTitle}>{a.title}</div>
-                <div className={styles.actionDesc}>{a.desc}</div>
-              </div>
-              <ArrowRight size={16} className={styles.actionArrow} />
-            </Link>
-          </motion.div>
-        ))}
-      </div>
+      {/* ── Two column layout ── */}
+      <div className={styles.gridTwo}>
 
-      {/* ── Son Belgeler / Onboarding ─────────────────────────── */}
-      <h2 className={styles.sectionTitle}><Clock size={18} /> Son Belgeler</h2>
-
-      {isFirstTime ? (
-        // İlk giriş — kullanıcıyı yönlendiren güzel onboarding kartı
-        <motion.div className={styles.onboardingCard} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
-          <div className={styles.onboardingIcon}><Sparkles size={28} /></div>
-          <h3 className={styles.onboardingTitle}>Başlamaya hazır mısınız?</h3>
-          <p className={styles.onboardingDesc}>
-            Platformumuza hoş geldiniz! İlk belgenizi yükleyerek
-            yapay zeka destekli çeviri deneyimini keşfedebilirsiniz.
-            Ücretsiz planınızda {profile.credits_monthly_limit} sayfa çeviri hakkınız mevcut.
-          </p>
-          <Link to="/translate" className={styles.onboardingCta}>
-            İlk Çevirime Başla <ArrowRight size={16} />
-          </Link>
+        {/* Quick actions */}
+        <motion.div
+          variants={stagger}
+          initial="hidden"
+          animate="visible"
+        >
+          <h2 className={styles.sectionLabel}>
+            <Zap size={13} />
+            Hızlı Erişim
+          </h2>
+          <div className={styles.actionsList}>
+            {actions.map(({ to, Icon, label, desc, accent }) => (
+              <motion.div key={to} variants={item}>
+                <Link to={to} className={styles.actionRow}>
+                  <div className={styles.actionIcon} style={{ '--accent': accent } as React.CSSProperties}>
+                    <Icon size={16} strokeWidth={2} />
+                  </div>
+                  <div className={styles.actionText}>
+                    <span className={styles.actionLabel}>{label}</span>
+                    <span className={styles.actionDesc}>{desc}</span>
+                  </div>
+                  <ChevronRight size={14} className={styles.actionChev} />
+                </Link>
+              </motion.div>
+            ))}
+          </div>
         </motion.div>
-      ) : (
-        // Mevcut belgeler listesi
-        <div className={styles.docsList}>
-          {documents.map(doc => (
-            <div key={doc.id} className={styles.docItem}>
-              <div className={styles.docIcon}><FileText size={18} /></div>
-              <div className={styles.docInfo}>
-                <div className={styles.docName}>{doc.original_name}</div>
-                <div className={styles.docMeta}>
-                  {doc.page_count} sayfa • {new Date(doc.created_at).toLocaleDateString('tr-TR')}
-                </div>
+
+        {/* Recent documents */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25, duration: 0.4 }}
+        >
+          <h2 className={styles.sectionLabel}>
+            <Clock size={13} />
+            Son Belgeler
+          </h2>
+
+          {isFirstTime ? (
+            <div className={styles.emptyState}>
+              <div className={styles.emptyIcon}>
+                <FileText size={22} strokeWidth={1.5} />
               </div>
-              <span className={`${styles.docStatus} ${doc.status === 'completed' ? styles.statusCompleted : doc.status === 'error' ? styles.statusError : styles.statusProcessing}`}>
-                {STATUS_LABELS[doc.status] || doc.status}
-              </span>
+              <p className={styles.emptyTitle}>Henüz belge yok</p>
+              <p className={styles.emptyDesc}>İlk PDF belgenizi yükleyerek başlayın</p>
+              <Link to="/translate" className={styles.emptyBtn}>
+                Belge Yükle <ArrowRight size={13} />
+              </Link>
             </div>
-          ))}
-          <Link to="/documents" className={styles.docsViewAll}>
-            Tümünü Gör <ArrowRight size={14} />
-          </Link>
-        </div>
-      )}
+          ) : (
+            <div className={styles.docList}>
+              {documents.map(doc => (
+                <div key={doc.id} className={styles.docRow}>
+                  <div className={styles.docIconWrap}>
+                    <FileText size={14} strokeWidth={2} />
+                  </div>
+                  <div className={styles.docMeta}>
+                    <span className={styles.docName}>{doc.original_name}</span>
+                    <span className={styles.docDate}>
+                      {doc.page_count ? `${doc.page_count} sayfa · ` : ''}
+                      {new Date(doc.created_at).toLocaleDateString('tr-TR')}
+                    </span>
+                  </div>
+                  <span className={`${styles.docBadge} ${doc.status === 'completed' ? styles.done : doc.status === 'error' ? styles.err : styles.proc}`}>
+                    {STATUS_LABELS[doc.status] || doc.status}
+                  </span>
+                </div>
+              ))}
+              <Link to="/documents" className={styles.viewAll}>
+                Tümünü görüntüle <ArrowRight size={13} />
+              </Link>
+            </div>
+          )}
+        </motion.div>
+      </div>
     </div>
   );
 }

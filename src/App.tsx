@@ -21,8 +21,8 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem' }}>
-        Loading route...
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ width: 32, height: 32, border: '3px solid #e5e7eb', borderTopColor: '#111827', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
       </div>
     );
   }
@@ -38,8 +38,8 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem' }}>
-        Loading route...
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ width: 32, height: 32, border: '3px solid #e5e7eb', borderTopColor: '#111827', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
       </div>
     );
   }
@@ -77,13 +77,13 @@ function AppLayout() {
           <Routes location={location} key={location.pathname}>
             <Route path="/" element={<PageTransition><LandingPage /></PageTransition>} />
             <Route path="/auth" element={<PageTransition><AuthPage /></PageTransition>} />
-            <Route path="/dashboard" element={<PageTransition><ProtectedRoute><DashboardPage /></ProtectedRoute></PageTransition>} />
-            <Route path="/translate" element={<PageTransition><ProtectedRoute><TranslatorPage /></ProtectedRoute></PageTransition>} />
-            <Route path="/documents" element={<PageTransition><ProtectedRoute><DocumentsPage /></ProtectedRoute></PageTransition>} />
-            <Route path="/chat" element={<PageTransition><ProtectedRoute><ChatPage /></ProtectedRoute></PageTransition>} />
-            <Route path="/settings" element={<PageTransition><ProtectedRoute><SettingsPage /></ProtectedRoute></PageTransition>} />
-            <Route path="/study-notes" element={<PageTransition><ProtectedRoute><StudyNotesPage /></ProtectedRoute></PageTransition>} />
-            <Route path="/admin" element={<PageTransition><AdminRoute><AdminDashboardPage /></AdminRoute></PageTransition>} />
+            <Route path="/dashboard" element={<ProtectedRoute><PageTransition><DashboardPage /></PageTransition></ProtectedRoute>} />
+            <Route path="/translate" element={<ProtectedRoute><PageTransition><TranslatorPage /></PageTransition></ProtectedRoute>} />
+            <Route path="/documents" element={<ProtectedRoute><PageTransition><DocumentsPage /></PageTransition></ProtectedRoute>} />
+            <Route path="/chat" element={<ProtectedRoute><PageTransition><ChatPage /></PageTransition></ProtectedRoute>} />
+            <Route path="/settings" element={<ProtectedRoute><PageTransition><SettingsPage /></PageTransition></ProtectedRoute>} />
+            <Route path="/study-notes" element={<ProtectedRoute><PageTransition><StudyNotesPage /></PageTransition></ProtectedRoute>} />
+            <Route path="/admin" element={<AdminRoute><PageTransition><AdminDashboardPage /></PageTransition></AdminRoute>} />
             <Route path="/pricing" element={<PageTransition><LandingPage /></PageTransition>} />
             <Route path="*" element={<PageTransition><NotFoundPage /></PageTransition>} />
           </Routes>
