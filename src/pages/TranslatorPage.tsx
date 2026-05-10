@@ -9,16 +9,17 @@ import { useState, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Upload, FileText, X, Check, AlertCircle, Download, MessageSquare, ArrowRight, Globe, Sparkles, Search } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/auth';
 import { supabase } from '../lib/supabase';
 import { translateDocument, detectLanguage } from '../lib/ai';
-import * as pdfjsLib from 'pdfjs-dist';
 
-// Set up PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 import { SUPPORTED_LANGUAGES, TARGET_LANGUAGE } from '../lib/constants';
 import type { TranslationStep } from '../types';
 import styles from '../styles/components/translator.module.css';
+
+interface PdfTextItem {
+  str: string;
+}
 
 export default function TranslatorPage() {
   const { profile } = useAuth();
@@ -29,7 +30,6 @@ export default function TranslatorPage() {
   const [statusText, setStatusText] = useState('');
   const [detailText, setDetailText] = useState('');
   const [error, setError] = useState('');
-  const [_resultDocId, setResultDocId] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
 
@@ -96,6 +96,8 @@ export default function TranslatorPage() {
       
       let text = '';
       try {
+        const pdfjsLib = await import('pdfjs-dist');
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
         const arrayBuffer = await file.arrayBuffer();
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
         let fullText = '';
@@ -103,7 +105,9 @@ export default function TranslatorPage() {
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i);
           const textContent = await page.getTextContent();
-          const pageText = textContent.items.map((item: any) => item.str).join(' ');
+          const pageText = textContent.items
+            .map(item => ('str' in item ? (item as PdfTextItem).str : ''))
+            .join(' ');
           fullText += pageText + '\n\n';
         }
         text = fullText.trim();
@@ -140,7 +144,7 @@ export default function TranslatorPage() {
       await supabase.from('documents').update({ status: 'completed', original_language: detectedLang }).eq('id', docId);
       await supabase.from('profiles').update({ credits_remaining: Math.max(0, profile.credits_remaining - 1) }).eq('id', profile.id);
 
-      setProgress(100); setResultDocId(docId); setStep('result');
+      setProgress(100); setStep('result');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Çeviri sırasında hata oluştu';
       setError(msg); setStep('result');

@@ -6,7 +6,7 @@
  */
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/auth';
 import { supabase } from '../lib/supabase';
 import { User, CreditCard, LogOut, Shield } from 'lucide-react';
 import toast from 'react-hot-toast';

@@ -4,7 +4,7 @@
  * Sadece admin rolündeki kullanıcılar erişebilir.
  * Kullanıcı yönetimi, kredi verme, platform istatistikleri.
  */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Shield, Users, FileText, Languages, CreditCard,
@@ -30,13 +30,7 @@ export default function AdminDashboardPage() {
   const [creditAmount, setCreditAmount] = useState(5);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
-    setLoading(true);
-
+  const fetchData = useCallback(async () => {
     // Tüm kullanıcıları çek
     const { data: usersData } = await supabase
       .from('profiles')
@@ -56,7 +50,14 @@ export default function AdminDashboardPage() {
       totalStudySessions: studyCount ?? 0,
     });
     setLoading(false);
-  };
+  }, []);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      fetchData();
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [fetchData]);
 
   /** Kullanıcının planını güncelle */
   const updateUserPlan = async (userId: string, newPlan: Plan) => {

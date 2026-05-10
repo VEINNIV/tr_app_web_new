@@ -4,25 +4,11 @@
  * Kimlik doğrulama state'ini global olarak yönetir.
  * Supabase oturumu, kullanıcı profili ve yetki kontrollerini sağlar.
  */
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import type { User as SupabaseUser, Session } from '@supabase/supabase-js';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import type { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { User } from '../types';
-
-interface AuthContextType {
-  session: Session | null;
-  user: SupabaseUser | null;
-  profile: User | null;
-  loading: boolean;
-  isAdmin: boolean;
-  signUp: (email: string, password: string, fullName: string) => Promise<void>;
-  signIn: (email: string, password: string) => Promise<void>;
-  signInWithGoogle: () => Promise<void>;
-  signOut: () => Promise<void>;
-  refreshProfile: () => Promise<void>;
-}
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+import { AuthContext } from './auth';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -203,10 +189,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       {children}
     </AuthContext.Provider>
   );
-}
-
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) throw new Error('useAuth must be used within AuthProvider');
-  return context;
 }

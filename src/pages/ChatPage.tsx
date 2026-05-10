@@ -9,7 +9,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Send, Brain, FileText, ChevronDown, Sparkles } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/auth';
 import { supabase } from '../lib/supabase';
 import { askAboutDocument } from '../lib/ai';
 import type { Document } from '../types';

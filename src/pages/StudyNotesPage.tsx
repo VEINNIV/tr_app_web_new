@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/auth';
 import { supabase } from '../lib/supabase';
 import { generateStudyNotes } from '../lib/ai';
 import { STUDY_SUBJECTS, CREDIT_COSTS } from '../lib/constants';
@@ -13,8 +13,8 @@ import {
 import styles from '../styles/components/studynotes.module.css';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import html2pdf from 'html2pdf.js';
 import React from 'react';
+import { downloadElementAsPdf } from '../lib/downloadPdf';
 
 type Step = 'upload' | 'processing' | 'result';
 
@@ -129,7 +129,7 @@ export default function StudyNotesPage() {
       await supabase.from('credit_transactions').insert({
         user_id: profile.id,
         amount: -totalCost,
-        action: 'chat', // using chat action as a fallback since we didn't add 'study_notes' to DB constraints
+        action: 'study_notes',
       });
 
       // 3. Session kaydı oluştur
@@ -177,7 +177,7 @@ export default function StudyNotesPage() {
   };
 
     /** PDF Olarak İndir */
-  const handleDownloadPDF = () => {
+  const handleDownloadPDF = async () => {
     if (!contentRef.current) return;
     const opt = {
       margin:       15,
@@ -186,8 +186,7 @@ export default function StudyNotesPage() {
       html2canvas:  { scale: 2, useCORS: true },
       jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
     };
-    // @ts-expect-error html2pdf is not typed
-    html2pdf().set(opt).from(contentRef.current).save();
+    await downloadElementAsPdf(contentRef.current, opt);
   };
 
   return (

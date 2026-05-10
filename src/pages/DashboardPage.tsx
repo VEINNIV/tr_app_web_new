@@ -9,7 +9,7 @@ import {
   Zap, BookOpen, Shield, ArrowRight, ChevronRight,
   Activity, Coins, CheckCircle2, LayoutDashboard,
 } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/auth';
 import { supabase } from '../lib/supabase';
 import { STATUS_LABELS } from '../lib/constants';
 import type { Document } from '../types';

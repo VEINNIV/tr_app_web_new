@@ -9,14 +9,14 @@ import { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FileText, MessageSquare, Trash2, FolderOpen, Eye, X, Languages, DownloadCloud } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/auth';
 import { supabase } from '../lib/supabase';
 import { STATUS_LABELS } from '../lib/constants';
 import type { Document, Translation } from '../types';
 import styles from '../styles/components/documents.module.css';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import html2pdf from 'html2pdf.js';
+import { downloadElementAsPdf } from '../lib/downloadPdf';
 
 /** Belge + varsa ilk çeviri bilgisi */
 interface DocumentWithTranslation extends Document {
@@ -72,7 +72,7 @@ export default function DocumentsPage() {
   };
 
   /** PDF Olarak İndir */
-  const handleDownloadPDF = () => {
+  const handleDownloadPDF = async () => {
     if (!modalContentRef.current || !selectedDoc) return;
     const opt = {
       margin:       15,
@@ -81,8 +81,7 @@ export default function DocumentsPage() {
       html2canvas:  { scale: 2, useCORS: true },
       jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
     };
-    // @ts-expect-error html2pdf is not typed
-    html2pdf().set(opt).from(modalContentRef.current).save();
+    await downloadElementAsPdf(modalContentRef.current, opt);
   };
 
   return (

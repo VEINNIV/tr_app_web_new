@@ -75,7 +75,7 @@ export interface CreditTransaction {
   created_at: string;
 }
 
-export type CreditAction = 'translation' | 'chat' | 'monthly_reset' | 'purchase' | 'admin_grant';
+export type CreditAction = 'translation' | 'chat' | 'monthly_reset' | 'purchase' | 'admin_grant' | 'study_notes';
 
 export interface PricingPlan {
   id: Plan;

@@ -5,7 +5,7 @@ import {
   Menu, X, LogOut, Settings, LayoutDashboard, Languages, FolderOpen,
   MessageSquare, BookOpen, Shield, ChevronDown, User,
 } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/auth';
 import styles from '../../styles/components/navbar.module.css';
 
 // Smooth scroll to anchor
@@ -50,9 +50,6 @@ export default function Navbar() {
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
-
-  // Close mobile/profile menu on route change
-  useEffect(() => { setMobileOpen(false); setProfileOpen(false); }, [location]);
 
   // Close profile dropdown on outside click
   useEffect(() => {
