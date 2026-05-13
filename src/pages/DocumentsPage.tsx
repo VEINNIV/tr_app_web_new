@@ -195,7 +195,7 @@ export default function DocumentsPage() {
                     transition={SPRING_TIGHT}
                     style={{ display: 'inline-flex' }}
                   >
-                    <Link to="/chat" className={styles.btnChat}>
+                    <Link to="/chat" state={{ documentId: doc.id }} className={styles.btnChat}>
                       <MessageSquare size={14} /> AI Sor
                     </Link>
                   </motion.div>

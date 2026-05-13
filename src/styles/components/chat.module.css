@@ -1,345 +1,494 @@
+/* ========================================================================
+   TransLingua — Chat Page (v3)
+   ======================================================================== */
+
+/* ── Sayfa ─────────────────────────────────────────────────────────────── */
 .chatPage {
-  width: min(1040px, calc(100% - 32px));
-  height: calc(100vh - var(--navbar-height) - 36px);
+  width: min(900px, calc(100% - 32px));
+  height: calc(100vh - var(--navbar-height));
   margin: 0 auto;
-  padding: calc(var(--navbar-height) + 24px) 0 24px;
+  padding: calc(var(--navbar-height) + 20px) 0 0;
   display: flex;
   flex-direction: column;
 }
 
+/* ── Başlık ─────────────────────────────────────────────────────────────── */
 .chatHeader {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 18px;
+  gap: 12px;
+  padding-bottom: 14px;
   margin-bottom: 12px;
+  border-bottom: 1px solid rgba(17, 24, 39, 0.06);
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
 
 .chatTitle {
-  font-size: clamp(1.8rem, 3vw, 2.6rem);
-  line-height: 1;
-  letter-spacing: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #111827;
+  white-space: nowrap;
 }
 
-.chatDesc {
-  max-width: 620px;
-  margin-top: 8px;
-  color: #697281;
-  font-size: 0.95rem;
-}
-
-.demoBar {
+.docChip {
   display: inline-flex;
   align-items: center;
-  align-self: flex-start;
-  gap: 8px;
-  min-height: 36px;
-  margin-bottom: 14px;
-  padding: 0 12px;
-  border: 1px solid rgba(36, 84, 255, 0.16);
-  border-radius: 999px;
+  gap: 5px;
+  padding: 3px 10px;
   background: rgba(36, 84, 255, 0.07);
+  border: 1px solid rgba(36, 84, 255, 0.14);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
   color: #2454ff;
-  font-size: 0.78rem;
-  font-weight: 800;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.docPickerWrapper {
-  position: relative;
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex-shrink: 0;
 }
 
-.docPickerBtn {
-  max-width: 270px;
-  min-height: 44px;
+/* Yeni konuşma butonu */
+.newBtn {
   display: inline-flex;
   align-items: center;
-  gap: 9px;
-  padding: 0 14px;
-  border: 1px solid rgba(17, 24, 39, 0.09);
-  border-radius: 999px;
+  gap: 5px;
+  height: 34px;
+  padding: 0 13px;
   background: white;
-  color: #111827;
+  border: 1px solid rgba(17, 24, 39, 0.1);
+  border-radius: 10px;
   font: inherit;
-  font-size: 0.85rem;
-  font-weight: 800;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #6b7280;
   cursor: pointer;
-  box-shadow: 0 10px 28px rgba(17, 24, 39, 0.06);
+  box-shadow: 0 1px 4px rgba(17, 24, 39, 0.05);
+  transition: border-color 0.15s, color 0.15s;
 }
+.newBtn:hover { border-color: rgba(17, 24, 39, 0.2); color: #111827; }
+.newBtn:disabled { opacity: 0.4; cursor: not-allowed; }
 
+/* ── Doküman seçici ─────────────────────────────────────────────────────── */
+.docPickerWrapper { position: relative; }
+
+.docPickerBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 13px;
+  background: white;
+  border: 1px solid rgba(17, 24, 39, 0.1);
+  border-radius: 10px;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #111827;
+  cursor: pointer;
+  max-width: 220px;
+  box-shadow: 0 1px 4px rgba(17, 24, 39, 0.05);
+  transition: border-color 0.15s;
+}
 .docPickerBtn span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-.chevronOpen {
-  transform: rotate(180deg);
-}
+.docPickerBtn:hover { border-color: rgba(17, 24, 39, 0.2); }
 
 .docPickerDropdown {
   position: absolute;
-  top: calc(100% + 8px);
+  top: calc(100% + 6px);
   right: 0;
-  z-index: 40;
-  width: 300px;
-  padding: 8px;
-  border: 1px solid rgba(17, 24, 39, 0.08);
-  border-radius: 18px;
+  z-index: 50;
+  width: 280px;
+  padding: 6px;
   background: white;
-  box-shadow: 0 24px 70px rgba(17, 24, 39, 0.14);
+  border: 1px solid rgba(17, 24, 39, 0.07);
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(17, 24, 39, 0.13);
 }
 
 .docPickerItem {
   width: 100%;
-  min-height: 42px;
+  min-height: 38px;
   display: flex;
   align-items: center;
   gap: 9px;
   padding: 0 10px;
   border: 0;
-  border-radius: 12px;
+  border-radius: 10px;
   background: transparent;
-  color: #111827;
+  color: #374151;
   font: inherit;
-  font-size: 0.84rem;
-  font-weight: 750;
+  font-size: 0.82rem;
+  font-weight: 650;
   text-align: left;
   cursor: pointer;
+  transition: background 0.12s, color 0.12s;
 }
+.docPickerItem:hover { background: rgba(36, 84, 255, 0.06); color: #2454ff; }
+.docPickerItemActive { background: rgba(36, 84, 255, 0.08); color: #2454ff; }
+.docPickerItemName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.docPickerEmpty { padding: 12px 10px; color: #9ca3af; font-size: 0.82rem; }
+.docPickerEmpty a { color: #2454ff; font-weight: 700; text-decoration: none; }
 
-.docPickerItem:hover,
-.docPickerItemActive {
-  background: rgba(36, 84, 255, 0.08);
-  color: #2454ff;
-}
-
-.docPickerItemName {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.docPickerEmpty {
-  padding: 14px 10px;
-  color: #77808f;
-  font-size: 0.84rem;
-}
-
-.docPickerEmpty a {
-  color: #2454ff;
-  font-weight: 800;
-}
-
+/* ── Sohbet gövdesi ─────────────────────────────────────────────────────── */
 .chatBody {
   flex: 1;
   min-height: 0;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  overflow-y: auto;
-  padding: 22px;
-  border: 1px solid rgba(17, 24, 39, 0.08);
-  border-radius: 26px;
+  gap: 14px;
+  padding: 20px;
+  border-radius: 20px;
+  border: 1px solid rgba(17, 24, 39, 0.07);
   background:
-    radial-gradient(circle at 15% 10%, rgba(36, 84, 255, 0.08), transparent 28%),
-    linear-gradient(180deg, #ffffff, #f7f9fc);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 18px 48px rgba(17, 24, 39, 0.06);
+    radial-gradient(ellipse at 20% 0%, rgba(36, 84, 255, 0.05), transparent 50%),
+    #f9fafb;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(17, 24, 39, 0.1) transparent;
 }
+.chatBody::-webkit-scrollbar { width: 4px; }
+.chatBody::-webkit-scrollbar-track { background: transparent; }
+.chatBody::-webkit-scrollbar-thumb { background: rgba(17, 24, 39, 0.1); border-radius: 99px; }
 
+/* ── Mesajlar ───────────────────────────────────────────────────────────── */
 .msgRow {
   display: flex;
-  gap: 12px;
-  max-width: min(760px, 88%);
-  animation: fadeInUp 0.24s var(--ease-out) both;
+  gap: 10px;
+  max-width: min(740px, 90%);
+  align-self: flex-start;
 }
 
 .msgUser {
   align-self: flex-end;
   flex-direction: row-reverse;
+  max-width: 70%;
 }
 
+/* Avatar */
 .msgAvatar {
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
   display: grid;
   place-items: center;
   flex-shrink: 0;
-  border-radius: 13px;
-  font-size: 0.72rem;
+  font-size: 0.65rem;
   font-weight: 900;
+  margin-top: 3px;
 }
-
 .msgAvatarUser {
-  background: #101827;
+  background: #111827;
   color: white;
 }
-
 .msgAvatarAi {
-  background: rgba(36, 84, 255, 0.1);
+  background: white;
   color: #2454ff;
+  border: 1px solid rgba(36, 84, 255, 0.18);
+  box-shadow: 0 2px 8px rgba(17, 24, 39, 0.07);
 }
 
+/* Bubble wrapper */
+.msgWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+/* Balonlar */
 .msgBubble {
-  padding: 14px 16px;
-  border-radius: 18px;
-  font-size: 0.92rem;
-  line-height: 1.62;
-  box-shadow: 0 10px 28px rgba(17, 24, 39, 0.05);
+  padding: 11px 15px;
+  border-radius: 16px;
+  font-size: 0.89rem;
+  line-height: 1.65;
+  word-break: break-word;
 }
-
 .msgBubbleUser {
-  border-bottom-right-radius: 6px;
-  background: #101827;
+  background: #111827;
   color: white;
+  border-bottom-right-radius: 4px;
 }
-
 .msgBubbleAi {
+  background: white;
   border: 1px solid rgba(17, 24, 39, 0.07);
-  border-bottom-left-radius: 6px;
-  background: rgba(255, 255, 255, 0.9);
+  border-bottom-left-radius: 4px;
   color: #111827;
+  box-shadow: 0 2px 10px rgba(17, 24, 39, 0.05);
 }
 
 .msgTime {
-  margin-top: 6px;
-  color: #8b95a5;
-  font-size: 0.72rem;
+  font-size: 0.67rem;
+  color: #9ca3af;
+  padding: 0 2px;
+}
+.msgTimeRight { text-align: right; }
+
+/* Ekler */
+.attachRow { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 7px; }
+.attachTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.69rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  color: inherit;
 }
 
-.msgUser .msgTime {
-  text-align: right;
+/* Streaming cursor */
+.cursor {
+  display: inline-block;
+  width: 2px;
+  height: 14px;
+  background: #374151;
+  vertical-align: middle;
+  margin-left: 3px;
+  border-radius: 1px;
 }
 
-.typing {
-  display: flex;
-  gap: 5px;
-  padding: 4px 0;
-}
-
+/* ── Typing dots ────────────────────────────────────────────────────────── */
+.typing { display: flex; gap: 5px; padding: 3px 0; align-items: center; }
 .typingDot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #8b95a5;
+  background: #d1d5db;
 }
+.typingDot:nth-child(1) { animation: typingBounce 1.2s ease-in-out infinite 0s; }
+.typingDot:nth-child(2) { animation: typingBounce 1.2s ease-in-out infinite 0.15s; }
+.typingDot:nth-child(3) { animation: typingBounce 1.2s ease-in-out infinite 0.3s; }
 
-.typingDot:nth-child(1) { animation: typingDot 1.4s infinite 0s; }
-.typingDot:nth-child(2) { animation: typingDot 1.4s infinite 0.2s; }
-.typingDot:nth-child(3) { animation: typingDot 1.4s infinite 0.4s; }
-
-.chatInput {
+/* ── Bekleyen dosyalar ──────────────────────────────────────────────────── */
+.pendingFiles {
   display: flex;
-  gap: 12px;
-  margin-top: 14px;
-  padding: 12px;
-  border: 1px solid rgba(17, 24, 39, 0.08);
-  border-radius: 22px;
-  background: white;
-  box-shadow: 0 18px 48px rgba(17, 24, 39, 0.08);
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 4px;
+  overflow: hidden;
 }
+.pendingTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  background: white;
+  border: 1px solid rgba(17, 24, 39, 0.09);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  color: #6b7280;
+  box-shadow: 0 1px 3px rgba(17, 24, 39, 0.04);
+}
+.pendingTag span { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pendingRemove {
+  display: inline-flex;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #9ca3af;
+  padding: 0;
+  line-height: 1;
+}
+.pendingRemove:hover { color: #ef4444; }
+
+/* ── Giriş alanı ────────────────────────────────────────────────────────── */
+.inputWrap {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  background: white;
+  border: 1.5px solid rgba(17, 24, 39, 0.09);
+  border-radius: 18px;
+  box-shadow: 0 4px 20px rgba(17, 24, 39, 0.06);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.inputWrap:focus-within {
+  border-color: rgba(36, 84, 255, 0.4);
+  box-shadow: 0 0 0 3px rgba(36, 84, 255, 0.06), 0 4px 20px rgba(17, 24, 39, 0.06);
+}
+
+.attachBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  background: transparent;
+  border: 1px solid rgba(17, 24, 39, 0.09);
+  border-radius: 9px;
+  cursor: pointer;
+  color: #9ca3af;
+  flex-shrink: 0;
+  transition: color 0.12s, border-color 0.12s;
+}
+.attachBtn:hover { color: #2454ff; border-color: rgba(36, 84, 255, 0.3); }
+.attachBtn:disabled { opacity: 0.35; cursor: not-allowed; }
 
 .inputField {
   flex: 1;
-  min-height: 42px;
+  min-height: 22px;
   max-height: 130px;
-  padding: 10px 6px;
+  padding: 6px 4px;
   border: 0;
   outline: 0;
   resize: none;
   background: transparent;
   color: #111827;
   font: inherit;
-  font-size: 0.95rem;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  align-self: center;
 }
-
-.inputField::placeholder {
-  color: #9aa3b2;
-}
+.inputField::placeholder { color: #c0c8d8; }
 
 .sendBtn {
-  width: 44px;
-  height: 44px;
+  width: 38px;
+  height: 38px;
   align-self: flex-end;
   display: grid;
   place-items: center;
   border: 0;
-  border-radius: 16px;
-  background: #101827;
+  border-radius: 12px;
+  background: #111827;
   color: white;
   cursor: pointer;
-  box-shadow: 0 12px 26px rgba(17, 24, 39, 0.18);
+  flex-shrink: 0;
+  transition: background 0.15s, transform 0.15s, opacity 0.15s;
+  box-shadow: 0 4px 14px rgba(17, 24, 39, 0.2);
 }
+.sendBtn:hover:not(:disabled) { background: #1e293b; transform: translateY(-1px); }
+.sendBtn:disabled { opacity: 0.3; cursor: not-allowed; box-shadow: none; transform: none; }
 
-.sendBtn:disabled {
-  cursor: not-allowed;
-  opacity: 0.42;
-  box-shadow: none;
-}
+.sendBtnStop { background: #ef4444; box-shadow: 0 4px 14px rgba(239, 68, 68, 0.25); }
+.sendBtnStop:hover:not(:disabled) { background: #dc2626; }
 
+/* ── Boş durum ──────────────────────────────────────────────────────────── */
 .emptyChat {
   flex: 1;
-  min-height: 360px;
-  display: grid;
-  place-items: center;
-  align-content: center;
-  gap: 10px;
+  min-height: 280px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   text-align: center;
+  gap: 6px;
 }
 
 .emptyChatIcon {
-  width: 66px;
-  height: 66px;
-  padding: 16px;
-  border-radius: 22px;
+  width: 54px;
+  height: 54px;
+  border-radius: 16px;
   background: white;
+  border: 1px solid rgba(36, 84, 255, 0.14);
+  display: grid;
+  place-items: center;
   color: #2454ff;
-  box-shadow: 0 18px 42px rgba(17, 24, 39, 0.08);
+  box-shadow: 0 8px 28px rgba(17, 24, 39, 0.08);
+  margin-bottom: 6px;
 }
 
 .emptyChatText {
-  margin-top: 8px;
+  font-size: 1rem;
+  font-weight: 750;
   color: #111827;
-  font-size: 1.05rem;
-  font-weight: 850;
+  letter-spacing: -0.01em;
 }
 
 .emptyChatHint {
-  max-width: 430px;
-  color: #77808f;
-  font-size: 0.9rem;
+  max-width: 360px;
+  color: #9ca3af;
+  font-size: 0.85rem;
   line-height: 1.55;
 }
 
+/* Quick prompts */
+.quickGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 7px;
+  max-width: 480px;
+  width: 100%;
+  margin-top: 18px;
+}
+
+.quickBtn {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 14px;
+  background: white;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  border-radius: 12px;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 650;
+  color: #374151;
+  cursor: pointer;
+  text-align: left;
+  box-shadow: 0 1px 4px rgba(17, 24, 39, 0.04);
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.quickBtn:hover {
+  border-color: rgba(36, 84, 255, 0.28);
+  color: #2454ff;
+  background: rgba(36, 84, 255, 0.03);
+}
+
+.quickBtnIcon {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  background: rgba(36, 84, 255, 0.08);
+  border-radius: 7px;
+  color: #2454ff;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.quickBtn:hover .quickBtnIcon { background: rgba(36, 84, 255, 0.14); }
+
+/* ── Animasyonlar ───────────────────────────────────────────────────────── */
+@keyframes typingBounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.35; }
+  30% { transform: translateY(-5px); opacity: 1; }
+}
+
+/* ── Mobil ──────────────────────────────────────────────────────────────── */
 @media (max-width: 720px) {
   .chatPage {
-    width: min(100% - 24px, 1040px);
+    width: calc(100% - 24px);
     height: auto;
     min-height: calc(100vh - 24px);
   }
-
-  .chatHeader {
-    flex-direction: column;
-  }
-
-  .docPickerWrapper,
-  .docPickerBtn {
-    width: 100%;
-    max-width: none;
-  }
-
-  .docPickerDropdown {
-    left: 0;
-    right: auto;
-    width: 100%;
-  }
-
-  .chatBody {
-    min-height: 58vh;
-    padding: 14px;
-  }
-
-  .msgRow {
-    max-width: 96%;
-  }
+  .chatHeader { flex-wrap: wrap; gap: 10px; }
+  .docPickerBtn { max-width: 160px; }
+  .docPickerDropdown { left: 0; right: auto; width: 100%; }
+  .chatBody { padding: 14px; }
+  .msgRow { max-width: 96%; }
+  .msgUser { max-width: 88%; }
+  .quickGrid { grid-template-columns: 1fr; }
+  .headerLeft { min-width: 0; overflow: hidden; }
+  .docChip { display: none; }
 }

@@ -1,20 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/**
- * TransLingua — ChatPage (AI Asistan, v2)
- *
- * Yenilikler:
- *  • Streaming yanıt (Gemini SSE) — kullanıcı yazılır gibi görür
- *  • Konuşma geçmişi (multi-turn) — AI önceki soruları hatırlar
- *  • Dosya ekleme (görsel + PDF) — soruyla birlikte AI'a gider
- *  • Yanıtı durdurma (abort)
- *  • İlk açılışta hızlı başlatıcılar
- */
 import { useState, useRef, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
-  Send, Brain, FileText, ChevronDown, Sparkles,
+  Send, Brain, FileText, ChevronDown,
   Paperclip, X as XIcon, StopCircle, Image as ImageIcon,
+  Plus, List, HelpCircle, BookOpen, AlignLeft,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -31,27 +22,32 @@ interface Message {
   content: string;
   attachmentNames?: string[];
   timestamp: Date;
-  pending?: boolean; // streaming sırasında
+  pending?: boolean;
 }
 
 const QUICK_PROMPTS = [
-  { icon: '📄', label: 'Bu belgeyi özetle', text: 'Bu belgeyi 5–7 madde halinde özetle. Her maddenin yanına ilgili sayfa numarasını yaz.' },
-  { icon: '🎯', label: 'Ana noktalar', text: 'Bu belgenin ana noktalarını ve önemli kavramlarını listele. Her kavram için kısa açıklama ekle.' },
-  { icon: '❓', label: 'Sınav soruları', text: 'Bu belgeden 5 sınav sorusu hazırla (3 çoktan seçmeli, 2 açık uçlu) ve cevap anahtarını da ver.' },
-  { icon: '🔍', label: 'Anlamadığım yer', text: 'Bu belgenin en karmaşık kısmını sade bir Türkçeyle, lise seviyesine uygun şekilde anlat.' },
+  { icon: AlignLeft,  label: 'Özetle',         text: 'Bu belgeyi 5–7 madde halinde özetle.' },
+  { icon: List,       label: 'Ana kavramlar',   text: 'Bu belgenin temel kavramlarını ve önemli noktalarını listele. Her madde için kısa açıklama ekle.' },
+  { icon: HelpCircle, label: 'Sınav soruları',  text: 'Bu belgeden 5 sınav sorusu hazırla (3 çoktan seçmeli, 2 açık uçlu) ve cevap anahtarını yaz.' },
+  { icon: BookOpen,   label: 'Sade anlat',      text: 'Bu belgenin en karmaşık kısmını lise öğrencisine anlatır gibi sade bir Türkçeyle açıkla.' },
 ];
 
 export default function ChatPage() {
   const { profile } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const reduced = useReducedMotion();
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [selectedDocId, setSelectedDocId] = useState<string>('');
   const [showDocPicker, setShowDocPicker] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [docContext, setDocContext] = useState<string | null>(null);
+
   const bodyRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -68,7 +64,39 @@ export default function ChatPage() {
       .then(({ data }) => { if (data) setDocuments(data as Document[]); });
   }, [profile]);
 
-  // Seçilen belgenin çevirisini önbelleğe al
+  // Önceki sohbet geçmişini yükle
+  useEffect(() => {
+    if (!profile || historyLoaded) return;
+    supabase
+      .from('chat_messages')
+      .select('*')
+      .eq('user_id', profile.id)
+      .order('created_at', { ascending: true })
+      .limit(60)
+      .then(({ data }) => {
+        setHistoryLoaded(true);
+        if (data && data.length > 0) {
+          setMessages(data.map((m: any) => ({
+            id: m.id,
+            role: m.role as 'user' | 'assistant',
+            content: m.content || '',
+            timestamp: new Date(m.created_at),
+          })));
+        }
+      });
+  }, [profile, historyLoaded]);
+
+  // Dokümanlar sayfasından otomatik belge seçimi
+  useEffect(() => {
+    const state = location.state as { documentId?: string } | null;
+    if (state?.documentId) {
+      setSelectedDocId(state.documentId);
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Seçili belgenin çevirisini önbelleğe al
   useEffect(() => {
     if (!selectedDocId) { setDocContext(null); return; }
     supabase
@@ -78,11 +106,11 @@ export default function ChatPage() {
       .eq('status', 'completed')
       .single()
       .then(({ data }) => {
-        if (data?.translated_text?.pages) {
-          setDocContext(data.translated_text.pages.join('\n\n'));
-        } else {
-          setDocContext(null);
-        }
+        setDocContext(
+          data?.translated_text?.pages
+            ? data.translated_text.pages.join('\n\n')
+            : null
+        );
       });
   }, [selectedDocId]);
 
@@ -91,37 +119,28 @@ export default function ChatPage() {
     if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
   }, [messages]);
 
-  /** Multi-turn için Gemini formatına çevir (son mesajı dahil etme — onu newMessage olarak gönderiyoruz) */
-  const buildHistory = (): ChatTurn[] => {
-    return messages
-      .filter(m => !m.pending)
-      .map(m => ({
-        role: m.role,
-        content: m.content,
-      }));
-  };
+  const clearChat = () => { if (!loading) setMessages([]); };
 
-  /** Dosya ekleme */
   const onPickFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     const list = e.target.files;
     if (!list) return;
-    const valid = Array.from(list).filter(f => {
-      const ok = f.type.startsWith('image/') || f.type === 'application/pdf';
-      const small = f.size <= 10 * 1024 * 1024;
-      return ok && small;
-    });
+    const valid = Array.from(list).filter(
+      f => (f.type.startsWith('image/') || f.type === 'application/pdf') && f.size <= 10 * 1024 * 1024
+    );
     setPendingFiles(prev => [...prev, ...valid].slice(0, 5));
     e.target.value = '';
   };
 
-  const removePending = (idx: number) => {
-    setPendingFiles(prev => prev.filter((_, i) => i !== idx));
-  };
+  const removePending = (idx: number) => setPendingFiles(prev => prev.filter((_, i) => i !== idx));
 
-  /** Mesaj gönder + streaming */
   const sendMessage = async (overrideText?: string) => {
     const text = (overrideText ?? input).trim();
     if ((!text && pendingFiles.length === 0) || loading || !profile) return;
+
+    // History'yi setMessages'tan ÖNCE yakala
+    const historySnapshot: ChatTurn[] = messages
+      .filter(m => !m.pending && m.content)
+      .map(m => ({ role: m.role, content: m.content }));
 
     const attachmentNames = pendingFiles.map(f => f.name);
     const userMsg: Message = {
@@ -147,18 +166,16 @@ export default function ChatPage() {
     const filesToSend = pendingFiles;
     setPendingFiles([]);
 
-    // Kullanıcı mesajını kaydet
-    await supabase.from('chat_messages').insert({
+    void supabase.from('chat_messages').insert({
       user_id: profile.id,
-      document_id: selectedDocId || null,
+      ...(selectedDocId ? { document_id: selectedDocId } : {}),
       role: 'user',
       content: text,
       credits_used: 0.5,
     });
 
-    // Krediden düş (chat 0.5 kredi)
     if (profile.credits_remaining >= 0.5) {
-      await supabase.from('profiles').update({
+      void supabase.from('profiles').update({
         credits_remaining: Math.max(0, profile.credits_remaining - 0.5),
       }).eq('id', profile.id);
     }
@@ -166,15 +183,10 @@ export default function ChatPage() {
     abortRef.current = new AbortController();
 
     try {
-      const history = buildHistory();
-      // Son 2 mesajı kaldır (yeni user + bekleyen assistant) — onları zaten newMessage olarak gönderiyoruz
-      history.pop(); // pending assistant
-      history.pop(); // user (kullanıcının az önceki mesajı — yeniden newMessage olarak gönderilecek)
-
       let final = '';
       await streamDocumentChat(
-        history,
-        text || 'Eklenen dosyaları incele ve bana ne yapabileceğimi söyle.',
+        historySnapshot,
+        text || 'Eklenen dosyaları incele ve ne yapabileceğini açıkla.',
         docContext,
         filesToSend,
         (_delta, full) => {
@@ -184,13 +196,11 @@ export default function ChatPage() {
         abortRef.current.signal,
       );
 
-      // Streaming bitti — pending bayrağını kaldır
       setMessages(prev => prev.map(m => m.id === assistantMsgId ? { ...m, content: final, pending: false } : m));
 
-      // AI yanıtını DB'ye yaz
-      await supabase.from('chat_messages').insert({
+      void supabase.from('chat_messages').insert({
         user_id: profile.id,
-        document_id: selectedDocId || null,
+        ...(selectedDocId ? { document_id: selectedDocId } : {}),
         role: 'assistant',
         content: final,
         credits_used: 0,
@@ -199,7 +209,7 @@ export default function ChatPage() {
       const isAbort = err?.name === 'AbortError' || /İptal/.test(err?.message || '');
       const errText = isAbort
         ? '_Yanıt durduruldu._'
-        : `**Üzgünüm, bir hata oluştu.** ${err?.message || 'Lütfen tekrar deneyin.'}`;
+        : `**Hata:** ${err?.message || 'Lütfen tekrar deneyin.'}`;
       setMessages(prev => prev.map(m => m.id === assistantMsgId ? { ...m, content: errText, pending: false } : m));
     } finally {
       setLoading(false);
@@ -207,24 +217,17 @@ export default function ChatPage() {
     }
   };
 
-  const stopGenerating = () => {
-    abortRef.current?.abort();
-  };
-
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   };
 
-  const initials = profile?.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2) || '?';
+  const initials = profile?.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?';
   const selectedDoc = documents.find(d => d.id === selectedDocId);
 
   if (!profile) {
     return (
-      <div className={styles.chatPage} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ width: 36, height: 36, border: '3px solid var(--color-border)', borderTopColor: 'var(--color-accent)', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 1rem' }} />
-          <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>Yükleniyor...</p>
-        </div>
+      <div className={styles.chatPage} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ width: 32, height: 32, border: '2.5px solid #e5e7eb', borderTopColor: '#2454ff', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
       </div>
     );
   }
@@ -232,66 +235,82 @@ export default function ChatPage() {
   return (
     <div className={styles.chatPage}>
 
-      {/* ── Başlık ve Doküman Seçici ─────────────────────────── */}
+      {/* ── Başlık ─────────────────────────────────────────────── */}
       <div className={styles.chatHeader}>
-        <div>
-          <h1 className={styles.chatTitle}>AI Doküman Asistanı</h1>
-          <p className={styles.chatDesc}>Belgeleriniz hakkında sorular sorun, dosya ekleyin, konuşmaya devam edin.</p>
+        <div className={styles.headerLeft}>
+          <h1 className={styles.chatTitle}>AI Asistan</h1>
+          {selectedDoc && (
+            <span className={styles.docChip}>
+              <FileText size={11} />
+              {selectedDoc.original_name}
+            </span>
+          )}
         </div>
 
-        <div className={styles.docPickerWrapper}>
-          <motion.button
-            className={styles.docPickerBtn}
-            onClick={() => setShowDocPicker(!showDocPicker)}
-            whileHover={reduced ? undefined : { y: -1 }}
-            whileTap={reduced ? undefined : { scale: 0.97 }}
-            transition={SPRING_TIGHT}
-          >
-            <FileText size={15} />
-            <span>{selectedDoc ? selectedDoc.original_name : 'Doküman Seç'}</span>
-            <motion.span style={{ display: 'inline-flex' }} animate={{ rotate: showDocPicker ? 180 : 0 }} transition={SPRING_TIGHT}>
-              <ChevronDown size={14} />
-            </motion.span>
-          </motion.button>
-          <AnimatePresence>
-            {showDocPicker && (
-              <motion.div
-                className={styles.docPickerDropdown}
-                initial={{ opacity: 0, y: -8, scale: 0.97 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -8, scale: 0.97 }}
-                transition={{ duration: 0.18 }}
-              >
-                <button
-                  className={`${styles.docPickerItem} ${!selectedDocId ? styles.docPickerItemActive : ''}`}
-                  onClick={() => { setSelectedDocId(''); setShowDocPicker(false); }}
+        <div className={styles.headerRight}>
+          {messages.length > 0 && (
+            <motion.button
+              className={styles.newBtn}
+              onClick={clearChat}
+              disabled={loading}
+              whileHover={reduced ? undefined : { y: -1 }}
+              whileTap={reduced ? undefined : { scale: 0.96 }}
+              transition={SPRING_TIGHT}
+            >
+              <Plus size={13} /> Yeni
+            </motion.button>
+          )}
+
+          <div className={styles.docPickerWrapper}>
+            <motion.button
+              className={styles.docPickerBtn}
+              onClick={() => setShowDocPicker(v => !v)}
+              whileHover={reduced ? undefined : { y: -1 }}
+              whileTap={reduced ? undefined : { scale: 0.97 }}
+              transition={SPRING_TIGHT}
+            >
+              <Brain size={14} />
+              <span>{selectedDoc ? selectedDoc.original_name : 'Belge seç'}</span>
+              <motion.span style={{ display: 'inline-flex' }} animate={{ rotate: showDocPicker ? 180 : 0 }} transition={SPRING_TIGHT}>
+                <ChevronDown size={13} />
+              </motion.span>
+            </motion.button>
+
+            <AnimatePresence>
+              {showDocPicker && (
+                <motion.div
+                  className={styles.docPickerDropdown}
+                  initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                  transition={{ duration: 0.15 }}
                 >
-                  <Brain size={14} /> Genel Asistan
-                </button>
-                {documents.length === 0 ? (
-                  <div className={styles.docPickerEmpty}>
-                    Tamamlanmış belge yok.{' '}
-                    <Link to="/translate" onClick={() => setShowDocPicker(false)}>Çeviri başlat →</Link>
-                  </div>
-                ) : documents.map(d => (
                   <button
-                    key={d.id}
-                    className={`${styles.docPickerItem} ${selectedDocId === d.id ? styles.docPickerItemActive : ''}`}
-                    onClick={() => { setSelectedDocId(d.id); setShowDocPicker(false); }}
+                    className={`${styles.docPickerItem} ${!selectedDocId ? styles.docPickerItemActive : ''}`}
+                    onClick={() => { setSelectedDocId(''); setShowDocPicker(false); }}
                   >
-                    <FileText size={14} />
-                    <span className={styles.docPickerItemName}>{d.original_name}</span>
+                    <Brain size={14} /> Genel asistan
                   </button>
-                ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
+                  {documents.length === 0 ? (
+                    <div className={styles.docPickerEmpty}>
+                      Henüz tamamlanmış belge yok.{' '}
+                      <Link to="/translate" onClick={() => setShowDocPicker(false)}>Çeviri başlat</Link>
+                    </div>
+                  ) : documents.map(d => (
+                    <button
+                      key={d.id}
+                      className={`${styles.docPickerItem} ${selectedDocId === d.id ? styles.docPickerItemActive : ''}`}
+                      onClick={() => { setSelectedDocId(d.id); setShowDocPicker(false); }}
+                    >
+                      <FileText size={13} />
+                      <span className={styles.docPickerItemName}>{d.original_name}</span>
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
-      </div>
-
-      <div className={styles.demoBar}>
-        <Sparkles size={13} />
-        <span>{selectedDoc ? `"${selectedDoc.original_name}" hakkında sorular sorun.` : 'Belge seçin veya soruyla birlikte dosya ekleyin (resim/PDF).'}</span>
       </div>
 
       {/* ── Sohbet Alanı ─────────────────────────────────────── */}
@@ -299,46 +318,38 @@ export default function ChatPage() {
         {messages.length === 0 ? (
           <motion.div
             className={styles.emptyChat}
-            initial={{ opacity: 0, y: 12 }}
+            initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
           >
-            <motion.div
-              animate={reduced ? undefined : { y: [0, -6, 0] }}
-              transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-            >
-              <Brain size={48} className={styles.emptyChatIcon} />
-            </motion.div>
-            <div className={styles.emptyChatText}>Bir soru sorun ya da dosya ekleyin</div>
-            <div className={styles.emptyChatHint}>Belgeyi anlıyor, hatırlıyor ve takip soruları yanıtlıyor.</div>
+            <div className={styles.emptyChatIcon}>
+              <Brain size={28} />
+            </div>
+            <p className={styles.emptyChatText}>Nasıl yardımcı olabilirim?</p>
+            <p className={styles.emptyChatHint}>
+              {selectedDoc
+                ? `"${selectedDoc.original_name}" üzerine soru sorabilir ya da dosya ekleyebilirsiniz.`
+                : 'Bir belge seçin veya soruyla birlikte dosya ekleyin.'
+              }
+            </p>
 
-            {/* Hızlı başlatıcılar */}
-            <div style={{
-              marginTop: 24,
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-              gap: 8,
-              maxWidth: 600, width: '100%',
-            }}>
-              {QUICK_PROMPTS.map(qp => (
-                <motion.button
-                  key={qp.label}
-                  whileHover={reduced ? undefined : { y: -2 }}
-                  whileTap={reduced ? undefined : { scale: 0.97 }}
-                  transition={SPRING_TIGHT}
-                  onClick={() => sendMessage(qp.text)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 8,
-                    padding: '10px 14px', textAlign: 'left',
-                    background: 'var(--color-surface)', border: '1px solid var(--color-border)',
-                    borderRadius: 12, cursor: 'pointer', fontSize: 13,
-                    color: 'var(--color-text-primary)',
-                  }}
-                >
-                  <span style={{ fontSize: 18 }}>{qp.icon}</span>
-                  <span>{qp.label}</span>
-                </motion.button>
-              ))}
+            <div className={styles.quickGrid}>
+              {QUICK_PROMPTS.map(qp => {
+                const Icon = qp.icon;
+                return (
+                  <motion.button
+                    key={qp.label}
+                    className={styles.quickBtn}
+                    onClick={() => sendMessage(qp.text)}
+                    whileHover={reduced ? undefined : { y: -2 }}
+                    whileTap={reduced ? undefined : { scale: 0.97 }}
+                    transition={SPRING_TIGHT}
+                  >
+                    <span className={styles.quickBtnIcon}><Icon size={15} /></span>
+                    {qp.label}
+                  </motion.button>
+                );
+              })}
             </div>
           </motion.div>
         ) : (
@@ -346,24 +357,20 @@ export default function ChatPage() {
             <motion.div
               key={msg.id}
               className={`${styles.msgRow} ${msg.role === 'user' ? styles.msgUser : ''}`}
-              initial={{ opacity: 0, y: 8 }}
+              initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
             >
               <div className={`${styles.msgAvatar} ${msg.role === 'user' ? styles.msgAvatarUser : styles.msgAvatarAi}`}>
-                {msg.role === 'user' ? initials : 'AI'}
+                {msg.role === 'user' ? initials : <Brain size={15} />}
               </div>
-              <div>
+              <div className={styles.msgWrap}>
                 <div className={`${styles.msgBubble} ${msg.role === 'user' ? styles.msgBubbleUser : styles.msgBubbleAi}`}>
                   {msg.attachmentNames && msg.attachmentNames.length > 0 && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
+                    <div className={styles.attachRow}>
                       {msg.attachmentNames.map((n, i) => (
-                        <span key={i} style={{
-                          fontSize: 11, padding: '2px 8px', borderRadius: 999,
-                          background: 'rgba(0,0,0,0.06)', color: 'inherit',
-                          display: 'inline-flex', alignItems: 'center', gap: 4,
-                        }}>
-                          <Paperclip size={11} /> {n}
+                        <span key={i} className={styles.attachTag}>
+                          <Paperclip size={10} /> {n}
                         </span>
                       ))}
                     </div>
@@ -374,20 +381,21 @@ export default function ChatPage() {
                         <ReactMarkdown
                           remarkPlugins={[remarkGfm as any]}
                           components={{
-                            p: ({ ...props }) => <p style={{ margin: 0, paddingBottom: '0.5em' }} {...props} />,
-                            ul: ({ ...props }) => <ul style={{ margin: 0, paddingLeft: '1.5em', paddingBottom: '0.5em' }} {...props} />,
-                            h1: ({ ...props }) => <h3 style={{ margin: '0.5em 0' }} {...props} />,
-                            h2: ({ ...props }) => <h4 style={{ margin: '0.5em 0' }} {...props} />,
-                            h3: ({ ...props }) => <h5 style={{ margin: '0.5em 0' }} {...props} />,
+                            p: ({ ...p }) => <p style={{ margin: 0, paddingBottom: '0.5em' }} {...p} />,
+                            ul: ({ ...p }) => <ul style={{ margin: 0, paddingLeft: '1.4em', paddingBottom: '0.5em' }} {...p} />,
+                            ol: ({ ...p }) => <ol style={{ margin: 0, paddingLeft: '1.4em', paddingBottom: '0.5em' }} {...p} />,
+                            h1: ({ ...p }) => <h3 style={{ margin: '0.6em 0 0.2em' }} {...p} />,
+                            h2: ({ ...p }) => <h4 style={{ margin: '0.5em 0 0.2em' }} {...p} />,
+                            h3: ({ ...p }) => <h5 style={{ margin: '0.4em 0 0.2em' }} {...p} />,
                           }}
                         >
                           {msg.content}
                         </ReactMarkdown>
                         {msg.pending && (
                           <motion.span
-                            animate={{ opacity: [0.3, 1, 0.3] }}
-                            transition={{ duration: 1.2, repeat: Infinity }}
-                            style={{ display: 'inline-block', width: 6, height: 14, background: 'currentColor', verticalAlign: 'middle', marginLeft: 2 }}
+                            className={styles.cursor}
+                            animate={{ opacity: [0.2, 1, 0.2] }}
+                            transition={{ duration: 1, repeat: Infinity }}
                           />
                         )}
                       </div>
@@ -402,7 +410,7 @@ export default function ChatPage() {
                     msg.content
                   )}
                 </div>
-                <div className={styles.msgTime}>
+                <div className={`${styles.msgTime} ${msg.role === 'user' ? styles.msgTimeRight : ''}`}>
                   {msg.timestamp.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
                 </div>
               </div>
@@ -411,74 +419,64 @@ export default function ChatPage() {
         )}
       </div>
 
-      {/* ── Bekleyen dosyalar (input'un üstünde) ───────────── */}
-      {pendingFiles.length > 0 && (
-        <div style={{
-          padding: '8px 16px', display: 'flex', flexWrap: 'wrap', gap: 6,
-          borderTop: '1px solid var(--color-border)', background: 'var(--color-bg-alt)',
-        }}>
-          {pendingFiles.map((f, i) => (
-            <span key={i} style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              padding: '4px 10px', background: 'var(--color-surface)',
-              border: '1px solid var(--color-border)', borderRadius: 999, fontSize: 12,
-            }}>
-              {f.type.startsWith('image/') ? <ImageIcon size={12} /> : <FileText size={12} />}
-              <span style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
-              <button onClick={() => removePending(i)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'inline-flex' }}>
-                <XIcon size={12} />
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
+      {/* ── Bekleyen dosyalar ──────────────────────────────────── */}
+      <AnimatePresence>
+        {pendingFiles.length > 0 && (
+          <motion.div
+            className={styles.pendingFiles}
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+          >
+            {pendingFiles.map((f, i) => (
+              <span key={i} className={styles.pendingTag}>
+                {f.type.startsWith('image/') ? <ImageIcon size={11} /> : <FileText size={11} />}
+                <span>{f.name}</span>
+                <button onClick={() => removePending(i)} className={styles.pendingRemove}>
+                  <XIcon size={11} />
+                </button>
+              </span>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* ── Mesaj Giriş Alanı ──────────────────────────────── */}
-      <div className={styles.chatInput}>
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          accept="image/*,application/pdf"
-          onChange={onPickFiles}
-          style={{ display: 'none' }}
-        />
+      {/* ── Giriş Alanı ────────────────────────────────────────── */}
+      <div className={styles.inputWrap}>
+        <input ref={fileInputRef} type="file" multiple accept="image/*,application/pdf" onChange={onPickFiles} style={{ display: 'none' }} />
+
         <motion.button
+          className={styles.attachBtn}
           onClick={() => fileInputRef.current?.click()}
           disabled={loading}
-          whileHover={reduced || loading ? undefined : { scale: 1.06 }}
-          whileTap={reduced || loading ? undefined : { scale: 0.92 }}
+          whileHover={reduced || loading ? undefined : { scale: 1.08 }}
+          whileTap={reduced || loading ? undefined : { scale: 0.9 }}
           transition={SPRING_TIGHT}
-          style={{
-            background: 'transparent', border: '1px solid var(--color-border)',
-            borderRadius: 10, padding: 10, cursor: loading ? 'not-allowed' : 'pointer',
-            color: 'var(--color-text-secondary)', display: 'inline-flex',
-            alignItems: 'center', justifyContent: 'center',
-          }}
           title="Dosya ekle"
         >
-          <Paperclip size={18} />
+          <Paperclip size={16} />
         </motion.button>
+
         <textarea
           className={styles.inputField}
-          placeholder={loading ? 'Yanıt geliyor…' : 'Belgeniz hakkında bir soru sorun…'}
+          placeholder="Bir soru yazın…"
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           rows={1}
           disabled={loading}
         />
+
         {loading ? (
           <motion.button
-            className={styles.sendBtn}
-            onClick={stopGenerating}
+            className={`${styles.sendBtn} ${styles.sendBtnStop}`}
+            onClick={() => abortRef.current?.abort()}
             whileHover={reduced ? undefined : { scale: 1.06 }}
-            whileTap={reduced ? undefined : { scale: 0.92 }}
+            whileTap={reduced ? undefined : { scale: 0.9 }}
             transition={SPRING_TIGHT}
-            style={{ background: 'var(--color-error)' }}
-            title="Yanıtı durdur"
+            title="Durdur"
           >
-            <StopCircle size={18} />
+            <StopCircle size={17} />
           </motion.button>
         ) : (
           <motion.button
@@ -486,10 +484,10 @@ export default function ChatPage() {
             onClick={() => sendMessage()}
             disabled={!input.trim() && pendingFiles.length === 0}
             whileHover={reduced || (!input.trim() && pendingFiles.length === 0) ? undefined : { scale: 1.06 }}
-            whileTap={reduced || (!input.trim() && pendingFiles.length === 0) ? undefined : { scale: 0.92, rotate: -8 }}
+            whileTap={reduced || (!input.trim() && pendingFiles.length === 0) ? undefined : { scale: 0.9 }}
             transition={SPRING_TIGHT}
           >
-            <Send size={18} />
+            <Send size={16} />
           </motion.button>
         )}
       </div>

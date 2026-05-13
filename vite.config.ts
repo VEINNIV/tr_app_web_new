@@ -13,6 +13,9 @@ const CHUNKS: Record<string, string[]> = {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  optimizeDeps: {
+    include: ['docx', 'file-saver'],
+  },
   build: {
     rollupOptions: {
       output: {

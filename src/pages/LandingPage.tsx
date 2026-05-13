@@ -1,10 +1,11 @@
-import { useRef } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { motion, useMotionValue, useSpring, useTransform, useReducedMotion } from 'framer-motion';
+import { motion, AnimatePresence as AP, useMotionValue, useSpring, useTransform, useReducedMotion } from 'framer-motion';
 import {
   Languages, FileText, Brain, ArrowRight, Check,
   Upload, Cpu, Download, Sparkles, Shield, Clock,
   BookOpen, Quote, Star, Zap, FileType, MessageSquare,
+  Globe, FileCode,
 } from 'lucide-react';
 import { PRICING_PLANS } from '../lib/constants';
 import { Magnetic, Tilt } from '../components/ui/motion';
@@ -92,6 +93,14 @@ const FEATURES = [
 export default function LandingPage() {
   const heroRef = useRef<HTMLElement>(null);
   const reduced = useReducedMotion();
+  const [demoStep, setDemoStep] = useState(0);
+  const [demoAuto, setDemoAuto] = useState(true);
+
+  useEffect(() => {
+    if (!demoAuto) return;
+    const t = setInterval(() => setDemoStep(s => (s + 1) % 3), 3800);
+    return () => clearInterval(t);
+  }, [demoAuto]);
   const mx = useMotionValue(0);
   const my = useMotionValue(0);
   const smx = useSpring(mx, { stiffness: 80, damping: 18, mass: 0.6 });
@@ -283,57 +292,162 @@ export default function LandingPage() {
           </p>
         </div>
 
-        <div className={styles.stepsContainer}>
-          <motion.div className={styles.stepCard} variants={fadeUp} initial="hidden" whileInView="visible" viewport={{ once: true }} custom={0}>
-            <div className={styles.stepNumberWrapper}>
-              <div className={styles.stepPulseRing} />
-              <div className={styles.stepNumber}>1</div>
-            </div>
-            <div className={styles.stepIconWrapper}>
-              <div className={styles.stepIcon}><Upload size={22} /></div>
-            </div>
-            <h3 className={styles.stepTitle}>Belgenizi Yükleyin</h3>
-            <p className={styles.stepDesc}>Sürükle-bırak ile PDF veya görsel yükleyin. Birden fazla dosya da seçebilirsiniz.</p>
-            <div className={styles.stepBadge}><Shield size={11} />Güvenli Yükleme</div>
-          </motion.div>
-
-          <div className={styles.stepConnector} aria-hidden="true">
-            <div className={styles.stepConnectorTrack}><div className={styles.stepConnectorFlow} /></div>
-            <ArrowRight size={16} className={styles.stepConnectorArrow} />
+        {/* ── Live Demo Widget ── */}
+        <motion.div
+          className={styles.demoContainer}
+          initial={{ opacity: 0, y: 32 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+          onMouseEnter={() => setDemoAuto(false)}
+          onMouseLeave={() => setDemoAuto(true)}
+        >
+          {/* Step tabs */}
+          <div className={styles.demoTabs}>
+            {[
+              { label: 'Dosya Yükle', icon: <Upload size={13} /> },
+              { label: 'AI Çevirsin', icon: <Cpu size={13} /> },
+              { label: 'İndir & Kullan', icon: <Download size={13} /> },
+            ].map((tab, i) => (
+              <button
+                key={i}
+                className={`${styles.demoTab} ${demoStep === i ? styles.demoTabActive : ''}`}
+                onClick={() => { setDemoStep(i); setDemoAuto(false); }}
+              >
+                <span className={styles.demoTabNum}>{i + 1}</span>
+                {tab.icon}
+                {tab.label}
+              </button>
+            ))}
           </div>
 
-          <motion.div className={`${styles.stepCard} ${styles.stepCardFeatured}`} variants={fadeUp} initial="hidden" whileInView="visible" viewport={{ once: true }} custom={1}>
-            <div className={styles.stepCardGradientBorder} aria-hidden="true" />
-            <div className={styles.stepNumberWrapper}>
-              <div className={`${styles.stepPulseRing} ${styles.stepPulseRingAccent}`} />
-              <div className={`${styles.stepNumber} ${styles.stepNumberAccent}`}>2</div>
+          {/* Browser window */}
+          <div className={styles.demoWindow}>
+            <div className={styles.demoWindowBar}>
+              <div className={styles.demoWindowDots}>
+                <div className={styles.demoWindowDot} />
+                <div className={styles.demoWindowDot} />
+                <div className={styles.demoWindowDot} />
+              </div>
+              <div className={styles.demoWindowUrl}>translingua.app/translate</div>
             </div>
-            <div className={styles.stepIconWrapper}>
-              <div className={`${styles.stepIcon} ${styles.stepIconAccent}`}><Cpu size={22} /></div>
-            </div>
-            <h3 className={styles.stepTitle}>AI Çevirsin</h3>
-            <p className={styles.stepDesc}>Gelişmiş AI motorumuz her kelimeyi bağlamıyla birlikte analiz eder, akademik terminolojiyi doğru aktarır.</p>
-            <div className={`${styles.stepBadge} ${styles.stepBadgeAccent}`}><Sparkles size={11} />Bağlam Analizi</div>
-          </motion.div>
 
-          <div className={styles.stepConnector} aria-hidden="true">
-            <div className={styles.stepConnectorTrack}><div className={styles.stepConnectorFlow} /></div>
-            <ArrowRight size={16} className={styles.stepConnectorArrow} />
+            <AP mode="wait">
+              <motion.div
+                key={`demo-${demoStep}`}
+                className={styles.demoWindowBody}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.22 }}
+              >
+
+                {/* ── Step 1: Upload ── */}
+                {demoStep === 0 && (
+                  <div className={styles.demoUpload}>
+                    <div className={styles.demoDropzone}>
+                      <FileText size={30} style={{ color: 'rgba(255,255,255,0.18)' }} />
+                      <div className={styles.demoDropzoneTitle}>PDF veya görsel yüklemek için sürükleyin</div>
+                      <div className={styles.demoDropzoneSub}>veya seçmek için tıklayın · Max 100 MB</div>
+                    </div>
+                    <div className={styles.demoFileItem}>
+                      <FileText size={14} style={{ color: '#a5b4fc', flexShrink: 0 }} />
+                      <span className={styles.demoFileName}>makale_en.pdf</span>
+                      <span className={styles.demoFileMeta}>2.3 MB · 8 sayfa</span>
+                      <Check size={13} style={{ color: '#10b981', flexShrink: 0 }} />
+                    </div>
+                    <div className={styles.demoLangRow}>
+                      <Globe size={13} style={{ color: 'rgba(255,255,255,0.25)' }} />
+                      <span className={styles.demoLangText}>Dil tespiti:</span>
+                      <div className={styles.demoLangTag}>English</div>
+                      <ArrowRight size={11} style={{ color: 'rgba(255,255,255,0.18)' }} />
+                      <div className={`${styles.demoLangTag} ${styles.demoLangTagTR}`}>Türkçe</div>
+                    </div>
+                    <div className={styles.demoActionBar}>
+                      <div className={styles.demoCreditBadge}>8 kredi · 8 sayfa</div>
+                      <div className={styles.demoBtnFake}>Çevir <ArrowRight size={13} /></div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Step 2: Processing ── */}
+                {demoStep === 1 && (
+                  <div className={styles.demoProcessing}>
+                    <div className={styles.demoProcessHeader}>
+                      <div className={styles.demoSpinner} />
+                      <span className={styles.demoProcessTitle}>Yapay Zeka Çalışıyor</span>
+                      <span className={styles.demoProcessCount}>5 / 8 sayfa</span>
+                    </div>
+                    <div className={styles.demoProgressBar}>
+                      <motion.div
+                        className={styles.demoProgressFill}
+                        initial={{ width: '12%' }}
+                        animate={{ width: '62%' }}
+                        transition={{ duration: 1.4, ease: 'easeOut' }}
+                      />
+                    </div>
+                    <div className={styles.demoProcessStatus}>
+                      Akademik terminoloji analiz ediliyor...
+                    </div>
+                    <div className={styles.demoStreamBox}>
+                      <div className={styles.demoStreamLine}>Bu çalışmada, nöroplastisite kavramı ve öğrenme süreçlerine</div>
+                      <div className={styles.demoStreamLine}>olan etkileri kapsamlı biçimde ele alınmıştır. Araştırma</div>
+                      <div className={styles.demoStreamLine}>bulguları, erken dönem müdahalelerin uzun vadeli bilişsel</div>
+                      <motion.span
+                        className={styles.demoCursor}
+                        animate={{ opacity: [1, 0] }}
+                        transition={{ duration: 0.7, repeat: Infinity, repeatType: 'reverse' }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Step 3: Result ── */}
+                {demoStep === 2 && (
+                  <div className={styles.demoResult}>
+                    <div className={styles.demoResultHeader}>
+                      <Check size={14} style={{ color: '#10b981', flexShrink: 0 }} />
+                      <span className={styles.demoResultTitle}>Çeviri Tamamlandı · makale_en.pdf</span>
+                      <div className={styles.demoResultBtns}>
+                        <div className={styles.demoResultBtn}><FileText size={10} />PDF</div>
+                        <div className={`${styles.demoResultBtn} ${styles.demoResultBtnAccent}`}><FileType size={10} />Word</div>
+                        <div className={styles.demoResultBtn}><FileCode size={10} />TXT</div>
+                      </div>
+                    </div>
+                    <div className={styles.demoResultColumns}>
+                      <div className={styles.demoResultCol}>
+                        <div className={styles.demoResultColLabel}>English</div>
+                        <p className={styles.demoResultText}>
+                          This study comprehensively examines neuroplasticity and its effects on learning processes. The findings suggest that early interventions have significant long-term cognitive benefits across all age groups...
+                        </p>
+                      </div>
+                      <div className={styles.demoResultDivider} />
+                      <div className={styles.demoResultCol}>
+                        <div className={`${styles.demoResultColLabel} ${styles.demoResultColLabelTR}`}>Türkçe</div>
+                        <p className={`${styles.demoResultText} ${styles.demoResultTextTR}`}>
+                          Bu çalışmada nöroplastisite ve öğrenme süreçlerine etkileri kapsamlı biçimde incelenmiştir. Bulgular, erken dönem müdahalelerin tüm yaş gruplarında uzun vadeli önemli bilişsel faydalar sağladığını ortaya koymaktadır...
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+              </motion.div>
+            </AP>
           </div>
 
-          <motion.div className={styles.stepCard} variants={fadeUp} initial="hidden" whileInView="visible" viewport={{ once: true }} custom={2}>
-            <div className={styles.stepNumberWrapper}>
-              <div className={styles.stepPulseRing} />
-              <div className={styles.stepNumber}>3</div>
-            </div>
-            <div className={styles.stepIconWrapper}>
-              <div className={styles.stepIcon}><Download size={22} /></div>
-            </div>
-            <h3 className={styles.stepTitle}>İndirin & Kullanın</h3>
-            <p className={styles.stepDesc}>PDF, Word veya metin olarak indirin. Daha sonra AI'a belge hakkında istediğiniz soruyu sorun.</p>
-            <div className={styles.stepBadge}><Clock size={11} />Anında Teslimat</div>
-          </motion.div>
-        </div>
+          {/* Progress dots */}
+          <div className={styles.demoDots}>
+            {[0, 1, 2].map(i => (
+              <button
+                key={i}
+                className={`${styles.demoDot} ${demoStep === i ? styles.demoDotActive : ''}`}
+                onClick={() => { setDemoStep(i); setDemoAuto(false); }}
+                aria-label={`Adım ${i + 1}`}
+              />
+            ))}
+          </div>
+        </motion.div>
 
         <motion.div
           className={styles.howItWorksMetrics}

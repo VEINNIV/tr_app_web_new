@@ -38,9 +38,19 @@ export interface AIMessage {
 }
 
 interface AIResponseRaw {
-  candidates?: Array<{ content?: { parts?: Array<{ text?: string }> }; finishReason?: string }>;
+  candidates?: Array<{
+    content?: { parts?: Array<{ text?: string }> };
+    finishReason?: string;
+    safetyRatings?: Array<{ category: string; probability: string }>;
+  }>;
   error?: { message?: string; code?: number };
   usageMetadata?: { totalTokenCount?: number };
+}
+
+function checkFinishReason(reason?: string) {
+  if (reason === 'SAFETY') throw new Error('İçerik güvenlik filtresi tarafından engellendi. Farklı bir ifade deneyin.');
+  if (reason === 'RECITATION') throw new Error('İçerik alıntı kısıtlamasına takıldı. Lütfen sorguyu değiştirin.');
+  if (reason === 'MAX_TOKENS') throw new Error('Yanıt çok uzun kesildi. Soruyu daha kısa parçalara bölün.');
 }
 
 export function isAIAvailable(): boolean {
@@ -80,15 +90,19 @@ async function callGemini({
   if (!res.ok) {
     const errData = await res.json().catch(() => null);
     const msg = errData?.error?.message || `HTTP ${res.status}`;
-    throw new Error(`AI API hatası: ${msg}`);
+    // 400 çoğunlukla istek formatı veya model sorunu, 429 rate limit, 503 model yoğunluğu
+    if (res.status === 429) throw new Error('AI servis yoğunluğu — birkaç saniye sonra tekrar deneyin.');
+    if (res.status === 503) throw new Error('AI servisi geçici olarak kullanılamıyor — lütfen bekleyin.');
+    throw new Error(`AI API hatası (${res.status}): ${msg}`);
   }
 
   const data: AIResponseRaw = await res.json();
   if (data.error) throw new Error(`AI API hatası: ${data.error.message || 'Bilinmeyen hata'}`);
 
-  const text =
-    data.candidates?.[0]?.content?.parts?.map(p => p.text ?? '').join('') ?? '';
-  if (!text) throw new Error('AI boş yanıt döndürdü. Lütfen tekrar deneyin.');
+  const candidate = data.candidates?.[0];
+  checkFinishReason(candidate?.finishReason);
+  const text = candidate?.content?.parts?.map(p => p.text ?? '').join('') ?? '';
+  if (!text) throw new Error('Model yanıt üretemedi. Lütfen soruyu farklı bir şekilde deneyin.');
   return text;
 }
 
@@ -132,8 +146,11 @@ export async function streamGemini(
   });
 
   if (!res.ok || !res.body) {
-    const txt = await res.text().catch(() => '');
-    throw new Error(`AI stream hatası: ${res.status} — ${txt.slice(0, 300)}`);
+    if (res.status === 429) throw new Error('AI servis yoğunluğu — birkaç saniye sonra tekrar deneyin.');
+    if (res.status === 503) throw new Error('AI servisi geçici olarak kullanılamıyor — lütfen bekleyin.');
+    const errJson = await res.json().catch(() => null);
+    const errMsg = errJson?.error?.message || '';
+    throw new Error(`AI stream hatası (${res.status})${errMsg ? ': ' + errMsg : ''}`);
   }
 
   const reader = res.body.getReader();
@@ -156,19 +173,24 @@ export async function streamGemini(
       if (json === '[DONE]') continue;
       try {
         const parsed: AIResponseRaw = JSON.parse(json);
-        const piece =
-          parsed.candidates?.[0]?.content?.parts?.map(p => p.text ?? '').join('') ?? '';
+        const candidate = parsed.candidates?.[0];
+        const piece = candidate?.content?.parts?.map(p => p.text ?? '').join('') ?? '';
         if (piece) {
           full += piece;
           opts.onChunk?.(piece, full);
         }
-      } catch {
+        // Son chunk'ta finishReason kontrolü
+        if (candidate?.finishReason && candidate.finishReason !== 'STOP') {
+          checkFinishReason(candidate.finishReason);
+        }
+      } catch (e) {
+        if ((e as Error)?.message?.includes('filtresi') || (e as Error)?.message?.includes('kısıtlama') || (e as Error)?.message?.includes('uzun')) throw e;
         // Yarım JSON — atla
       }
     }
   }
 
-  if (!full) throw new Error('AI boş yanıt döndürdü. Lütfen tekrar deneyin.');
+  if (!full) throw new Error('Model yanıt üretemedi. Lütfen soruyu farklı bir şekilde deneyin.');
   return full;
 }
 
@@ -228,13 +250,17 @@ export async function translatePDFSmart(
     avgCharsPerPage < TEXT_DENSITY_THRESHOLD;
 
   if (useMultimodal) {
-    // Görsel ağırlıklı veya taranmış PDF — doğrudan Gemini'ye gönder
-    const result = await translateFileMultimodal(file, opts);
-    return { result, mode: 'multimodal' };
+    try {
+      const result = await translateFileMultimodal(file, opts);
+      if (result) return { result, mode: 'multimodal' };
+    } catch {
+      // Multimodal başarısız (model desteklemiyor / dosya büyük) → metin moduna düş
+    }
   }
 
-  // Metin yoğun PDF — chunk çevirisi
-  const result = await translateLongText(extractedText, opts);
+  // Metin yoğun PDF veya multimodal fallback — chunk çevirisi
+  const textToTranslate = extractedText || `PDF dosyası: ${file.name}`;
+  const result = await translateLongText(textToTranslate, opts);
   return { result, mode: 'text' };
 }
 
@@ -464,29 +490,43 @@ export async function streamDocumentChat(
   onChunk?: (delta: string, full: string) => void,
   signal?: AbortSignal,
 ): Promise<string> {
-  // Belge bağlamı — büyük belgeler için son 60K karakter (yeterince büyük pencere)
-  const docContext = documentText
-    ? `\n\n---\nKULLANICININ BELGESİ (çeviri / not metni):\n${documentText.slice(0, 60_000)}\n---`
-    : '';
-
   const systemPrompt =
-    `Sen TransLingua'nın akıllı öğrenci asistanısın. Öğrencilere akademik konularda yardımcı oluyorsun.
+    `Sen TransLingua'nın öğrenci asistanısın. Akademik sorulara doğrudan, net ve sade yanıt ver.
 
-DAVRANIŞIN:
-• Konuşma geçmişini hatırlıyorsun ve önceki sorulara referans verebilirsin
-• Açıklamalarını somut, anlaşılır ve örnek destekli yap
-• Teknik terimleri açıklayarak kullan
-• Gerektiğinde adım adım çöz, formül veya şema öner
-• Sadece "evet/hayır" değil; nedenini ve kaynağını da belirt
-• Türkçe yanıt ver, Markdown kullan (başlık, madde, **kalın**, tablo, \`\`\` kod)${docContext}`;
+Kesin kurallar:
+- Emoji kullanma. Hiç.
+- "Merhaba", "Tabii ki", "Yardımcı olmaktan memnuniyet duyarım" gibi kalıp girişler yapma
+- Soruya hemen gir — giriş cümlesi, karşılama veya özet giriş paragrafı yazma
+- Markdown kullan ama gereksiz başlık zinciri oluşturma; başlık yalnızca gerçekten bölüm varsa kullan
+- Liste yerine düz metin yeterliyse liste yapma
+- Konuşma geçmişini hatırla; önceki sorulara referans verebilirsin
+- Türkçe yaz`;
 
-  // Geçmişi Gemini formatına dönüştür
-  const contents: AIMessage[] = history.map(t => ({
-    role: t.role === 'assistant' ? ('model' as const) : ('user' as const),
-    parts: t.attachments?.length
-      ? [...t.attachments.map(a => ({ inlineData: a })), { text: t.content }]
-      : [{ text: t.content }],
-  }));
+  const contents: AIMessage[] = [];
+
+  // Belge bağlamını conversation turn olarak ekle (system instruction değil)
+  // Bu yaklaşım tüm Gemini modelleriyle uyumludur
+  if (documentText) {
+    const truncated = documentText.slice(0, 50_000);
+    contents.push({
+      role: 'user',
+      parts: [{ text: `Aşağıdaki belgeyi analiz et. Soru-cevap sırasında bu belgeyi referans alacaksın:\n\n---\n${truncated}\n---` }],
+    });
+    contents.push({
+      role: 'model',
+      parts: [{ text: 'Belgeyi okudum ve analiz ettim. Belge hakkındaki sorularınızı yanıtlamaya hazırım.' }],
+    });
+  }
+
+  // Konuşma geçmişini ekle
+  for (const t of history) {
+    contents.push({
+      role: t.role === 'assistant' ? ('model' as const) : ('user' as const),
+      parts: t.attachments?.length
+        ? [...t.attachments.map(a => ({ inlineData: a })), { text: t.content }]
+        : [{ text: t.content }],
+    });
+  }
 
   // Yeni mesaj + ekler
   const newParts: AIPart[] = [];
@@ -494,16 +534,34 @@ DAVRANIŞIN:
   newParts.push({ text: newMessage });
   contents.push({ role: 'user', parts: newParts });
 
+  // Streaming dene; başarısız veya boş yanıt alırsa non-streaming'e düş
   if (onChunk) {
-    return streamGemini({
-      contents,
-      systemInstruction: systemPrompt,
-      maxOutputTokens: 8192,
-      onChunk,
-      signal,
-    });
+    try {
+      const result = await streamGemini({
+        contents,
+        systemInstruction: systemPrompt,
+        maxOutputTokens: 8192,
+        onChunk,
+        signal,
+      });
+      if (result) return result;
+    } catch (err) {
+      const msg = (err as Error)?.message ?? '';
+      // Kullanıcı iptali veya kesin hata → yeniden fırlat
+      if (
+        msg.includes('İptal') || err instanceof DOMException ||
+        msg.includes('filtresi') || msg.includes('kısıtlama')
+      ) throw err;
+      // Diğer stream hataları → non-streaming fallback'e geç
+    }
   }
-  return callGemini({ contents, systemInstruction: systemPrompt, maxOutputTokens: 8192 });
+
+  // Non-streaming fallback (streaming çalışmıyorsa veya boş yanıt geldiyse)
+  return callGemini({
+    contents,
+    systemInstruction: systemPrompt,
+    maxOutputTokens: 8192,
+  });
 }
 
 // ─── 6) Ders Notu Üretimi (multimodal, öğrenci odaklı) ──────────────────────
