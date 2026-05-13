@@ -1,9 +1,9 @@
 /**
  * TransLingua — DashboardPage
  */
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import {
   FileText, Languages, MessageSquare, Clock,
   Zap, BookOpen, Shield, ArrowRight, ChevronRight,
@@ -13,6 +13,7 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { STATUS_LABELS } from '../lib/constants';
 import type { Document } from '../types';
+import { useAnimatedNumber, SPRING_TIGHT } from '../components/ui/motion';
 import styles from '../styles/components/dashboard.module.css';
 
 const stagger = {
@@ -25,34 +26,17 @@ const item = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' as const } },
 };
 
-function useAnimatedCounter(target: number, duration = 900) {
-  const [count, setCount] = useState(0);
-  const prev = useRef(0);
-  useEffect(() => {
-    if (target === prev.current) return;
-    prev.current = target;
-    const t0 = performance.now();
-    const tick = (now: number) => {
-      const p = Math.min((now - t0) / duration, 1);
-      const e = 1 - Math.pow(1 - p, 3);
-      setCount(Math.round(target * e));
-      if (p < 1) requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-  }, [target, duration]);
-  return count;
-}
-
 export default function DashboardPage() {
   const { profile, isAdmin, loading: authLoading, refreshProfile } = useAuth();
+  const reduced = useReducedMotion();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [totalTranslations, setTotalTranslations] = useState(0);
   const [loading, setLoading] = useState(true);
 
-  const cDocs = useAnimatedCounter(documents.length);
-  const cTrans = useAnimatedCounter(totalTranslations);
-  const cCredits = useAnimatedCounter(profile?.credits_remaining ?? 0);
-  const cUsed = useAnimatedCounter((profile?.credits_monthly_limit ?? 0) - (profile?.credits_remaining ?? 0));
+  const cDocs = useAnimatedNumber(documents.length);
+  const cTrans = useAnimatedNumber(totalTranslations);
+  const cCredits = useAnimatedNumber(profile?.credits_remaining ?? 0);
+  const cUsed = useAnimatedNumber((profile?.credits_monthly_limit ?? 0) - (profile?.credits_remaining ?? 0));
 
   useEffect(() => {
     if (!profile) return;
@@ -130,10 +114,22 @@ export default function DashboardPage() {
         </div>
         <div className={styles.headerRight}>
           <span className={styles.planBadge}>{profile.plan.toUpperCase()}</span>
-          <Link to="/translate" className={styles.primaryBtn}>
-            <Zap size={14} />
-            Çeviri Başlat
-          </Link>
+          <motion.div
+            whileHover={reduced ? undefined : { y: -2 }}
+            whileTap={reduced ? undefined : { scale: 0.96 }}
+            transition={SPRING_TIGHT}
+          >
+            <Link to="/translate" className={styles.primaryBtn}>
+              <motion.span
+                style={{ display: 'inline-flex' }}
+                animate={reduced ? undefined : { rotate: [0, -8, 8, 0] }}
+                transition={{ duration: 1.6, repeat: Infinity, repeatDelay: 4, ease: 'easeInOut' }}
+              >
+                <Zap size={14} />
+              </motion.span>
+              Çeviri Başlat
+            </Link>
+          </motion.div>
         </div>
       </motion.div>
 
@@ -145,11 +141,22 @@ export default function DashboardPage() {
         animate="visible"
       >
         {stats.map(({ icon: Icon, value, label, color }) => (
-          <motion.div key={label} className={styles.statCard} variants={item}>
+          <motion.div
+            key={label}
+            className={styles.statCard}
+            variants={item}
+            whileHover={reduced ? undefined : { y: -3 }}
+            transition={SPRING_TIGHT}
+          >
             <div className={styles.statTop}>
-              <div className={styles.statIconWrap} style={{ color }}>
+              <motion.div
+                className={styles.statIconWrap}
+                style={{ color }}
+                whileHover={reduced ? undefined : { rotate: -8, scale: 1.1 }}
+                transition={SPRING_TIGHT}
+              >
                 <Icon size={16} strokeWidth={2.5} />
-              </div>
+              </motion.div>
               <span className={styles.statLabel}>{label}</span>
             </div>
             <div className={styles.statNum}>{value}</div>
@@ -208,7 +215,13 @@ export default function DashboardPage() {
           </h2>
           <div className={styles.actionsList}>
             {actions.map(({ to, Icon, label, desc, accent }) => (
-              <motion.div key={to} variants={item}>
+              <motion.div
+                key={to}
+                variants={item}
+                whileHover={reduced ? undefined : { x: 4 }}
+                whileTap={reduced ? undefined : { scale: 0.985 }}
+                transition={SPRING_TIGHT}
+              >
                 <Link to={to} className={styles.actionRow}>
                   <div className={styles.actionIcon} style={{ '--accent': accent } as React.CSSProperties}>
                     <Icon size={16} strokeWidth={2} />
@@ -236,20 +249,47 @@ export default function DashboardPage() {
           </h2>
 
           {isFirstTime ? (
-            <div className={styles.emptyState}>
-              <div className={styles.emptyIcon}>
+            <motion.div
+              className={styles.emptyState}
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <motion.div
+                className={styles.emptyIcon}
+                animate={reduced ? undefined : { y: [0, -4, 0] }}
+                transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+              >
                 <FileText size={22} strokeWidth={1.5} />
-              </div>
+              </motion.div>
               <p className={styles.emptyTitle}>Henüz belge yok</p>
               <p className={styles.emptyDesc}>İlk PDF belgenizi yükleyerek başlayın</p>
-              <Link to="/translate" className={styles.emptyBtn}>
-                Belge Yükle <ArrowRight size={13} />
-              </Link>
-            </div>
+              <motion.div
+                whileHover={reduced ? undefined : { y: -2 }}
+                whileTap={reduced ? undefined : { scale: 0.96 }}
+                transition={SPRING_TIGHT}
+                style={{ display: 'inline-block' }}
+              >
+                <Link to="/translate" className={styles.emptyBtn}>
+                  Belge Yükle <ArrowRight size={13} />
+                </Link>
+              </motion.div>
+            </motion.div>
           ) : (
-            <div className={styles.docList}>
+            <motion.div
+              className={styles.docList}
+              variants={stagger}
+              initial="hidden"
+              animate="visible"
+            >
               {documents.map(doc => (
-                <div key={doc.id} className={styles.docRow}>
+                <motion.div
+                  key={doc.id}
+                  className={styles.docRow}
+                  variants={item}
+                  whileHover={reduced ? undefined : { x: 3 }}
+                  transition={SPRING_TIGHT}
+                >
                   <div className={styles.docIconWrap}>
                     <FileText size={14} strokeWidth={2} />
                   </div>
@@ -263,12 +303,20 @@ export default function DashboardPage() {
                   <span className={`${styles.docBadge} ${doc.status === 'completed' ? styles.done : doc.status === 'error' ? styles.err : styles.proc}`}>
                     {STATUS_LABELS[doc.status] || doc.status}
                   </span>
-                </div>
+                </motion.div>
               ))}
               <Link to="/documents" className={styles.viewAll}>
-                Tümünü görüntüle <ArrowRight size={13} />
+                Tümünü görüntüle
+                <motion.span
+                  style={{ display: 'inline-flex' }}
+                  initial={{ x: 0 }}
+                  whileHover={reduced ? undefined : { x: 4 }}
+                  transition={SPRING_TIGHT}
+                >
+                  <ArrowRight size={13} />
+                </motion.span>
               </Link>
-            </div>
+            </motion.div>
           )}
         </motion.div>
       </div>

@@ -28,9 +28,9 @@
 .targetFlag { font-size: var(--font-size-xl); }
 .targetText { font-size: var(--font-size-sm); font-weight: var(--font-weight-semibold); }
 .actions { display: flex; gap: var(--space-4); margin-top: var(--space-8); }
-.btnPrimary { flex: 1; padding: var(--space-4); background: var(--color-accent); color: white; border: none; border-radius: var(--radius-lg); font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); font-family: var(--font-family); cursor: pointer; transition: all var(--duration-fast) var(--ease-out); }
-.btnPrimary:hover { transform: translateY(-1px); box-shadow: var(--shadow-glow); }
-.btnPrimary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.btnPrimary { flex: 1; padding: var(--space-4); background: var(--color-accent); color: white; border: none; border-radius: var(--radius-lg); font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); font-family: var(--font-family); cursor: pointer; transition: background-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out); box-shadow: 0 2px 8px rgba(79,70,229,0.2); }
+.btnPrimary:hover { box-shadow: var(--shadow-glow); background: var(--color-accent-hover); }
+.btnPrimary:disabled { opacity: 0.5; cursor: not-allowed; }
 .btnSecondary { padding: var(--space-4) var(--space-6); background: var(--color-surface); border: 1px solid var(--color-border-strong); border-radius: var(--radius-lg); font-size: var(--font-size-base); font-weight: var(--font-weight-medium); font-family: var(--font-family); cursor: pointer; color: var(--color-text-primary); transition: all var(--duration-fast) var(--ease-out); }
 .progressSection { text-align: center; padding: var(--space-8) 0; }
 .progressRing { width: 120px; height: 120px; margin: 0 auto var(--space-6); position: relative; }
@@ -49,7 +49,7 @@
 .resultBtn { padding: var(--space-3) var(--space-6); border-radius: var(--radius-full); font-size: var(--font-size-sm); font-weight: var(--font-weight-semibold); font-family: var(--font-family); border: 1px solid var(--color-border-strong); background: var(--color-surface); color: var(--color-text-primary); cursor: pointer; transition: all var(--duration-fast) var(--ease-out); text-decoration: none; display: inline-flex; align-items: center; gap: var(--space-2); }
 .resultBtn:hover { background: var(--color-surface-hover); color: var(--color-text-primary); }
 .resultBtnPrimary { background: var(--color-accent); color: white; border-color: transparent; }
-.resultBtnPrimary:hover { box-shadow: 0 4px 20px rgba(17,24,39,0.25); transform: translateY(-1px); color: white; }
+.resultBtnPrimary:hover { box-shadow: 0 4px 20px rgba(79,70,229,0.35); color: white; background: var(--color-accent-hover); }
 @media (max-width: 640px) { .langGrid { grid-template-columns: repeat(3, 1fr); } .langAuto { grid-column: span 3; } }
 
 /* Demo modu bildirimi — AI henüz bağlı değil */

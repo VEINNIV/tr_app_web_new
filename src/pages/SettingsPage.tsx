@@ -6,15 +6,18 @@
  */
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion, useReducedMotion, type Variants } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { User, CreditCard, LogOut, Shield } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { SPRING_TIGHT } from '../components/ui/motion';
 import styles from '../styles/components/settings.module.css';
 
 export default function SettingsPage() {
   const { profile, signOut, refreshProfile } = useAuth();
   const navigate = useNavigate();
+  const reduced = useReducedMotion();
   const [fullName, setFullName] = useState(profile?.full_name || '');
   const [saving, setSaving] = useState(false);
 
@@ -49,12 +52,22 @@ export default function SettingsPage() {
     setSaving(false);
   };
 
+  const cardVariants: Variants = {
+    hidden: { opacity: 0, y: 16 },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] as const } },
+  };
+
   return (
-    <div className={styles.page}>
-      <h1 className={styles.title}>Ayarlar</h1>
+    <motion.div
+      className={styles.page}
+      initial="hidden"
+      animate="visible"
+      variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.08, delayChildren: 0.05 } } }}
+    >
+      <motion.h1 className={styles.title} variants={cardVariants}>Ayarlar</motion.h1>
 
       {/* ── Profil Kartı ─────────────────────────────────────── */}
-      <div className={styles.card}>
+      <motion.div className={styles.card} variants={cardVariants}>
         <div className={styles.cardTitle}>
           <User size={16} /> Profil Bilgileri
         </div>
@@ -82,17 +95,20 @@ export default function SettingsPage() {
           </span>
         </div>
 
-        <button
+        <motion.button
           className={styles.btnPrimary}
           onClick={handleSave}
           disabled={saving}
+          whileHover={reduced || saving ? undefined : { y: -2 }}
+          whileTap={reduced || saving ? undefined : { scale: 0.97 }}
+          transition={SPRING_TIGHT}
         >
           {saving ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
-        </button>
-      </div>
+        </motion.button>
+      </motion.div>
 
       {/* ── Abonelik Kartı ───────────────────────────────────── */}
-      <div className={styles.card}>
+      <motion.div className={styles.card} variants={cardVariants}>
         <div className={styles.cardTitle}>
           <CreditCard size={16} /> Abonelik ve Kredi
         </div>
@@ -117,13 +133,15 @@ export default function SettingsPage() {
         {/* Kredi kullanım çubuğu */}
         <div className={styles.creditBarWrapper}>
           <div className={styles.creditBarTrack}>
-            <div
+            <motion.div
               className={styles.creditBarFill}
-              style={{
+              initial={{ width: 0 }}
+              animate={{
                 width: `${profile.credits_monthly_limit > 0
                   ? Math.round((profile.credits_remaining / profile.credits_monthly_limit) * 100)
                   : 0}%`
               }}
+              transition={{ duration: 1.1, ease: [0.22, 1, 0.36, 1], delay: 0.4 }}
             />
           </div>
           <span className={styles.creditBarLabel}>
@@ -132,10 +150,10 @@ export default function SettingsPage() {
               : 0}% kalan
           </span>
         </div>
-      </div>
+      </motion.div>
 
       {/* ── Güvenlik Kartı ───────────────────────────────────── */}
-      <div className={styles.card}>
+      <motion.div className={styles.card} variants={cardVariants}>
         <div className={styles.cardTitle}>
           <Shield size={16} /> Güvenlik
         </div>
@@ -146,20 +164,26 @@ export default function SettingsPage() {
         <p className={styles.securityNote}>
           Şifrenizi değiştirmek için kayıtlı e-posta adresinize sıfırlama bağlantısı gönderilir.
         </p>
-      </div>
+      </motion.div>
 
       {/* ── Hesap Çıkış Kartı ────────────────────────────────── */}
-      <div className={styles.card}>
+      <motion.div className={styles.card} variants={cardVariants}>
         <div className={styles.cardTitle}>
           <LogOut size={16} /> Hesap İşlemleri
         </div>
         <p className={styles.rowLabel} style={{ marginBottom: '1rem' }}>
           Oturumunuzu kapattığınızda verileriniz güvende kalır.
         </p>
-        <button className={styles.btnDanger} onClick={handleSignOut}>
+        <motion.button
+          className={styles.btnDanger}
+          onClick={handleSignOut}
+          whileHover={reduced ? undefined : { y: -2 }}
+          whileTap={reduced ? undefined : { scale: 0.97 }}
+          transition={SPRING_TIGHT}
+        >
           Çıkış Yap
-        </button>
-      </div>
-    </div>
+        </motion.button>
+      </motion.div>
+    </motion.div>
   );
 }

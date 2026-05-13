@@ -5,10 +5,13 @@
  * Kullanıcının yüklediği ve çevirdiği tüm belgelerin listelendiği sayfa.
  * Her kart için durum, çeviri metnini görüntüleme ve silme işlemleri içerir.
  */
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { FileText, MessageSquare, Trash2, FolderOpen, Eye, X, Languages, DownloadCloud } from 'lucide-react';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { FileText, MessageSquare, Trash2, FolderOpen, Eye, X, Languages, DownloadCloud, FileType, FileCode } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { exportMarkdownToPDF, exportMarkdownToDOCX, exportMarkdownToTxt } from '../lib/exporters';
+import { SPRING_TIGHT } from '../components/ui/motion';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { STATUS_LABELS } from '../lib/constants';
@@ -16,7 +19,6 @@ import type { Document, Translation } from '../types';
 import styles from '../styles/components/documents.module.css';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import html2pdf from 'html2pdf.js';
 
 /** Belge + varsa ilk çeviri bilgisi */
 interface DocumentWithTranslation extends Document {
@@ -25,9 +27,11 @@ interface DocumentWithTranslation extends Document {
 
 export default function DocumentsPage() {
   const { profile } = useAuth();
+  const reduced = useReducedMotion();
   const [documents, setDocuments] = useState<DocumentWithTranslation[]>([]);
   const [selectedDoc, setSelectedDoc] = useState<DocumentWithTranslation | null>(null);
-  const modalContentRef = useRef<HTMLDivElement>(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exporting, setExporting] = useState<null | 'pdf' | 'docx' | 'txt'>(null);
 
   // Belgeleri ve çevirilerini birlikte çek
   useEffect(() => {
@@ -71,18 +75,29 @@ export default function DocumentsPage() {
     if (selectedDoc?.id === id) setSelectedDoc(null);
   };
 
-  /** PDF Olarak İndir */
-  const handleDownloadPDF = () => {
-    if (!modalContentRef.current || !selectedDoc) return;
-    const opt = {
-      margin:       15,
-      filename:     `${selectedDoc.original_name.replace('.pdf', '')}_ceviri.pdf`,
-      image:        { type: 'jpeg', quality: 0.98 },
-      html2canvas:  { scale: 2, useCORS: true },
-      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
-    };
-    // @ts-expect-error html2pdf is not typed
-    html2pdf().set(opt).from(modalContentRef.current).save();
+  /** Çeviriyi seçilen formatta indir */
+  const downloadAs = async (format: 'pdf' | 'docx' | 'txt') => {
+    if (!selectedDoc?.translation?.translated_text) return;
+    const md = selectedDoc.translation.translated_text.pages.join('\n\n');
+    const baseName = selectedDoc.original_name.replace(/\.pdf$/i, '') + '_ceviri';
+    const subtitle = `Türkçe çeviri • ${new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}`;
+    setExporting(format);
+    try {
+      if (format === 'pdf') {
+        await exportMarkdownToPDF(md, { filename: `${baseName}.pdf`, title: selectedDoc.original_name, subtitle });
+      } else if (format === 'docx') {
+        await exportMarkdownToDOCX(md, { filename: `${baseName}.docx`, title: selectedDoc.original_name, subtitle });
+      } else {
+        exportMarkdownToTxt(md, `${baseName}.txt`);
+      }
+      toast.success(`${format.toUpperCase()} indirildi`);
+    } catch (err) {
+      console.error(err);
+      toast.error('İndirme başarısız oldu');
+    } finally {
+      setExporting(null);
+      setExportOpen(false);
+    }
   };
 
   return (
@@ -92,9 +107,15 @@ export default function DocumentsPage() {
           <h1 className={styles.title}>Dokümanlarım</h1>
           <p className={styles.desc}>Yüklediğiniz ve çevirdiğiniz tüm belgeler burada.</p>
         </div>
-        <Link to="/translate" className={styles.newBtn}>
-          + Yeni Çeviri
-        </Link>
+        <motion.div
+          whileHover={reduced ? undefined : { y: -2 }}
+          whileTap={reduced ? undefined : { scale: 0.96 }}
+          transition={SPRING_TIGHT}
+        >
+          <Link to="/translate" className={styles.newBtn}>
+            + Yeni Çeviri
+          </Link>
+        </motion.div>
       </div>
 
       {/* Boş durum */}
@@ -110,57 +131,87 @@ export default function DocumentsPage() {
         </div>
       ) : (
         <div className={styles.grid}>
-          {documents.map((doc, i) => (
-            <motion.div
-              key={doc.id}
-              className={styles.card}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05 }}
-            >
-              {/* Üst kısım: ikon + isim + durum */}
-              <div className={styles.cardHeader}>
-                <div className={styles.cardIcon}><FileText size={20} /></div>
-                <div className={styles.cardInfo}>
-                  <div className={styles.cardName} title={doc.original_name}>{doc.original_name}</div>
-                  <div className={styles.cardMeta}>
-                    {doc.page_count || '?'} sayfa &bull; {(doc.file_size_bytes / 1024 / 1024).toFixed(1)} MB
+          <AnimatePresence mode="popLayout">
+            {documents.map((doc, i) => (
+              <motion.div
+                key={doc.id}
+                layout
+                className={styles.card}
+                initial={{ opacity: 0, y: 20, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.92, transition: { duration: 0.22 } }}
+                transition={{ delay: i * 0.05, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                whileHover={reduced ? undefined : { y: -4 }}
+              >
+                {/* Üst kısım: ikon + isim + durum */}
+                <div className={styles.cardHeader}>
+                  <motion.div
+                    className={styles.cardIcon}
+                    whileHover={reduced ? undefined : { rotate: -8, scale: 1.08 }}
+                    transition={SPRING_TIGHT}
+                  >
+                    <FileText size={20} />
+                  </motion.div>
+                  <div className={styles.cardInfo}>
+                    <div className={styles.cardName} title={doc.original_name}>{doc.original_name}</div>
+                    <div className={styles.cardMeta}>
+                      {doc.page_count || '?'} sayfa &bull; {(doc.file_size_bytes / 1024 / 1024).toFixed(1)} MB
+                    </div>
                   </div>
+                  <span className={`${styles.status} ${statusClass(doc.status)}`}>
+                    {STATUS_LABELS[doc.status] || doc.status}
+                  </span>
                 </div>
-                <span className={`${styles.status} ${statusClass(doc.status)}`}>
-                  {STATUS_LABELS[doc.status] || doc.status}
-                </span>
-              </div>
 
-              {/* Tarih */}
-              <div className={styles.cardDate}>
-                {new Date(doc.created_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}
-              </div>
-
-              {/* Çeviri dil satırı */}
-              {doc.translation && (
-                <div className={styles.translationRow}>
-                  <Languages size={13} />
-                  <span>Türkçe çeviri mevcut</span>
+                {/* Tarih */}
+                <div className={styles.cardDate}>
+                  {new Date(doc.created_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}
                 </div>
-              )}
 
-              {/* İşlem butonları */}
-              <div className={styles.cardActions}>
-                {doc.translation?.translated_text && (
-                  <button className={styles.btnView} onClick={() => setSelectedDoc(doc)}>
-                    <Eye size={14} /> Görüntüle
-                  </button>
+                {/* Çeviri dil satırı */}
+                {doc.translation && (
+                  <div className={styles.translationRow}>
+                    <Languages size={13} />
+                    <span>Türkçe çeviri mevcut</span>
+                  </div>
                 )}
-                <Link to="/chat" className={styles.btnChat}>
-                  <MessageSquare size={14} /> AI Sor
-                </Link>
-                <button className={styles.btnDelete} onClick={() => handleDelete(doc.id)}>
-                  <Trash2 size={14} /> Sil
-                </button>
-              </div>
-            </motion.div>
-          ))}
+
+                {/* İşlem butonları */}
+                <div className={styles.cardActions}>
+                  {doc.translation?.translated_text && (
+                    <motion.button
+                      className={styles.btnView}
+                      onClick={() => setSelectedDoc(doc)}
+                      whileHover={reduced ? undefined : { y: -1 }}
+                      whileTap={reduced ? undefined : { scale: 0.95 }}
+                      transition={SPRING_TIGHT}
+                    >
+                      <Eye size={14} /> Görüntüle
+                    </motion.button>
+                  )}
+                  <motion.div
+                    whileHover={reduced ? undefined : { y: -1 }}
+                    whileTap={reduced ? undefined : { scale: 0.95 }}
+                    transition={SPRING_TIGHT}
+                    style={{ display: 'inline-flex' }}
+                  >
+                    <Link to="/chat" className={styles.btnChat}>
+                      <MessageSquare size={14} /> AI Sor
+                    </Link>
+                  </motion.div>
+                  <motion.button
+                    className={styles.btnDelete}
+                    onClick={() => handleDelete(doc.id)}
+                    whileHover={reduced ? undefined : { y: -1 }}
+                    whileTap={reduced ? undefined : { scale: 0.95 }}
+                    transition={SPRING_TIGHT}
+                  >
+                    <Trash2 size={14} /> Sil
+                  </motion.button>
+                </div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
         </div>
       )}
 
@@ -186,16 +237,62 @@ export default function DocumentsPage() {
                   <h2 className={styles.modalTitle}>{selectedDoc.original_name}</h2>
                   <p className={styles.modalSub}>Türkçe Çeviri</p>
                 </div>
-                <div style={{ display: 'flex', gap: '12px' }}>
-                  <button className={styles.btnView} style={{ background: 'var(--color-success-bg)', color: 'var(--color-success)', border: 'none', padding: '8px 12px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '500' }} onClick={handleDownloadPDF}>
-                    <DownloadCloud size={16} /> PDF İndir
-                  </button>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', position: 'relative' }}>
+                  <motion.button
+                    className={styles.btnView}
+                    style={{ background: 'var(--color-success-bg)', color: 'var(--color-success)', border: 'none', padding: '8px 12px', borderRadius: 'var(--radius-sm)', cursor: exporting ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 500 }}
+                    onClick={() => setExportOpen(o => !o)}
+                    disabled={!!exporting}
+                    whileHover={reduced || exporting ? undefined : { y: -1 }}
+                    whileTap={reduced || exporting ? undefined : { scale: 0.96 }}
+                    transition={SPRING_TIGHT}
+                  >
+                    <DownloadCloud size={16} />
+                    {exporting ? `${exporting.toUpperCase()} hazırlanıyor…` : 'İndir'}
+                  </motion.button>
+                  <AnimatePresence>
+                    {exportOpen && !exporting && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -8, scale: 0.96 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -8, scale: 0.96 }}
+                        transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                        style={{
+                          position: 'absolute', top: 'calc(100% + 6px)', right: 60,
+                          background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+                          borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)',
+                          padding: 6, minWidth: 180, zIndex: 5,
+                        }}
+                      >
+                        {([
+                          { fmt: 'pdf' as const, label: 'PDF (.pdf)', icon: <FileText size={14} /> },
+                          { fmt: 'docx' as const, label: 'Word (.docx)', icon: <FileType size={14} /> },
+                          { fmt: 'txt' as const, label: 'Metin (.txt)', icon: <FileCode size={14} /> },
+                        ]).map(({ fmt, label, icon }) => (
+                          <button
+                            key={fmt}
+                            onClick={() => downloadAs(fmt)}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 8,
+                              width: '100%', padding: '8px 10px', background: 'transparent',
+                              border: 'none', borderRadius: 8, cursor: 'pointer',
+                              fontSize: 13, color: 'var(--color-text-primary)', textAlign: 'left',
+                            }}
+                            onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-bg-alt)')}
+                            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                          >
+                            {icon} {label}
+                          </button>
+                        ))}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                   <button className={styles.modalClose} onClick={() => setSelectedDoc(null)}>
                     <X size={20} />
                   </button>
                 </div>
               </div>
-              <div className={`${styles.modalBody} markdown-body`} ref={modalContentRef}>
+              <div className={`${styles.modalBody} markdown-body`}>
                 <ReactMarkdown remarkPlugins={[remarkGfm as any]}>
                   {selectedDoc.translation?.translated_text?.pages.join('\n\n') || ''}
                 </ReactMarkdown>

@@ -7,11 +7,13 @@
  */
 import { useState, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, FileText, X, Check, AlertCircle, Download, MessageSquare, ArrowRight, Globe, Sparkles, Search } from 'lucide-react';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { Upload, FileText, X, Check, AlertCircle, Download, MessageSquare, ArrowRight, Globe, Info, Search } from 'lucide-react';
+import { exportMarkdownToPDF } from '../lib/exporters';
+import { SPRING_TIGHT } from '../components/ui/motion';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { translateDocument, detectLanguage } from '../lib/ai';
+import { translatePDFSmart, detectLanguage } from '../lib/ai';
 import * as pdfjsLib from 'pdfjs-dist';
 
 // Set up PDF.js worker
@@ -22,6 +24,7 @@ import styles from '../styles/components/translator.module.css';
 
 export default function TranslatorPage() {
   const { profile } = useAuth();
+  const reduced = useReducedMotion();
   const [step, setStep] = useState<TranslationStep>('upload');
   const [file, setFile] = useState<File | null>(null);
   const [sourceLang, setSourceLang] = useState('auto');
@@ -32,6 +35,7 @@ export default function TranslatorPage() {
   const [_resultDocId, setResultDocId] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
+  const [translatedText, setTranslatedText] = useState('');
 
   // ── Sürükle-bırak yöneticileri ──────────────────────────────
   const handleDrag = useCallback((e: React.DragEvent) => {
@@ -91,56 +95,96 @@ export default function TranslatorPage() {
       if (docErr) throw new Error('Doküman oluşturulamadı');
       const docId = docData.id;
 
-      // Adım 3: Metin çıkar (PDF Parsing)
-      setStatusText('Metin çıkarılıyor'); setDetailText('PDF analiz ediliyor...'); setProgress(30);
-      
-      let text = '';
+      // Adım 3: Metin çıkar — sayfa sayısını ve metin yoğunluğunu ölç
+      setStatusText('PDF analiz ediliyor'); setDetailText('Sayfa yapısı inceleniyor...'); setProgress(20);
+
+      let extractedText = '';
+      let pageCount = 0;
       try {
         const arrayBuffer = await file.arrayBuffer();
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        pageCount = pdf.numPages;
         let fullText = '';
-        
+
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i);
           const textContent = await page.getTextContent();
-          const pageText = textContent.items.map((item: any) => item.str).join(' ');
+          // Metin öğelerini aralarına boşluk bırakarak birleştir
+          const pageText = textContent.items
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            .map((item: any) => ('str' in item ? item.str : ''))
+            .join(' ');
           fullText += pageText + '\n\n';
+          setProgress(20 + Math.round((i / pdf.numPages) * 10));
         }
-        text = fullText.trim();
-        
-        if (!text) throw new Error('PDF içinde okunabilir metin bulunamadı.');
+        extractedText = fullText.trim();
       } catch (pdfErr) {
-        throw new Error('PDF okuma hatası: ' + (pdfErr instanceof Error ? pdfErr.message : 'Bilinmeyen hata'));
+        throw new Error('PDF okunamadı: ' + (pdfErr instanceof Error ? pdfErr.message : 'Bilinmeyen hata'));
       }
 
-      // Adım 4: Dil tespiti
-      setStatusText('Dil tespit ediliyor'); setProgress(40);
+      // Adım 4: Dil tespiti (metin yok ya da az ise multimodal mod kullanılacak)
+      const avgCharsPerPage = pageCount > 0 ? extractedText.length / pageCount : 0;
+      const isImageHeavy = avgCharsPerPage < 80;
+
       let detectedLang = sourceLang;
       if (sourceLang === 'auto') {
-        detectedLang = await detectLanguage(text.slice(0, 1000));
-        setDetailText(`Tespit edilen dil: ${detectedLang}`);
+        setStatusText('Dil tespit ediliyor'); setProgress(33);
+        const sampleText = extractedText.slice(0, 1000);
+        detectedLang = sampleText.length > 20
+          ? await detectLanguage(sampleText)
+          : 'en'; // metin yoksa varsayılan
+        setDetailText(`Tespit edilen dil: ${detectedLang.toUpperCase()}`);
       }
 
-      // Adım 5: AI ile çevir
-      setStatusText('Çevriliyor'); setDetailText('AI çevirisi devam ediyor...'); setProgress(50);
-      const translated = await translateDocument(text.slice(0, 10000), detectedLang, TARGET_LANGUAGE.code);
-      setProgress(80);
+      // Sayfa sayısını güncelle
+      await supabase.from('documents').update({ page_count: pageCount }).eq('id', docId);
 
-      // Adım 6: Çeviri kaydı oluştur
-      setStatusText('Sonuç kaydediliyor'); setProgress(90);
+      // Adım 5: Akıllı çeviri modu seç
+      if (isImageHeavy) {
+        setStatusText('Multimodal çeviri');
+        setDetailText('Taranmış/görsel PDF — AI doğrudan okuyor...');
+      } else {
+        setStatusText('Çevriliyor');
+        setDetailText(`${pageCount} sayfa işleniyor...`);
+      }
+      setProgress(40);
+
+      const { result: translated } = await translatePDFSmart(
+        file,
+        extractedText,
+        pageCount,
+        {
+          sourceLang: detectedLang,
+          targetLang: TARGET_LANGUAGE.code,
+          onProgress: ({ chunk, totalChunks, pct }) => {
+            setProgress(40 + Math.round((pct / 100) * 48));
+            if (!isImageHeavy) {
+              setDetailText(`${chunk}/${totalChunks} bölüm tamamlandı`);
+            }
+          },
+        },
+      );
+      setProgress(90);
+
+      // Adım 6: Çeviri kaydı oluştur — tüm metin tek alanda Markdown
+      setStatusText('Sonuç kaydediliyor'); setProgress(95);
+      // Kredi maliyeti = sayfa sayısı (en az 1)
+      const creditsCost = Math.max(1, pageCount);
       await supabase.from('translations').insert({
         document_id: docId, user_id: profile.id,
         target_language: TARGET_LANGUAGE.code,
-        translated_text: { pages: [translated] },
+        translated_text: { pages: [translated], pageCount },
         progress: 100, status: 'completed',
-        credits_used: 1,
+        credits_used: creditsCost,
       });
 
-      // Adım 7: Dokümanı güncelle ve krediyi düş
+      // Adım 7: Dokümanı güncelle ve krediyi düş (sayfa başına 1 kredi)
       await supabase.from('documents').update({ status: 'completed', original_language: detectedLang }).eq('id', docId);
-      await supabase.from('profiles').update({ credits_remaining: Math.max(0, profile.credits_remaining - 1) }).eq('id', profile.id);
+      await supabase.from('profiles').update({
+        credits_remaining: Math.max(0, profile.credits_remaining - creditsCost),
+      }).eq('id', profile.id);
 
-      setProgress(100); setResultDocId(docId); setStep('result');
+      setProgress(100); setResultDocId(docId); setTranslatedText(translated); setStep('result');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Çeviri sırasında hata oluştu';
       setError(msg); setStep('result');
@@ -167,59 +211,122 @@ export default function TranslatorPage() {
         {/* Yükleme ve Yapılandırma Adımı */}
         {(step === 'upload' || step === 'config') && (
           <motion.div key="upload" className={styles.card} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
-            <div
+            <motion.div
               className={`${styles.dropzone} ${dragActive ? styles.dropzoneActive : ''}`}
               onDragEnter={handleDrag} onDragLeave={handleDrag} onDragOver={handleDrag} onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
+              whileHover={reduced ? undefined : { scale: 1.005 }}
+              whileTap={reduced ? undefined : { scale: 0.995 }}
+              animate={dragActive && !reduced ? { scale: 1.02 } : { scale: 1 }}
+              transition={SPRING_TIGHT}
             >
               <input ref={fileInputRef} type="file" accept="application/pdf" onChange={handleFileSelect} hidden />
-              <div className={styles.dropIcon}><Upload size={28} /></div>
+              <motion.div
+                className={styles.dropIcon}
+                animate={reduced ? undefined : { y: [0, -6, 0] }}
+                transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
+              >
+                <Upload size={28} />
+              </motion.div>
               <div className={styles.dropTitle}>PDF dosyanızı sürükleyin veya seçin</div>
               <div className={styles.dropHint}>Sadece PDF • Maks. 100 MB</div>
-            </div>
+            </motion.div>
+
+            <AnimatePresence>
+              {file && (
+                <motion.div
+                  className={styles.fileInfo}
+                  initial={{ opacity: 0, y: -8, height: 0 }}
+                  animate={{ opacity: 1, y: 0, height: 'auto' }}
+                  exit={{ opacity: 0, y: -8, height: 0 }}
+                  transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                  style={{ overflow: 'hidden' }}
+                >
+                  <div className={styles.fileInfoIcon}><FileText size={20} /></div>
+                  <div className={styles.fileInfoText}>
+                    <div className={styles.fileInfoName}>{file.name}</div>
+                    <div className={styles.fileInfoSize}>{formatSize(file.size)}</div>
+                  </div>
+                  <motion.button
+                    className={styles.fileRemove}
+                    onClick={() => setFile(null)}
+                    whileHover={reduced ? undefined : { rotate: 90, scale: 1.1 }}
+                    whileTap={reduced ? undefined : { scale: 0.9 }}
+                    transition={SPRING_TIGHT}
+                  >
+                    <X size={18} />
+                  </motion.button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+              {file && (
+                <motion.div
+                  className={styles.configSection}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 8 }}
+                  transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1], delay: 0.05 }}
+                >
+                  <div className={styles.configLabel}><Globe size={16} /> Kaynak Dil</div>
+                  <motion.div
+                    className={styles.langGrid}
+                    initial="hidden"
+                    animate="visible"
+                    variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.025, delayChildren: 0.1 } } }}
+                  >
+                    <motion.button
+                      className={`${styles.langOption} ${styles.langAuto} ${sourceLang === 'auto' ? styles.langSelected : ''}`}
+                      onClick={() => setSourceLang('auto')}
+                      variants={{ hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0 } }}
+                      whileHover={reduced ? undefined : { y: -2 }}
+                      whileTap={reduced ? undefined : { scale: 0.96 }}
+                      transition={SPRING_TIGHT}
+                    >
+                      <Search size={14} /> Otomatik Algıla
+                    </motion.button>
+                    {SUPPORTED_LANGUAGES.map(l => (
+                      <motion.button
+                        key={l.code}
+                        className={`${styles.langOption} ${sourceLang === l.code ? styles.langSelected : ''}`}
+                        onClick={() => setSourceLang(l.code)}
+                        variants={{ hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0 } }}
+                        whileHover={reduced ? undefined : { y: -2 }}
+                        whileTap={reduced ? undefined : { scale: 0.94 }}
+                        transition={SPRING_TIGHT}
+                      >
+                        {l.flag} {l.name}
+                      </motion.button>
+                    ))}
+                  </motion.div>
+                  <div className={styles.configLabel} style={{ marginTop: 'var(--space-5)' }}><ArrowRight size={16} /> Hedef Dil</div>
+                  <div className={styles.targetLang}>
+                    <span className={styles.targetFlag}>{TARGET_LANGUAGE.flag}</span>
+                    <span className={styles.targetText}>{TARGET_LANGUAGE.nativeName} ({TARGET_LANGUAGE.name})</span>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {file && (
-              <div className={styles.fileInfo}>
-                <div className={styles.fileInfoIcon}><FileText size={20} /></div>
-                <div className={styles.fileInfoText}>
-                  <div className={styles.fileInfoName}>{file.name}</div>
-                  <div className={styles.fileInfoSize}>{formatSize(file.size)}</div>
-                </div>
-                <button className={styles.fileRemove} onClick={() => setFile(null)}><X size={18} /></button>
+              <div className={styles.demoNotice}>
+                <Info size={14} />
+                <span>Çeviri sayfa başına 1 kredi tüketir. Uzun belgeler paralel işlenir.</span>
               </div>
             )}
-
-            {file && (
-              <div className={styles.configSection}>
-                <div className={styles.configLabel}><Globe size={16} /> Kaynak Dil</div>
-                <div className={styles.langGrid}>
-                  <button className={`${styles.langOption} ${styles.langAuto} ${sourceLang === 'auto' ? styles.langSelected : ''}`} onClick={() => setSourceLang('auto')}>
-                    <Search size={14} /> Otomatik Algıla
-                  </button>
-                  {SUPPORTED_LANGUAGES.map(l => (
-                    <button key={l.code} className={`${styles.langOption} ${sourceLang === l.code ? styles.langSelected : ''}`} onClick={() => setSourceLang(l.code)}>
-                      {l.flag} {l.name}
-                    </button>
-                  ))}
-                </div>
-                <div className={styles.configLabel} style={{ marginTop: 'var(--space-5)' }}><ArrowRight size={16} /> Hedef Dil</div>
-                <div className={styles.targetLang}>
-                  <span className={styles.targetFlag}>{TARGET_LANGUAGE.flag}</span>
-                  <span className={styles.targetText}>{TARGET_LANGUAGE.nativeName} ({TARGET_LANGUAGE.name})</span>
-                </div>
-              </div>
-            )}
-
-            {/* Demo modu bildirimi */}
-            <div className={styles.demoNotice}>
-              <Sparkles size={14} />
-              <span>AI motoru entegrasyon aşamasında. Dosya yükleme ve kayıt işlemleri aktif.</span>
-            </div>
 
             <div className={styles.actions}>
-              <button className={styles.btnPrimary} onClick={startTranslation} disabled={!file}>
+              <motion.button
+                className={styles.btnPrimary}
+                onClick={startTranslation}
+                disabled={!file}
+                whileHover={reduced || !file ? undefined : { y: -2 }}
+                whileTap={reduced || !file ? undefined : { scale: 0.97 }}
+                transition={SPRING_TIGHT}
+              >
                 Çeviriyi Başlat
-              </button>
+              </motion.button>
             </div>
           </motion.div>
         )}
@@ -228,16 +335,36 @@ export default function TranslatorPage() {
         {step === 'progress' && (
           <motion.div key="progress" className={styles.card} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
             <div className={styles.progressSection}>
-              <div className={styles.progressRing}>
+              <motion.div
+                className={styles.progressRing}
+                animate={reduced ? undefined : { scale: [1, 1.04, 1] }}
+                transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+              >
                 <svg width="120" height="120" viewBox="0 0 120 120">
                   <defs><linearGradient id="progressGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#667EEA" /><stop offset="100%" stopColor="#764BA2" /></linearGradient></defs>
                   <circle className={styles.progressCircleBg} cx="60" cy="60" r="52" />
                   <circle className={styles.progressCircle} cx="60" cy="60" r="52" strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} />
                 </svg>
                 <div className={styles.progressPercent}>{progress}%</div>
-              </div>
-              <div className={styles.progressStatus}>{statusText}</div>
-              <div className={styles.progressDetail}>{detailText}</div>
+              </motion.div>
+              <motion.div
+                key={statusText}
+                className={styles.progressStatus}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3 }}
+              >
+                {statusText}
+              </motion.div>
+              <motion.div
+                key={detailText}
+                className={styles.progressDetail}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.4 }}
+              >
+                {detailText}
+              </motion.div>
             </div>
           </motion.div>
         )}
@@ -248,28 +375,97 @@ export default function TranslatorPage() {
             <div className={styles.resultSection}>
               {error ? (
                 <>
-                  <div className={`${styles.resultIcon} ${styles.resultError}`}><AlertCircle size={32} /></div>
+                  <motion.div
+                    className={`${styles.resultIcon} ${styles.resultError}`}
+                    initial={{ scale: 0, rotate: -30 }}
+                    animate={{ scale: 1, rotate: 0 }}
+                    transition={{ type: 'spring', stiffness: 360, damping: 16 }}
+                  >
+                    <AlertCircle size={32} />
+                  </motion.div>
                   <h2 className={styles.resultTitle}>Çeviri Başarısız</h2>
                   <p className={styles.resultDesc}>{error}</p>
                 </>
               ) : (
                 <>
-                  <div className={`${styles.resultIcon} ${styles.resultSuccess}`}><Check size={32} /></div>
-                  <h2 className={styles.resultTitle}>Çeviri Tamamlandı!</h2>
-                  <p className={styles.resultDesc}>Belgeniz başarıyla Türkçe'ye çevrildi.</p>
+                  <motion.div
+                    className={`${styles.resultIcon} ${styles.resultSuccess}`}
+                    initial={{ scale: 0 }}
+                    animate={{ scale: [0, 1.15, 1] }}
+                    transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1], times: [0, 0.6, 1] }}
+                  >
+                    <Check size={32} />
+                  </motion.div>
+                  <motion.h2
+                    className={styles.resultTitle}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.15, duration: 0.4 }}
+                  >
+                    Çeviri Tamamlandı!
+                  </motion.h2>
+                  <motion.p
+                    className={styles.resultDesc}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.22, duration: 0.4 }}
+                  >
+                    Belgeniz başarıyla Türkçe'ye çevrildi.
+                  </motion.p>
                 </>
               )}
-              <div className={styles.resultActions}>
-                <button className={styles.resultBtn} onClick={() => { setStep('upload'); setFile(null); setError(''); }}>
+              <motion.div
+                className={styles.resultActions}
+                initial="hidden"
+                animate="visible"
+                variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.06, delayChildren: 0.3 } } }}
+              >
+                <motion.button
+                  className={styles.resultBtn}
+                  onClick={() => { setStep('upload'); setFile(null); setError(''); }}
+                  variants={{ hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0 } }}
+                  whileHover={reduced ? undefined : { y: -2 }}
+                  whileTap={reduced ? undefined : { scale: 0.96 }}
+                  transition={SPRING_TIGHT}
+                >
                   Yeni Çeviri
-                </button>
+                </motion.button>
                 {!error && (
                   <>
-                    <Link to="/documents" className={`${styles.resultBtn} ${styles.resultBtnPrimary}`}><Download size={16} /> Dokümanlarım</Link>
-                    <Link to="/chat" className={styles.resultBtn}><MessageSquare size={16} /> AI'a Sor</Link>
+                    <motion.button
+                      className={`${styles.resultBtn} ${styles.resultBtnPrimary}`}
+                      onClick={() => void exportMarkdownToPDF(translatedText, {
+                        filename: `${(file?.name ?? 'ceviri').replace(/\.pdf$/i, '')}_TR.pdf`,
+                        title: file?.name?.replace(/\.pdf$/i, ''),
+                        subtitle: `Türkçe çeviri · ${new Date().toLocaleDateString('tr-TR')}`,
+                      })}
+                      disabled={!translatedText}
+                      variants={{ hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0 } }}
+                      whileHover={reduced ? undefined : { y: -2 }}
+                      whileTap={reduced ? undefined : { scale: 0.96 }}
+                      transition={SPRING_TIGHT}
+                    >
+                      <Download size={16} /> PDF İndir
+                    </motion.button>
+                    <motion.div
+                      variants={{ hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0 } }}
+                      whileHover={reduced ? undefined : { y: -2 }}
+                      whileTap={reduced ? undefined : { scale: 0.96 }}
+                      transition={SPRING_TIGHT}
+                    >
+                      <Link to="/documents" className={styles.resultBtn}><FileText size={16} /> Dokümanlarım</Link>
+                    </motion.div>
+                    <motion.div
+                      variants={{ hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0 } }}
+                      whileHover={reduced ? undefined : { y: -2 }}
+                      whileTap={reduced ? undefined : { scale: 0.96 }}
+                      transition={SPRING_TIGHT}
+                    >
+                      <Link to="/chat" className={styles.resultBtn}><MessageSquare size={16} /> AI'a Sor</Link>
+                    </motion.div>
                   </>
                 )}
-              </div>
+              </motion.div>
             </div>
           </motion.div>
         )}

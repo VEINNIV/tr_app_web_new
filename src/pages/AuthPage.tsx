@@ -1,18 +1,21 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { Mail, Lock, User, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { SPRING_TIGHT } from '../components/ui/motion';
 import styles from '../styles/components/auth.module.css';
 
 const FEATURES = [
   '12 dilden Türkçeye otomatik çeviri',
   '150+ sayfa kapasiteli AI motoru',
-  'Belge üzerinde soru-cevap asistanı',
-  'Supabase altyapısında güvenli depolama',
+  'Ders notu çıkarma ve AI soru-cevap',
+  'PDF · Word · TXT olarak indirme',
 ];
 
 export default function AuthPage() {
   const [searchParams] = useSearchParams();
+  const reduced = useReducedMotion();
   const [isRegister, setIsRegister] = useState(searchParams.get('mode') === 'register');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -66,9 +69,9 @@ export default function AuthPage() {
 
         <div className={styles.authLeftContent}>
           <h2 className={styles.authLeftQuote}>
-            Belgeleriniz artık{' '}
-            <span className={styles.authLeftQuoteAccent}>dil bariyerini</span>
-            {' '}aşıyor.
+            Yabancı kaynakları{' '}
+            <span className={styles.authLeftQuoteAccent}>saniyeler içinde</span>
+            {' '}anla.
           </h2>
           <div className={styles.authLeftFeatures}>
             {FEATURES.map((f, i) => (
@@ -95,29 +98,52 @@ export default function AuthPage() {
           </h1>
           <p className={styles.authFormSubtitle}>
             {isRegister
-              ? 'Ücretsiz hesabınızla 5 sayfa çeviri hakkı kazanın.'
+              ? 'Ücretsiz hesabınızla 10 kredi kazanın — hemen kullanmaya başlayın.'
               : 'Hesabınıza giriş yapın ve kaldığınız yerden devam edin.'}
           </p>
 
-          {error && <div className={styles.authError}>{error}</div>}
+          <AnimatePresence>
+            {error && (
+              <motion.div
+                key={error}
+                className={styles.authError}
+                initial={{ opacity: 0, y: -8, height: 0 }}
+                animate={{ opacity: 1, y: 0, height: 'auto' }}
+                exit={{ opacity: 0, y: -8, height: 0 }}
+                transition={{ duration: 0.22 }}
+                style={{ overflow: 'hidden' }}
+              >
+                {error}
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-          {isRegister && (
-            <div className={styles.inputGroup}>
-              <label className={styles.inputLabel} htmlFor="fullName">Ad Soyad</label>
-              <div className={styles.inputWrapper}>
-                <User size={16} className={styles.inputIcon} />
-                <input
-                  id="fullName"
-                  className={styles.input}
-                  type="text"
-                  value={fullName}
-                  onChange={e => setFullName(e.target.value)}
-                  placeholder="Adınız Soyadınız"
-                  required
-                />
-              </div>
-            </div>
-          )}
+          <AnimatePresence initial={false}>
+            {isRegister && (
+              <motion.div
+                className={styles.inputGroup}
+                initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+                transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                style={{ overflow: 'hidden' }}
+              >
+                <label className={styles.inputLabel} htmlFor="fullName">Ad Soyad</label>
+                <div className={styles.inputWrapper}>
+                  <User size={16} className={styles.inputIcon} />
+                  <input
+                    id="fullName"
+                    className={styles.input}
+                    type="text"
+                    value={fullName}
+                    onChange={e => setFullName(e.target.value)}
+                    placeholder="Adınız Soyadınız"
+                    required
+                  />
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           <div className={styles.inputGroup}>
             <label className={styles.inputLabel} htmlFor="email">E-posta</label>
@@ -160,13 +186,38 @@ export default function AuthPage() {
             </div>
           </div>
 
-          <button type="submit" className={styles.submitBtn} disabled={loading}>
-            {loading ? 'İşleniyor...' : isRegister ? 'Hesap Oluştur' : 'Giriş Yap'}
-          </button>
+          <motion.button
+            type="submit"
+            className={styles.submitBtn}
+            disabled={loading}
+            whileHover={reduced || loading ? undefined : { y: -2 }}
+            whileTap={reduced || loading ? undefined : { scale: 0.97 }}
+            transition={SPRING_TIGHT}
+          >
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.span
+                key={loading ? 'loading' : isRegister ? 'register' : 'signin'}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.18 }}
+                style={{ display: 'inline-block' }}
+              >
+                {loading ? 'İşleniyor...' : isRegister ? 'Hesap Oluştur' : 'Giriş Yap'}
+              </motion.span>
+            </AnimatePresence>
+          </motion.button>
 
           <div className={styles.divider}>veya</div>
 
-          <button type="button" className={styles.googleBtn} onClick={signInWithGoogle}>
+          <motion.button
+            type="button"
+            className={styles.googleBtn}
+            onClick={signInWithGoogle}
+            whileHover={reduced ? undefined : { y: -1 }}
+            whileTap={reduced ? undefined : { scale: 0.98 }}
+            transition={SPRING_TIGHT}
+          >
             <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
               <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -174,7 +225,7 @@ export default function AuthPage() {
               <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
             </svg>
             Google ile {isRegister ? 'Kayıt Ol' : 'Giriş Yap'}
-          </button>
+          </motion.button>
 
           <div className={styles.authToggle}>
             {isRegister ? 'Zaten hesabınız var mı? ' : 'Hesabınız yok mu? '}

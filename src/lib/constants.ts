@@ -21,20 +21,52 @@ export const TARGET_LANGUAGE: SupportedLanguage = {
 
 export const PRICING_PLANS: PricingPlan[] = [
   {
-    id: 'free', name: 'Free', price: 0, priceLabel: 'Ücretsiz', credits: 5,
-    features: ['5 sayfa/ay çeviri hakkı', 'Otomatik dil tespiti', '10 MB dosya limiti', 'Temel PDF çıktısı'],
+    id: 'free', name: 'Ücretsiz', price: 0, priceLabel: 'Ücretsiz', credits: 10,
+    features: [
+      '10 kredi/ay (≈2 PDF çeviri)',
+      'Otomatik dil tespiti',
+      '10 MB dosya limiti',
+      'PDF · Word · TXT export',
+      'AI Soru-Cevap',
+    ],
   },
   {
-    id: 'starter', name: 'Starter', price: 49, priceLabel: '₺49/ay', credits: 50,
-    features: ['50 sayfa/ay çeviri hakkı', 'Otomatik dil tespiti', '50 MB dosya limiti', 'Yüksek kalite PDF', 'AI Soru-Cevap (25 soru)', 'E-posta destek'],
+    id: 'starter', name: 'Öğrenci', price: 49, priceLabel: '₺49/ay', credits: 120,
+    features: [
+      '120 kredi/ay (≈24 PDF çeviri)',
+      'Otomatik dil tespiti',
+      '50 MB dosya limiti',
+      'PDF · Word · TXT export',
+      'Sınırsız AI Soru-Cevap',
+      'Ders notu çıkarma',
+      'E-posta destek',
+    ],
   },
   {
-    id: 'pro', name: 'Pro', price: 149, priceLabel: '₺149/ay', credits: 500, popular: true,
-    features: ['500 sayfa/ay çeviri hakkı', 'Otomatik dil tespiti', '100 MB dosya limiti', 'Premium PDF', 'Sınırsız AI Soru-Cevap', 'Öncelikli çeviri', 'Doküman arşivi', 'Öncelikli destek'],
+    id: 'pro', name: 'Profesyonel', price: 149, priceLabel: '₺149/ay', credits: 600, popular: true,
+    features: [
+      '600 kredi/ay (≈120 PDF çeviri)',
+      'Otomatik dil tespiti',
+      '100 MB dosya limiti',
+      'PDF · Word · TXT export',
+      'Sınırsız AI Soru-Cevap',
+      'Ders notu çıkarma',
+      'Öncelikli çeviri kuyruğu',
+      'Öncelikli destek',
+    ],
   },
   {
-    id: 'enterprise', name: 'Enterprise', price: -1, priceLabel: 'İletişime Geçin', credits: -1,
-    features: ['Sınırsız çeviri', 'Tüm diller + özel dil', 'Sınırsız dosya boyutu', 'API erişimi', 'Özel AI model', 'Beyaz etiket', 'SLA garantisi', 'Özel hesap yöneticisi'],
+    id: 'enterprise', name: 'Kurumsal', price: -1, priceLabel: 'İletişime Geçin', credits: -1,
+    features: [
+      'Sınırsız çeviri',
+      'Tüm diller + özel dil desteği',
+      'Sınırsız dosya boyutu',
+      'API erişimi',
+      'Toplu işlem (batch)',
+      'Beyaz etiket seçeneği',
+      'SLA garantisi',
+      'Özel hesap yöneticisi',
+    ],
   },
 ];
 
