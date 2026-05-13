@@ -164,7 +164,7 @@
 .btnPrimary:hover:not(:disabled) {
   background: var(--color-accent-hover);
   transform: translateY(-1px);
-  box-shadow: 0 4px 16px rgba(17,24,39,0.2);
+  box-shadow: 0 4px 16px rgba(79,70,229,0.3);
 }
 .btnPrimary:disabled {
   opacity: 0.6;

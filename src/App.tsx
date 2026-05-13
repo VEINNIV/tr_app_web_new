@@ -1,67 +1,49 @@
-import { Suspense, lazy, type ReactNode } from 'react';
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Toaster } from 'react-hot-toast';
-import { AuthProvider } from './context/AuthContext';
-import { useAuth } from './context/auth';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import Navbar from './components/ui/Navbar';
 
-const LandingPage = lazy(() => import('./pages/LandingPage'));
-const AuthPage = lazy(() => import('./pages/AuthPage'));
-const DashboardPage = lazy(() => import('./pages/DashboardPage'));
-const TranslatorPage = lazy(() => import('./pages/TranslatorPage'));
-const DocumentsPage = lazy(() => import('./pages/DocumentsPage'));
-const ChatPage = lazy(() => import('./pages/ChatPage'));
-const SettingsPage = lazy(() => import('./pages/SettingsPage'));
-const StudyNotesPage = lazy(() => import('./pages/StudyNotesPage'));
+const LandingPage        = lazy(() => import('./pages/LandingPage'));
+const AuthPage           = lazy(() => import('./pages/AuthPage'));
+const DashboardPage      = lazy(() => import('./pages/DashboardPage'));
+const TranslatorPage     = lazy(() => import('./pages/TranslatorPage'));
+const DocumentsPage      = lazy(() => import('./pages/DocumentsPage'));
+const ChatPage           = lazy(() => import('./pages/ChatPage'));
+const SettingsPage       = lazy(() => import('./pages/SettingsPage'));
+const StudyNotesPage     = lazy(() => import('./pages/StudyNotesPage'));
 const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage'));
-const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
+const NotFoundPage       = lazy(() => import('./pages/NotFoundPage'));
 
-// Protected route wrapper — redirects to auth if not logged in
-function LoadingFallback() {
+function PageLoader() {
   return (
     <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ width: 32, height: 32, border: '3px solid #e5e7eb', borderTopColor: '#111827', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+      <div style={{ width: 32, height: 32, border: '3px solid var(--color-border)', borderTopColor: 'var(--color-primary)', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
     </div>
   );
 }
 
-function ProtectedRoute({ children }: { children: ReactNode }) {
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const location = useLocation();
 
-  if (loading) {
-    return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ width: 32, height: 32, border: '3px solid #e5e7eb', borderTopColor: '#111827', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
-      </div>
-    );
-  }
-
+  if (loading) return <PageLoader />;
   if (!user) return <Navigate to="/auth" state={{ from: location }} replace />;
   return <>{children}</>;
 }
 
-// Admin route wrapper — redirects non-admins to dashboard
-function AdminRoute({ children }: { children: ReactNode }) {
+function AdminRoute({ children }: { children: React.ReactNode }) {
   const { user, isAdmin, loading } = useAuth();
   const location = useLocation();
 
-  if (loading) {
-    return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ width: 32, height: 32, border: '3px solid #e5e7eb', borderTopColor: '#111827', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
-      </div>
-    );
-  }
-
+  if (loading) return <PageLoader />;
   if (!user) return <Navigate to="/auth" state={{ from: location }} replace />;
   if (!isAdmin) return <Navigate to="/dashboard" replace />;
   return <>{children}</>;
 }
 
-// Wrapper for page transitions
-function PageTransition({ children }: { children: ReactNode }) {
+function PageTransition({ children }: { children: React.ReactNode }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -75,7 +57,6 @@ function PageTransition({ children }: { children: ReactNode }) {
   );
 }
 
-// Layout — shows/hides navbar based on route
 function AppLayout() {
   const location = useLocation();
   const hideNavbar = location.pathname === '/auth';
@@ -84,8 +65,8 @@ function AppLayout() {
     <>
       {!hideNavbar && <Navbar />}
       <main style={{ flex: 1, paddingTop: hideNavbar ? 0 : undefined }}>
-        <AnimatePresence mode="wait" initial={false}>
-          <Suspense fallback={<LoadingFallback />}>
+        <Suspense fallback={<PageLoader />}>
+          <AnimatePresence mode="wait" initial={false}>
             <Routes location={location} key={location.pathname}>
               <Route path="/" element={<PageTransition><LandingPage /></PageTransition>} />
               <Route path="/auth" element={<PageTransition><AuthPage /></PageTransition>} />
@@ -99,8 +80,8 @@ function AppLayout() {
               <Route path="/pricing" element={<PageTransition><LandingPage /></PageTransition>} />
               <Route path="*" element={<PageTransition><NotFoundPage /></PageTransition>} />
             </Routes>
-          </Suspense>
-        </AnimatePresence>
+          </AnimatePresence>
+        </Suspense>
       </main>
       <Toaster
         position="bottom-right"

@@ -4,12 +4,13 @@
  * Sadece admin rolündeki kullanıcılar erişebilir.
  * Kullanıcı yönetimi, kredi verme, platform istatistikleri.
  */
-import { useCallback, useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
+import { useEffect, useState } from 'react';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
   Shield, Users, FileText, Languages, CreditCard,
-  Search, ChevronDown, ChevronUp, Plus, Minus, BookOpen,
+  Search, ChevronDown, Plus, Minus, BookOpen,
 } from 'lucide-react';
+import { SPRING_TIGHT } from '../components/ui/motion';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import type { User, Plan, UserRole } from '../types';
@@ -23,6 +24,7 @@ interface PlatformStats {
 }
 
 export default function AdminDashboardPage() {
+  const reduced = useReducedMotion();
   const [users, setUsers] = useState<User[]>([]);
   const [stats, setStats] = useState<PlatformStats>({ totalUsers: 0, totalDocuments: 0, totalTranslations: 0, totalStudySessions: 0 });
   const [searchTerm, setSearchTerm] = useState('');
@@ -30,7 +32,13 @@ export default function AdminDashboardPage() {
   const [creditAmount, setCreditAmount] = useState(5);
   const [loading, setLoading] = useState(true);
 
-  const fetchData = useCallback(async () => {
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    setLoading(true);
+
     // Tüm kullanıcıları çek
     const { data: usersData } = await supabase
       .from('profiles')
@@ -50,14 +58,7 @@ export default function AdminDashboardPage() {
       totalStudySessions: studyCount ?? 0,
     });
     setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      fetchData();
-    }, 0);
-    return () => window.clearTimeout(timeoutId);
-  }, [fetchData]);
+  };
 
   /** Kullanıcının planını güncelle */
   const updateUserPlan = async (userId: string, newPlan: Plan) => {
@@ -145,9 +146,17 @@ export default function AdminDashboardPage() {
             className={styles.statCard}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.08 }}
+            transition={{ delay: i * 0.08, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+            whileHover={reduced ? undefined : { y: -3 }}
           >
-            <div className={styles.statIcon} style={{ color: s.color, background: `${s.color}12` }}>{s.icon}</div>
+            <motion.div
+              className={styles.statIcon}
+              style={{ color: s.color, background: `${s.color}12` }}
+              whileHover={reduced ? undefined : { rotate: -8, scale: 1.08 }}
+              transition={SPRING_TIGHT}
+            >
+              {s.icon}
+            </motion.div>
             <div className={styles.statValue}>{s.value}</div>
             <div className={styles.statLabel}>{s.label}</div>
           </motion.div>
@@ -170,10 +179,27 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        <div className={styles.userList}>
-          {filteredUsers.map(user => (
-            <div key={user.id} className={styles.userCard}>
-              <div className={styles.userRow} onClick={() => setExpandedUserId(expandedUserId === user.id ? null : user.id)}>
+        <motion.div
+          className={styles.userList}
+          layout
+        >
+          <AnimatePresence mode="popLayout">
+            {filteredUsers.map((user, i) => (
+              <motion.div
+                key={user.id}
+                layout
+                className={styles.userCard}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.96 }}
+                transition={{ delay: Math.min(i * 0.03, 0.4), duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+              >
+              <motion.div
+                className={styles.userRow}
+                onClick={() => setExpandedUserId(expandedUserId === user.id ? null : user.id)}
+                whileHover={reduced ? undefined : { x: 2 }}
+                transition={SPRING_TIGHT}
+              >
                 <div className={styles.userAvatar}>
                   {user.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?'}
                 </div>
@@ -189,15 +215,24 @@ export default function AdminDashboardPage() {
                   <CreditCard size={14} />
                   <span>{user.credits_remaining}/{user.credits_monthly_limit}</span>
                 </div>
-                {expandedUserId === user.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-              </div>
+                <motion.span
+                  style={{ display: 'inline-flex' }}
+                  animate={{ rotate: expandedUserId === user.id ? 180 : 0 }}
+                  transition={SPRING_TIGHT}
+                >
+                  <ChevronDown size={16} />
+                </motion.span>
+              </motion.div>
 
+              <AnimatePresence>
               {expandedUserId === user.id && (
                 <motion.div
                   className={styles.userExpanded}
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: 'auto', opacity: 1 }}
-                  transition={{ duration: 0.2 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                  style={{ overflow: 'hidden' }}
                 >
                   <div className={styles.expandedGrid}>
                     {/* Plan Değiştir */}
@@ -251,13 +286,22 @@ export default function AdminDashboardPage() {
                   </div>
                 </motion.div>
               )}
-            </div>
+              </AnimatePresence>
+            </motion.div>
           ))}
+          </AnimatePresence>
 
           {filteredUsers.length === 0 && (
-            <div className={styles.emptyState}>Kullanıcı bulunamadı.</div>
+            <motion.div
+              className={styles.emptyState}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              Kullanıcı bulunamadı.
+            </motion.div>
           )}
-        </div>
+        </motion.div>
       </div>
     </div>
   );

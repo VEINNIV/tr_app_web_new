@@ -55,14 +55,14 @@
 .navLogo {
   width: 36px; height: 36px;
   border-radius: var(--radius-md);
-  background: var(--color-accent);
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
   display: grid;
   place-items: center;
   font-weight: var(--font-weight-black);
   font-size: var(--font-size-xs);
   color: white;
   letter-spacing: -0.04em;
-  box-shadow: 0 2px 8px rgba(17,24,39,0.2);
+  box-shadow: 0 2px 8px rgba(79,70,229,0.3);
 }
 
 .navTitle {
@@ -104,16 +104,17 @@
 }
 
 .navLinkActive {
-  color: var(--color-bg);
+  color: white;
   font-weight: var(--font-weight-semibold);
 }
 
 .navLinkIndicator {
   position: absolute;
   top: 0; left: 0; right: 0; bottom: 0;
-  background: var(--color-text-primary);
+  background: var(--color-accent);
   border-radius: var(--radius-full);
   z-index: 0;
+  box-shadow: 0 2px 8px rgba(79,70,229,0.3);
 }
 
 .navLinkContent {
@@ -147,13 +148,12 @@
   font-weight: var(--font-weight-semibold);
   border: none;
   cursor: pointer;
-  transition: all var(--duration-fast) var(--ease-out);
+  transition: background-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
   text-decoration: none;
-  box-shadow: 0 1px 4px rgba(17,24,39,0.15);
+  box-shadow: 0 1px 6px rgba(79,70,229,0.3);
 }
 .navCta:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 3px 12px rgba(17,24,39,0.22);
+  box-shadow: 0 4px 14px rgba(79,70,229,0.4);
   background: var(--color-accent-hover);
   color: white;
 }

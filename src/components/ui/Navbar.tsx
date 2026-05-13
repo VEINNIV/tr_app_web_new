@@ -168,14 +168,19 @@ export default function Navbar() {
             {user ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                 {isLanding && (
-                  <Link to="/dashboard" className={styles.navLinkAuth} style={{ padding: '0.4rem 0.8rem', borderRadius: '8px', background: 'var(--color-surface)', border: '1px solid var(--color-border)', fontSize: '0.8125rem' }}>
-                    Dashboard'a Dön
-                  </Link>
+                  <motion.div whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }} transition={{ type: 'spring', stiffness: 520, damping: 28 }}>
+                    <Link to="/dashboard" className={styles.navLinkAuth} style={{ padding: '0.4rem 0.8rem', borderRadius: '8px', background: 'var(--color-surface)', border: '1px solid var(--color-border)', fontSize: '0.8125rem' }}>
+                      Dashboard'a Dön
+                    </Link>
+                  </motion.div>
                 )}
                 <div className={styles.profileWrapper} ref={profileRef}>
-                <button
+                <motion.button
                   className={styles.profileBtn}
                   onClick={() => setProfileOpen(!profileOpen)}
+                  whileHover={{ y: -1 }}
+                  whileTap={{ scale: 0.97 }}
+                  transition={{ type: 'spring', stiffness: 520, damping: 28 }}
                 >
                   <div className={styles.navAvatar}>{initials}</div>
                   <div className={styles.profileInfo}>
@@ -190,7 +195,7 @@ export default function Navbar() {
                     size={14}
                     className={`${styles.profileChevron} ${profileOpen ? styles.profileChevronOpen : ''}`}
                   />
-                </button>
+                </motion.button>
 
                 <AnimatePresence>
                   {profileOpen && (
@@ -237,9 +242,11 @@ export default function Navbar() {
           ) : (
             <>
               <Link to="/auth" className={styles.navLinkAuth}>Giriş Yap</Link>
-              <Link to="/auth?mode=register" className={styles.navCta}>
-                Ücretsiz Başla
-              </Link>
+              <motion.div whileHover={{ y: -2 }} whileTap={{ scale: 0.96 }} transition={{ type: 'spring', stiffness: 520, damping: 28 }}>
+                <Link to="/auth?mode=register" className={styles.navCta}>
+                  Ücretsiz Başla
+                </Link>
+              </motion.div>
             </>
           )}
 
