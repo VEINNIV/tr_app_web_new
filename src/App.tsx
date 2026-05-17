@@ -15,8 +15,10 @@ const DocumentsPage      = lazy(() => import('./pages/DocumentsPage'));
 const ChatPage           = lazy(() => import('./pages/ChatPage'));
 const SettingsPage       = lazy(() => import('./pages/SettingsPage'));
 const StudyNotesPage     = lazy(() => import('./pages/StudyNotesPage'));
-const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage'));
-const NotFoundPage       = lazy(() => import('./pages/NotFoundPage'));
+const AdminDashboardPage  = lazy(() => import('./pages/AdminDashboardPage'));
+const GlossaryPage        = lazy(() => import('./pages/GlossaryPage'));
+const SharedDocumentPage  = lazy(() => import('./pages/SharedDocumentPage'));
+const NotFoundPage        = lazy(() => import('./pages/NotFoundPage'));
 
 function PageLoader() {
   return (
@@ -79,6 +81,8 @@ function AppLayout() {
               <Route path="/settings" element={<ProtectedRoute><PageTransition><SettingsPage /></PageTransition></ProtectedRoute>} />
               <Route path="/study-notes" element={<ProtectedRoute><PageTransition><StudyNotesPage /></PageTransition></ProtectedRoute>} />
               <Route path="/admin" element={<AdminRoute><PageTransition><AdminDashboardPage /></PageTransition></AdminRoute>} />
+              <Route path="/glossary" element={<ProtectedRoute><PageTransition><GlossaryPage /></PageTransition></ProtectedRoute>} />
+              <Route path="/shared/:token" element={<PageTransition><SharedDocumentPage /></PageTransition>} />
               <Route path="/pricing" element={<PageTransition><LandingPage /></PageTransition>} />
               <Route path="*" element={<PageTransition><NotFoundPage /></PageTransition>} />
             </Routes>

@@ -146,6 +146,70 @@ async def extract_pdf(file: UploadFile = File(...)):
                     color=color_rgb,
                 ))
 
+        # ── Tablo desteği ────────────────────────────────────────────────
+        # find_tables() ile tablo hücrelerini doğru sırada çıkar;
+        # hücrelerin üst üste bindiği regular blokları filtrele.
+        table_rects_pts: list[fitz.Rect] = []
+        table_cell_blocks: list[TextBlock] = []
+        try:
+            finder = page.find_tables()
+            for tab in finder.tables:
+                table_rects_pts.append(fitz.Rect(tab.bbox))
+                rows = tab.extract()  # list[list[str|None]]
+                if not rows:
+                    continue
+                ncols = max(len(r) for r in rows)
+                if ncols == 0:
+                    continue
+                flat_cells = getattr(tab, "cells", [])
+                for r_idx, row in enumerate(rows):
+                    for c_idx, cell_text in enumerate(row):
+                        if not isinstance(cell_text, str) or not cell_text.strip():
+                            continue
+                        cell_idx = r_idx * ncols + c_idx
+                        if cell_idx >= len(flat_cells):
+                            continue
+                        cell_bbox = flat_cells[cell_idx]
+                        if cell_bbox is None:
+                            continue
+                        try:
+                            cx0 = float(cell_bbox[0])
+                            cy0 = float(cell_bbox[1])
+                            cx1 = float(cell_bbox[2])
+                            cy1 = float(cell_bbox[3])
+                        except (TypeError, IndexError):
+                            continue
+                        if cx1 - cx0 < 2 or cy1 - cy0 < 2:
+                            continue
+                        table_cell_blocks.append(TextBlock(
+                            text=cell_text.strip(),
+                            x=max(0.0, cx0 / pw),
+                            y=max(0.0, cy0 / ph),
+                            w=max(0.0, min(1.0, (cx1 - cx0) / pw)),
+                            h=max(0.0, min(1.0, (cy1 - cy0) / ph)),
+                            fontSize=9.0,
+                            fontName="",
+                            bold=False,
+                            color=[0.0, 0.0, 0.0],
+                        ))
+        except Exception as e:
+            print(f"  [INFO] Tablo tespiti p{page_idx + 1}: {e}")
+
+        # Tablo alanlarıyla çakışan regular blokları çıkar, tablo hücrelerini ekle
+        if table_rects_pts:
+            filtered: list[TextBlock] = []
+            for b in blocks:
+                cx = (b.x + b.w / 2) * pw
+                cy = (b.y + b.h / 2) * ph
+                in_table = any(
+                    tr.x0 <= cx <= tr.x1 and tr.y0 <= cy <= tr.y1
+                    for tr in table_rects_pts
+                )
+                if not in_table:
+                    filtered.append(b)
+            blocks = filtered + table_cell_blocks
+            blocks.sort(key=lambda b: (b.y, b.x))
+
         pages.append(PageData(
             pageNum=page_idx + 1,
             pageWidthPts=pw,
@@ -302,20 +366,129 @@ async def write_pdf(
     )
 
 
-# ── 4) Health + capabilities ──────────────────────────────────────────────────
+# ── 4) OCR ile metin çıkarma (taranmış PDF'ler için) ─────────────────────────
+
+@app.post("/ocr-extract", response_model=ExtractResponse)
+async def ocr_extract(
+    file: UploadFile = File(...),
+    language: str = Form("tur"),
+    min_chars_per_page: int = Form(50),
+):
+    """
+    Taranmış veya görüntü-tabanlı PDF'lerden OCR ile metin çıkarır.
+    Tesseract yüklü olması gerekir. Her sayfada yeterli metin varsa
+    normal çıkarmayı kullanır; yetersizse OCR'a geçer.
+
+    language: Tesseract dil kodu — tur (Türkçe), eng (İngilizce), vb.
+    min_chars_per_page: Bu kadar karakterden azsa sayfa OCR'a gönderilir.
+    """
+    data = await file.read()
+    doc = open_pdf(data)
+    pages: list[PageData] = []
+
+    for page_idx in range(doc.page_count):
+        page: fitz.Page = doc[page_idx]
+        pw, ph = page.rect.width, page.rect.height
+
+        # Önce normal çıkarma dene
+        normal_text = page.get_text("text")
+        use_ocr = len(normal_text.strip()) < min_chars_per_page
+
+        blocks: list[TextBlock] = []
+
+        if use_ocr:
+            # OCR modu: sayfayı rasterize et, Tesseract ile metin çıkar
+            try:
+                tp = page.get_textpage_ocr(flags=0, language=language, dpi=300, full=False)
+                text_dict = page.get_text("dict", textpage=tp,
+                                          flags=fitz.TEXT_PRESERVE_WHITESPACE)
+            except Exception as ocr_err:
+                print(f"  [WARN] OCR başarısız p{page_idx + 1}: {ocr_err}")
+                # OCR başarısız → normal çıkarmaya dön
+                text_dict = page.get_text(
+                    "dict",
+                    flags=fitz.TEXT_PRESERVE_WHITESPACE | fitz.TEXT_MEDIABOX_CLIP,
+                )
+        else:
+            text_dict = page.get_text(
+                "dict",
+                flags=fitz.TEXT_PRESERVE_WHITESPACE | fitz.TEXT_MEDIABOX_CLIP,
+            )
+
+        for blk in text_dict.get("blocks", []):
+            if blk.get("type") != 0:
+                continue
+            for line in blk.get("lines", []):
+                spans = line.get("spans", [])
+                if not spans:
+                    continue
+                text = " ".join(s["text"].strip() for s in spans if s["text"].strip())
+                if not text:
+                    continue
+                x0 = min(s["bbox"][0] for s in spans)
+                y0 = min(s["bbox"][1] for s in spans)
+                x1 = max(s["bbox"][2] for s in spans)
+                y1 = max(s["bbox"][3] for s in spans)
+                first_span = spans[0]
+                fs = float(first_span.get("size", 10))
+
+                color_int = int(first_span.get("color", 0))
+                color_rgb = [
+                    ((color_int >> 16) & 0xFF) / 255,
+                    ((color_int >> 8)  & 0xFF) / 255,
+                    ( color_int        & 0xFF) / 255,
+                ]
+
+                blocks.append(TextBlock(
+                    text=text,
+                    x=max(0.0, x0 / pw),
+                    y=max(0.0, y0 / ph),
+                    w=min(1.0, (x1 - x0) / pw),
+                    h=min(1.0, (y1 - y0) / ph),
+                    fontSize=fs,
+                    fontName=first_span.get("font", ""),
+                    bold=bool(int(first_span.get("flags", 0)) & 2**4),
+                    color=color_rgb,
+                ))
+
+        pages.append(PageData(
+            pageNum=page_idx + 1,
+            pageWidthPts=pw,
+            pageHeightPts=ph,
+            blocks=blocks,
+        ))
+
+    doc.close()
+    return ExtractResponse(pages=pages, totalPages=len(pages))
+
+
+# ── 5) Health + capabilities ──────────────────────────────────────────────────
 
 @app.get("/health")
 async def health():
     font_path = get_font_path()
+    # Tesseract / OCR desteği kontrol et
+    ocr_available = False
+    try:
+        test_doc = fitz.open()
+        test_page = test_doc.new_page()
+        test_page.get_textpage_ocr(flags=0, language="eng", dpi=72, full=False)
+        test_doc.close()
+        ocr_available = True
+    except Exception:
+        ocr_available = False
+
     return {
         "status": "ok",
         "pymupdf": fitz.version[0],
-        "version": "2.0.0",
+        "version": "2.1.0",
         "unicodeFont": bool(font_path),
         "fontPath": font_path,
         "capabilities": {
             "extract": True,
             "render": True,
-            "redactionWrite": True,  # beyaz kutu yerine gerçek redaction
+            "redactionWrite": True,
+            "tableExtract": True,
+            "ocr": ocr_available,
         },
     }

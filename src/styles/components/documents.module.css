@@ -239,6 +239,15 @@
 .btnDelete      { color: var(--color-error); border-color: rgba(255,59,48,0.15); }
 .btnDelete:hover { background: var(--color-error-bg); border-color: rgba(255,59,48,0.3); }
 
+/* Icon-only variant — overrides flex:1 and hides text */
+.btnIconOnly {
+  flex: unset !important;
+  width: 34px;
+  min-width: 34px;
+  padding: 0 !important;
+}
+.btnIconOnly span { display: none; }
+
 /* ── Çeviri Görüntüleme Modal ─────────────────────────────────────────── */
 .modalOverlay {
   position: fixed;

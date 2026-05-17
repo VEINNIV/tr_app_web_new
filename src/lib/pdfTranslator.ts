@@ -45,6 +45,8 @@ export interface TranslateOptions {
   targetLang?: string;
   /** Belge alanı: 'general' | 'medical' | 'legal' | 'math' | 'engineering' | 'cs' | 'economics' */
   domain?: string;
+  /** Kullanıcı tanımlı terim sözlüğü: { "kaynak terim": "hedef terim" } */
+  glossary?: Record<string, string>;
   onProgress?: (p: TranslationProgress) => void;
   signal?: AbortSignal;
 }
@@ -78,7 +80,7 @@ export async function translatePDF(
   source: File | string,
   opts: TranslateOptions,
 ): Promise<TranslationResult> {
-  const { sourceLang, targetLang = 'tr', domain = 'general', onProgress, signal } = opts;
+  const { sourceLang, targetLang = 'tr', domain = 'general', glossary, onProgress, signal } = opts;
 
   onProgress?.({ phase: 'loading', current: 0, total: 0, message: 'PDF açılıyor…' });
 
@@ -167,6 +169,7 @@ export async function translatePDF(
           targetLang,
           signal,
           domain,
+          glossary,
         );
       } catch (e) {
         const msg = (e as Error)?.message ?? '';

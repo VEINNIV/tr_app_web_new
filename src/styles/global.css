@@ -232,19 +232,25 @@ h1, h2, h3 { font-family: var(--font-heading); }
 
 /* ---------- Scrollbar ---------- */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.12);
+  background: rgba(0, 0, 0, 0.14);
   border-radius: var(--radius-full);
+  transition: background 200ms var(--ease-out);
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.2);
+  background: linear-gradient(180deg, var(--color-accent), #5AC8FA);
+  background-clip: padding-box;
+  border: 2px solid transparent;
 }
+* { scrollbar-width: thin; scrollbar-color: rgba(0,0,0,0.18) transparent; }
 
 /* ---------- Selection ---------- */
 ::selection {
@@ -290,6 +296,33 @@ button:not(:disabled), [role="button"], a[href] { cursor: pointer; }
   .press-effect:active {
     transform: none !important;
   }
+}
+
+/* ---------- Soft selection drag + image protection ---------- */
+img { user-select: none; -webkit-user-drag: none; }
+
+/* ---------- Subtle page-fade in keyframe (utility) ---------- */
+@keyframes softFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ---------- Spinner keyframe (used inline by PageLoader) ---------- */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ---------- Gradient accent helpers ---------- */
+.gradient-blue {
+  background: linear-gradient(135deg, var(--color-accent) 0%, #5AC8FA 100%);
+}
+.gradient-text-blue {
+  background: linear-gradient(120deg, var(--color-accent) 0%, #5AC8FA 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
 }
 
 /* ---------- Responsive Typography ---------- */

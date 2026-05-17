@@ -63,7 +63,9 @@ export default function AuthPage() {
         <div className={styles.floatingOrb2} />
 
         <div className={styles.authLeftLogo}>
-          <div className={styles.authLeftLogoMark}>TL</div>
+          <div className={styles.authLeftLogoMark}>
+            <img src="/apple-touch-icon.png" alt="" width={28} height={28} draggable={false} />
+          </div>
           <span className={styles.authLeftLogoText}>TransLingua</span>
         </div>
 

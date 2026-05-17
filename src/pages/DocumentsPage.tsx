@@ -8,7 +8,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
-import { FileText, MessageSquare, Trash2, FolderOpen, Eye, X, Languages, DownloadCloud, FileType, FileCode, Layers, Loader, BookOpen } from 'lucide-react';
+import { FileText, MessageSquare, Trash2, FolderOpen, Eye, X, Languages, DownloadCloud, FileType, FileCode, Layers, Loader, BookOpen, Share2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { exportMarkdownToPDF, exportMarkdownToDOCX, exportMarkdownToTxt } from '../lib/exporters';
 import { SPRING_TIGHT } from '../components/ui/motion';
@@ -36,6 +36,8 @@ export default function DocumentsPage() {
   const [selectedDoc, setSelectedDoc] = useState<DocumentWithTranslation | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [exporting, setExporting] = useState<null | 'pdf' | 'docx' | 'txt'>(null);
+
+  const [sharing, setSharing] = useState<Set<string>>(new Set());
 
   // PDF Overlay Viewer
   const [overlayDoc, setOverlayDoc] = useState<DocumentWithTranslation | null>(null);
@@ -88,6 +90,34 @@ export default function DocumentsPage() {
     await supabase.from('documents').delete().eq('id', id);
     setDocuments(prev => prev.filter(d => d.id !== id));
     if (selectedDoc?.id === id) setSelectedDoc(null);
+  };
+
+  /** Belgeyi paylaş — token + 1 yıllık signed URL oluştur, linki kopyala */
+  const handleShare = async (doc: DocumentWithTranslation) => {
+    if (!doc.translation?.id || !doc.original_storage_path) {
+      toast.error('Paylaşım için tamamlanmış bir çeviri gerekli.');
+      return;
+    }
+    setSharing(prev => new Set(prev).add(doc.id));
+    try {
+      const { data: signedData, error: signErr } = await supabase.storage
+        .from('originals')
+        .createSignedUrl(doc.original_storage_path, 31536000);
+      if (signErr || !signedData?.signedUrl) throw new Error('PDF URL oluşturulamadı');
+      const token = crypto.randomUUID();
+      const { error: updateErr } = await supabase
+        .from('translations')
+        .update({ share_token: token, shared_pdf_url: signedData.signedUrl })
+        .eq('id', doc.translation.id);
+      if (updateErr) throw new Error('Paylaşım kaydedilemedi: ' + updateErr.message);
+      const shareUrl = `${window.location.origin}/shared/${token}`;
+      await navigator.clipboard.writeText(shareUrl).catch(() => {});
+      toast.success('Paylaşım linki kopyalandı! (1 yıl geçerli)', { duration: 6000 });
+    } catch (e: any) {
+      toast.error(e.message || 'Paylaşım oluşturulamadı');
+    } finally {
+      setSharing(prev => { const s = new Set(prev); s.delete(doc.id); return s; });
+    }
   };
 
   /** PDF Overlay Viewer'ı aç — Supabase Storage'dan imzalı URL al */
@@ -292,14 +322,32 @@ export default function DocumentsPage() {
                       </Link>
                     </motion.div>
 
+                    {doc.status === 'completed' && doc.translation?.id && (
+                      <motion.button
+                        className={`${styles.btnSummary} ${styles.btnIconOnly}`}
+                        onClick={() => handleShare(doc)}
+                        disabled={sharing.has(doc.id)}
+                        whileHover={reduced ? undefined : { y: -1 }}
+                        whileTap={reduced ? undefined : { scale: 0.95 }}
+                        transition={SPRING_TIGHT}
+                        title="Paylaşılabilir link oluştur"
+                      >
+                        {sharing.has(doc.id)
+                          ? <Loader size={13} style={{ animation: 'spin 0.8s linear infinite' }} />
+                          : <Share2 size={13} />
+                        }
+                      </motion.button>
+                    )}
+
                     <motion.button
-                      className={styles.btnDelete}
+                      className={`${styles.btnDelete} ${styles.btnIconOnly}`}
                       onClick={() => handleDelete(doc.id)}
                       whileHover={reduced ? undefined : { y: -1 }}
                       whileTap={reduced ? undefined : { scale: 0.95 }}
                       transition={SPRING_TIGHT}
+                      title="Sil"
                     >
-                      <Trash2 size={14} /> Sil
+                      <Trash2 size={14} />
                     </motion.button>
                   </div>
                 </div>

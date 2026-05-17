@@ -7,7 +7,7 @@ import { motion, useReducedMotion } from 'framer-motion';
 import {
   FileText, Languages, MessageSquare, Clock,
   Zap, BookOpen, Shield, ArrowRight, ChevronRight,
-  Activity, Coins, CheckCircle2, LayoutDashboard,
+  Activity, Coins, CheckCircle2,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -78,6 +78,13 @@ export default function DashboardPage() {
   const firstName = displayName.split(' ')[0];
   const isFirstTime = !loading && documents.length === 0;
 
+  const hour = new Date().getHours();
+  const greeting =
+    hour < 5 ? 'İyi geceler' :
+    hour < 12 ? 'Günaydın' :
+    hour < 18 ? 'İyi günler' :
+    hour < 22 ? 'İyi akşamlar' : 'İyi geceler';
+
   const stats = [
     { icon: FileText, value: cDocs, label: 'Belge', color: '#6366f1' },
     { icon: CheckCircle2, value: cTrans, label: 'Çeviri', color: '#10b981' },
@@ -104,12 +111,18 @@ export default function DashboardPage() {
         transition={{ duration: 0.4 }}
       >
         <div className={styles.headerLeft}>
-          <div className={styles.headerIcon}>
-            <LayoutDashboard size={18} />
-          </div>
+          <motion.div
+            className={styles.headerIcon}
+            whileHover={reduced ? undefined : { rotate: -6, scale: 1.05 }}
+            transition={SPRING_TIGHT}
+          >
+            <img src="/apple-touch-icon.png" alt="" width={26} height={26} draggable={false} />
+          </motion.div>
           <div>
-            <h1 className={styles.headerTitle}>{firstName}</h1>
-            <p className={styles.headerSub}>Kontrol panelinize hoş geldiniz</p>
+            <h1 className={styles.headerTitle}>
+              {greeting}, <span className={styles.headerName}>{firstName}</span> 👋
+            </h1>
+            <p className={styles.headerSub}>Bugün ne çevirelim?</p>
           </div>
         </div>
         <div className={styles.headerRight}>
@@ -172,7 +185,7 @@ export default function DashboardPage() {
         transition={{ delay: 0.2, duration: 0.4 }}
       >
         <div className={styles.creditTop}>
-          <div>
+          <div className={styles.creditTopLeft}>
             <div className={styles.creditTitle}>Aylık Kredi</div>
             {profile.credits_reset_at && (
               <div className={styles.creditSub}>

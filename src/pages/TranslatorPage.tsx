@@ -22,6 +22,7 @@ import { useTranslationJob, type ActiveJob } from '../context/TranslationContext
 import { SUPPORTED_LANGUAGES, TARGET_LANGUAGE } from '../lib/constants';
 import { permissionState, requestPermission, notificationsSupported } from '../lib/notifications';
 import { getServiceCapabilities, type ServiceCapabilities } from '../lib/pdfExtractorService';
+import { supabase } from '../lib/supabase';
 import styles from '../styles/components/translator.module.css';
 
 type Step = 'upload' | 'mode' | 'progress' | 'result';
@@ -35,6 +36,7 @@ export default function TranslatorPage() {
   const [file, setFile] = useState<File | null>(null);
   const [sourceLang, setSourceLang] = useState('auto');
   const [domain, setDomain] = useState('general');
+  const [glossaryEntries, setGlossaryEntries] = useState<Array<{ source_term: string; target_term: string; domain: string }>>([]);
   const [chosenMode, setChosenMode] = useState<'foreground' | 'background'>('foreground');
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -48,6 +50,16 @@ export default function TranslatorPage() {
     getServiceCapabilities().then(c => { if (!cancel) setCaps(c); });
     return () => { cancel = true; };
   }, []);
+
+  // Kullanıcının terim sözlüğünü yükle
+  useEffect(() => {
+    if (!profile?.id) return;
+    supabase
+      .from('glossaries')
+      .select('source_term, target_term, domain')
+      .eq('user_id', profile.id)
+      .then(({ data }) => { if (data) setGlossaryEntries(data); });
+  }, [profile?.id]);
 
   // Şu anki adımı belirleme: aktif iş varsa progress/result, yoksa form
   const step: Step = useMemo(() => {
@@ -107,10 +119,16 @@ export default function TranslatorPage() {
 
     setActivity([]);
     lastMsgRef.current = '';
+    const glossary = Object.fromEntries(
+      glossaryEntries
+        .filter(e => e.domain === domain || e.domain === 'general')
+        .map(e => [e.source_term, e.target_term]),
+    );
     await start({
       file,
       sourceLang,
       domain,
+      glossary: Object.keys(glossary).length > 0 ? glossary : undefined,
       userId: profile.id,
       credits: profile.credits_remaining,
       mode: chosenMode,

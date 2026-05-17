@@ -18,6 +18,7 @@ import {
 import { loadPDFFromURL, renderPageToDataURL, type PDFProxy } from '../lib/pdfRenderer';
 import { translatePDF } from '../lib/pdfTranslator';
 import { buildTranslatedPDF, downloadBytes } from '../lib/pdfWriter';
+import TranslationEditor from './TranslationEditor';
 import type { OverlayData } from '../types';
 import styles from '../styles/components/overlayViewer.module.css';
 
@@ -87,6 +88,8 @@ export default function PDFOverlayViewer({
     setBuilding(true);
     setBuildDone(false);
     setBuildError('');
+    setTranslatedProxy(null);
+    setTranslatedImages({});
 
     (async () => {
       try {
@@ -247,7 +250,7 @@ export default function PDFOverlayViewer({
       onClick={e => { if (e.target === e.currentTarget && !generating) onClose(); }}
     >
       <motion.div
-        className={styles.modal}
+        className={`${styles.modal} ${sideBySide ? styles.modalWide : ''}`}
         initial={{ opacity: 0, scale: 0.96, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 20 }}
@@ -493,6 +496,30 @@ export default function PDFOverlayViewer({
             </span>
           )}
         </div>
+
+        {/* ── Çeviri editörü (modal içi panel) ─────────────────────── */}
+        <AnimatePresence>
+          {showEditor && localOverlay && (
+            <motion.div
+              key="editor"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              style={{ position: 'absolute', inset: 0, zIndex: 20 }}
+            >
+              <TranslationEditor
+                overlay={localOverlay}
+                currentPage={currentPage}
+                onSave={(updated) => {
+                  setLocalOverlay(updated);
+                  setShowEditor(false);
+                }}
+                onClose={() => setShowEditor(false)}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
     </div>
   );

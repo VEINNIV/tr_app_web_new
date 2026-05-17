@@ -73,13 +73,15 @@ export default function ChatPage() {
   const location = useLocation();
   const reduced = useReducedMotion();
 
+  // Initialize selectedDocId from navigation state so history loads correctly on first render
+  const initDocId = (location.state as { documentId?: string } | null)?.documentId || '';
+
   // Chat state
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [historyLoaded, setHistoryLoaded] = useState(false);
   const [documents, setDocuments] = useState<Document[]>([]);
-  const [selectedDocId, setSelectedDocId] = useState('');
+  const [selectedDocId, setSelectedDocId] = useState(initDocId);
   const [showDocPicker, setShowDocPicker] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [docContext, setDocContext] = useState<string | null>(null);
@@ -111,33 +113,40 @@ export default function ChatPage() {
       .then(({ data }) => { if (data) setDocuments(data as Document[]); });
   }, [profile]);
 
-  // ── Sohbet geçmişini yükle ─────────────────────────────────────────────────
+  // ── Sohbet geçmişini yükle (belge bazlı) ──────────────────────────────────
+  // Uses profile.id (not profile object) so auth re-events don't wipe mid-session messages.
+  const profileId = profile?.id;
   useEffect(() => {
-    if (!profile || historyLoaded) return;
-    supabase
+    if (!profileId) return;
+    setMessages([]);
+    const base = supabase
       .from('chat_messages')
       .select('*')
-      .eq('user_id', profile.id)
+      .eq('user_id', profileId)
       .order('created_at', { ascending: true })
-      .limit(60)
-      .then(({ data }) => {
-        setHistoryLoaded(true);
-        if (data && data.length > 0) {
-          setMessages(data.map((m: any) => ({
-            id: m.id,
-            role: m.role as 'user' | 'assistant',
-            content: m.content || '',
-            timestamp: new Date(m.created_at),
-          })));
-        }
-      });
-  }, [profile, historyLoaded]);
+      .limit(80);
 
-  // ── Dokümanlar sayfasından otomatik belge seçimi ───────────────────────────
+    const scoped = selectedDocId
+      ? base.eq('document_id', selectedDocId)
+      : base.is('document_id', null);
+
+    scoped.then(({ data, error }) => {
+      if (error) console.error('[Chat] history load error', error);
+      if (data && data.length > 0) {
+        setMessages(data.map((m: any) => ({
+          id: m.id,
+          role: m.role as 'user' | 'assistant',
+          content: m.content || '',
+          timestamp: new Date(m.created_at),
+        })));
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileId, selectedDocId]);
+
+  // ── Dokümanlar sayfasından geçilen belge — nav state'i temizle ────────────
   useEffect(() => {
-    const state = location.state as { documentId?: string } | null;
-    if (state?.documentId) {
-      setSelectedDocId(state.documentId);
+    if (initDocId) {
       navigate(location.pathname, { replace: true, state: {} });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps

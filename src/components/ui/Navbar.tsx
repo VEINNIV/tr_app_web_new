@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Menu, X, LogOut, Settings, LayoutDashboard, Languages, FolderOpen,
-  MessageSquare, BookOpen, Shield, ChevronDown, User,
+  MessageSquare, BookOpen, Shield, ChevronDown, User, ScrollText,
 } from 'lucide-react';
 import { useAuth } from '../../context/auth';
 import styles from '../../styles/components/navbar.module.css';
@@ -76,11 +76,12 @@ export default function Navbar() {
   const isLanding = location.pathname === '/';
 
   const authLinks = [
-    { to: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={16} /> },
-    { to: '/translate', label: 'Çeviri', icon: <Languages size={16} /> },
-    { to: '/documents', label: 'Dokümanlar', icon: <FolderOpen size={16} /> },
-    { to: '/study-notes', label: 'Ders Notu', icon: <BookOpen size={16} /> },
-    { to: '/chat', label: 'AI Chat', icon: <MessageSquare size={16} /> },
+    { to: '/dashboard',   label: 'Dashboard',   icon: <LayoutDashboard size={16} /> },
+    { to: '/translate',   label: 'Çeviri',       icon: <Languages size={16} /> },
+    { to: '/documents',   label: 'Dokümanlar',   icon: <FolderOpen size={16} /> },
+    { to: '/glossary',    label: 'Sözlük',        icon: <ScrollText size={16} /> },
+    { to: '/study-notes', label: 'Ders Notu',    icon: <BookOpen size={16} /> },
+    { to: '/chat',        label: 'AI Chat',       icon: <MessageSquare size={16} /> },
   ];
 
   const guestLinks = [
@@ -100,14 +101,14 @@ export default function Navbar() {
           transition={{ type: 'spring', stiffness: 400, damping: 30 }}
         >
           {/* Logo */}
-          <Link to="/" className={styles.navBrand}>
+          <Link to="/" className={styles.navBrand} aria-label="TransLingua ana sayfa">
             <motion.div
               className={styles.navLogo}
-              whileHover={{ scale: 1.05, rotate: -2 }}
-              whileTap={{ scale: 0.95 }}
-              transition={{ type: 'spring', stiffness: 400, damping: 17 }}
+              whileHover={{ scale: 1.06, rotate: -3 }}
+              whileTap={{ scale: 0.94 }}
+              transition={{ type: 'spring', stiffness: 420, damping: 17 }}
             >
-              TL
+              <img src="/apple-touch-icon.png" alt="" width={28} height={28} draggable={false} />
             </motion.div>
             <span className={styles.navTitle}>TransLingua</span>
           </Link>

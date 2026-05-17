@@ -55,6 +55,7 @@ interface StartParams {
   credits: number;
   mode: JobMode;
   domain?: string;
+  glossary?: Record<string, string>;
 }
 
 interface Ctx {
@@ -151,7 +152,7 @@ export function TranslationProvider({ children }: { children: ReactNode }) {
     }
   }, [job]);
 
-  const start = useCallback(async ({ file, sourceLang, userId, credits, mode, domain = 'general' }: StartParams) => {
+  const start = useCallback(async ({ file, sourceLang, userId, credits, mode, domain = 'general', glossary }: StartParams) => {
     if (job?.status === 'running') {
       toast.error('Zaten bir çeviri çalışıyor. Önce mevcutu bitirin veya iptal edin.');
       return;
@@ -242,6 +243,7 @@ export function TranslationProvider({ children }: { children: ReactNode }) {
         sourceLang: detectedLang,
         targetLang: TARGET_LANGUAGE.code,
         domain,
+        glossary,
         signal,
         onProgress: (p) => {
           const pct = 15 + Math.round((p.current / Math.max(1, p.total)) * 75);

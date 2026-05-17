@@ -702,6 +702,7 @@ export async function translateTextBlocks(
   targetLang = 'tr',
   signal?: AbortSignal,
   domain = 'general',
+  glossary?: Record<string, string>,
 ): Promise<string[]> {
   if (blocks.length === 0) return [];
 
@@ -711,7 +712,7 @@ export async function translateTextBlocks(
     const results: string[] = [];
     for (let i = 0; i < blocks.length; i += BATCH) {
       const batch = blocks.slice(i, i + BATCH);
-      const translated = await translateTextBlocks(batch, sourceLang, targetLang, signal, domain);
+      const translated = await translateTextBlocks(batch, sourceLang, targetLang, signal, domain, glossary);
       results.push(...translated);
     }
     return results;
@@ -721,10 +722,23 @@ export async function translateTextBlocks(
   const domainHint = DOMAIN_HINTS[domain] ?? '';
   const numbered = blocks.map((b, i) => `${i + 1}. ${b}`).join('\n');
 
+  const glossarySection =
+    glossary && Object.keys(glossary).length > 0
+      ? `\nTerim sözlüğü (daima bu karşılıkları kullan):\n${Object.entries(glossary).map(([k, v]) => `- "${k}" → "${v}"`).join('\n')}`
+      : '';
+
   const prompt = [
     `${blocks.length} metin bloğunu ${targetName} diline çevir.`,
     domainHint,
-    `Kurallar:
+    glossarySection,
+    `Çeviri yaklaşımı:
+- Her bloğun anlamını ve bağlamını önce anla, sonra çevir — kelime kelime çevirme
+- İfadenin gerçek kastını ${targetName}'ye doğal biçimde aktar
+- Soru cümleleri soru olarak kalmalı (ör: "What does X mean?" → "X ne anlama gelir?", "What is it to Y?" → "Y ne demektir?")
+- Başlıklar başlık olarak, eylemler eylem olarak aktarılmalı
+- Deyimler ve deyimsel kullanımlar varsa eşdeğer ${targetName} ifadesiyle karşılık ver
+
+Kurallar:
 - Aynı numarayla, aynı sırayla döndür
 - Matematiksel formüller ve denklemler (f(x), ∑, ∫, α, β, Δ, vb.) AYNEN koru
 - Kimyasal formüller (H₂O, CO₂, NaCl, vb.) değiştirme
@@ -787,6 +801,7 @@ export async function translatePageWithVision(
   targetLang = 'tr',
   signal?: AbortSignal,
   domain = 'general',
+  glossary?: Record<string, string>,
 ): Promise<PageVisionTranslation> {
 
   // ── Faz 1: Metin çevirisi (görsel yok, basit numara listesi) ─────────────
@@ -794,7 +809,7 @@ export async function translatePageWithVision(
   if (textBlocks.length > 0) {
     try {
       textTranslations = await withRetry(
-        () => translateTextBlocks(textBlocks.map(b => b.text), sourceLang, targetLang, signal, domain),
+        () => translateTextBlocks(textBlocks.map(b => b.text), sourceLang, targetLang, signal, domain, glossary),
         2,
         2000,
       );

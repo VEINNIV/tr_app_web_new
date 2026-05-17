@@ -61,17 +61,17 @@
 }
 
 .authLeftLogoMark {
-  width: 38px; height: 38px;
-  border-radius: 10px;
-  background: var(--color-accent);
+  width: 40px; height: 40px;
+  border-radius: 12px;
+  background: linear-gradient(140deg, #ffffff 0%, #f3f6ff 100%);
   display: grid;
   place-items: center;
-  color: white;
-  font-family: var(--font-heading);
-  font-weight: 900;
-  font-size: 0.8125rem;
-  letter-spacing: -0.02em;
-  box-shadow: 0 4px 14px rgba(0, 87, 255, 0.25);
+  box-shadow: 0 1px 2px rgba(0, 87, 255, 0.12), 0 8px 22px rgba(0, 87, 255, 0.14), inset 0 0 0 1px rgba(0, 87, 255, 0.08);
+  overflow: hidden;
+}
+.authLeftLogoMark img {
+  width: 28px; height: 28px;
+  object-fit: contain;
 }
 
 .authLeftLogoText {

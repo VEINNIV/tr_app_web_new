@@ -152,6 +152,16 @@ export interface StudySource {
   created_at: string;
 }
 
+// Glossary (terim sözlüğü)
+export interface GlossaryEntry {
+  id: string;
+  user_id: string;
+  source_term: string;
+  target_term: string;
+  domain: string;
+  created_at: string;
+}
+
 // Translation wizard step type
 export type TranslationStep = 'upload' | 'config' | 'progress' | 'result';
 

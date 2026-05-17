@@ -4,7 +4,8 @@ import { motion, AnimatePresence as AP, useReducedMotion } from 'framer-motion';
 import {
   Languages, FileText, Brain, ArrowRight, Check,
   Shield, BookOpen, Star, Zap, FileType, MessageSquare,
-  Globe, FileCode, Loader, RotateCcw,
+  Globe, FileCode, Loader, RotateCcw, Layers, Sparkles,
+  Image as ImageIcon, Send, Download,
 } from 'lucide-react';
 import { PRICING_PLANS } from '../lib/constants';
 import { Magnetic } from '../components/ui/motion';
@@ -80,15 +81,33 @@ const FEATURES = [
 ];
 
 /* ── Live demo copy ───────────────────────────────────────── */
-const DEMO_SOURCE = `This study comprehensively examines neuroplasticity and its effects on cognitive learning processes. Research findings suggest that early interventions yield significant long-term cognitive benefits.
-
-Methods employed include longitudinal observation, cognitive mapping, and comparative analysis across demographic variables.`;
-
 const DEMO_TR = `Bu çalışmada nöroplastisite kavramı ve bilişsel öğrenme süreçleri üzerindeki etkileri kapsamlı biçimde incelenmiştir. Araştırma bulguları, erken dönem müdahalelerin uzun vadeli bilişsel faydalar sağladığını ortaya koymaktadır.
 
-Kullanılan yöntemler arasında boylamsal gözlem, bilişsel haritalama ve karşılaştırmalı analiz yer almaktadır.`;
+Kullanılan yöntemler arasında boylamsal gözlem, bilişsel haritalama ve demografik değişkenler arası karşılaştırmalı analiz yer almaktadır. Çalışma, eğitim politikalarına yönelik somut öneriler sunmaktadır.`;
 
-type LivePhase = 'idle' | 'analyzing' | 'translating' | 'complete';
+const DEMO_SUMMARY_BULLETS = [
+  'Erken müdahale, uzun vadeli bilişsel kazanımları %38 artırıyor.',
+  'Boylamsal gözlem + bilişsel haritalama yöntemleri kullanılmış.',
+  '12 ülke ve 4.200 katılımcı üzerinde yürütülen bir meta-analiz.',
+  'Eğitim politikaları için 3 somut öneriyle sonuçlanıyor.',
+];
+
+const DEMO_CHAT = [
+  { role: 'user' as const, text: 'Erken müdahalenin etkisi nedir?' },
+  { role: 'ai' as const,   text: 'Çalışmaya göre 0–5 yaş aralığında uygulanan müdahaleler, kontrol grubuna kıyasla uzun vadeli bilişsel performansı **%38 oranında** artırıyor (s. 4, Tablo 2).' },
+];
+
+type LivePhase = 'idle' | 'analyzing' | 'extracting' | 'translating' | 'composing' | 'complete';
+type ResultTab  = 'translation' | 'summary' | 'ask';
+
+const PHASE_INFO: Record<LivePhase, { label: string; sub: string; pct: [number, number] }> = {
+  idle:        { label: 'Hazır',                sub: 'Çevir butonuna basın',              pct: [0, 0] },
+  analyzing:   { label: 'Belge analiz ediliyor', sub: 'Yapı, dil ve sayfa sayısı tespiti', pct: [0, 8] },
+  extracting:  { label: 'Metin çıkarılıyor',     sub: 'Sayfa düzeni ve görseller korunuyor', pct: [8, 28] },
+  translating: { label: 'AI ile çevriliyor',     sub: 'Akademik terimler bağlama göre eşleniyor', pct: [28, 88] },
+  composing:   { label: 'PDF oluşturuluyor',     sub: 'Orijinal düzen üzerine yerleştiriliyor', pct: [88, 100] },
+  complete:    { label: 'Tamamlandı',           sub: 'Çeviri hazır',                      pct: [100, 100] },
+};
 
 /* ════════════════════════════════════════════════════════════ */
 export default function LandingPage() {
@@ -99,15 +118,24 @@ export default function LandingPage() {
   const [liveProgress, setLiveProgress] = useState(0);
   const [liveStreamed, setLiveStreamed] = useState('');
   const [livePage, setLivePage] = useState(1);
+  const [resultTab, setResultTab] = useState<ResultTab>('translation');
+  const [summaryShown, setSummaryShown] = useState<number>(0);
+  const [chatStep, setChatStep] = useState<number>(0); // 0 idle, 1 user, 2 typing, 3 done
+  const [chatTyped, setChatTyped] = useState('');
 
   const progressRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const streamRef   = useRef<ReturnType<typeof setInterval> | null>(null);
-  const analyzeRef  = useRef<ReturnType<typeof setTimeout>  | null>(null);
+  const phaseTimers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+  const summaryRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const chatRef     = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const clearTimers = useCallback(() => {
     if (progressRef.current) clearInterval(progressRef.current);
     if (streamRef.current)   clearInterval(streamRef.current);
-    if (analyzeRef.current)  clearTimeout(analyzeRef.current);
+    if (summaryRef.current)  clearInterval(summaryRef.current);
+    if (chatRef.current)     clearInterval(chatRef.current);
+    phaseTimers.current.forEach(t => clearTimeout(t));
+    phaseTimers.current = [];
   }, []);
 
   const resetDemo = useCallback(() => {
@@ -116,53 +144,115 @@ export default function LandingPage() {
     setLiveProgress(0);
     setLiveStreamed('');
     setLivePage(1);
+    setResultTab('translation');
+    setSummaryShown(0);
+    setChatStep(0);
+    setChatTyped('');
   }, [clearTimers]);
 
   const startDemo = useCallback(() => {
     if (livePhase !== 'idle') return;
     clearTimers();
-    setLivePhase('analyzing');
     setLiveProgress(0);
     setLiveStreamed('');
     setLivePage(1);
 
-    analyzeRef.current = setTimeout(() => {
-      setLivePhase('translating');
+    // Phase 1: analyze (0 → 8 %, ~700 ms)
+    setLivePhase('analyzing');
+    const t1 = setTimeout(() => {
+      // Phase 2: extracting (8 → 28 %, ~600 ms)
+      setLivePhase('extracting');
+      const t2 = setTimeout(() => {
+        // Phase 3: translating (28 → 88 %, ~3 s, streams text & advances pages)
+        setLivePhase('translating');
 
-      /* Progress: 0→100 in ~3 s */
-      let prog = 0;
-      progressRef.current = setInterval(() => {
-        prog += 1;
-        setLiveProgress(prog);
-        setLivePage(Math.min(Math.ceil(prog / 12.5), 8));
-        if (prog >= 100) clearInterval(progressRef.current!);
-      }, 30);
+        let prog = 28;
+        progressRef.current = setInterval(() => {
+          prog += 0.8;
+          setLiveProgress(prog);
+          setLivePage(Math.max(1, Math.min(Math.ceil((prog - 28) / 7.5), 8)));
+          if (prog >= 88) {
+            clearInterval(progressRef.current!);
+            // Phase 4: composing PDF (88 → 100 %, ~700 ms)
+            setLivePhase('composing');
+            let prog2 = 88;
+            progressRef.current = setInterval(() => {
+              prog2 += 2;
+              setLiveProgress(prog2);
+              if (prog2 >= 100) {
+                clearInterval(progressRef.current!);
+                const tDone = setTimeout(() => setLivePhase('complete'), 280);
+                phaseTimers.current.push(tDone);
+              }
+            }, 50);
+          }
+        }, 30);
 
-      /* Stream text */
-      let idx = 0;
-      streamRef.current = setInterval(() => {
-        idx += 5;
-        if (idx <= DEMO_TR.length) {
-          setLiveStreamed(DEMO_TR.slice(0, idx));
+        // Stream the translated text alongside translating phase
+        let idx = 0;
+        streamRef.current = setInterval(() => {
+          idx += 5;
+          if (idx <= DEMO_TR.length) {
+            setLiveStreamed(DEMO_TR.slice(0, idx));
+          } else {
+            clearInterval(streamRef.current!);
+            setLiveStreamed(DEMO_TR);
+          }
+        }, 26);
+      }, 600);
+      phaseTimers.current.push(t2);
+    }, 700);
+    phaseTimers.current.push(t1);
+  }, [livePhase, clearTimers]);
+
+  /* When user switches to Summary tab → reveal bullets one by one */
+  useEffect(() => {
+    if (livePhase !== 'complete') return;
+    if (resultTab !== 'summary') return;
+    if (summaryShown >= DEMO_SUMMARY_BULLETS.length) return;
+    setSummaryShown(0);
+    let i = 0;
+    summaryRef.current = setInterval(() => {
+      i += 1;
+      setSummaryShown(i);
+      if (i >= DEMO_SUMMARY_BULLETS.length) clearInterval(summaryRef.current!);
+    }, 360);
+    return () => { if (summaryRef.current) clearInterval(summaryRef.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resultTab, livePhase]);
+
+  /* When user switches to Ask tab → run a tiny scripted Q&A */
+  useEffect(() => {
+    if (livePhase !== 'complete') return;
+    if (resultTab !== 'ask') return;
+    setChatStep(0);
+    setChatTyped('');
+    const tShowUser = setTimeout(() => setChatStep(1), 280);
+    const tTyping   = setTimeout(() => setChatStep(2), 900);
+    const tStream   = setTimeout(() => {
+      setChatStep(3);
+      let i = 0;
+      chatRef.current = setInterval(() => {
+        i += 4;
+        if (i <= DEMO_CHAT[1].text.length) {
+          setChatTyped(DEMO_CHAT[1].text.slice(0, i));
         } else {
-          clearInterval(streamRef.current!);
-          setLiveStreamed(DEMO_TR);
-          setTimeout(() => setLivePhase('complete'), 300);
+          clearInterval(chatRef.current!);
+          setChatTyped(DEMO_CHAT[1].text);
         }
       }, 22);
-    }, 850);
-  }, [livePhase, clearTimers]);
+    }, 1700);
+    phaseTimers.current.push(tShowUser, tTyping, tStream);
+    return () => {
+      clearTimeout(tShowUser); clearTimeout(tTyping); clearTimeout(tStream);
+      if (chatRef.current) clearInterval(chatRef.current);
+    };
+  }, [resultTab, livePhase]);
 
   useEffect(() => () => clearTimers(), [clearTimers]);
 
-  /* ── Old step demo (kept for backwards compat, hidden now) ── */
-  const [demoStep, setDemoStep] = useState(0);
-  const [demoAuto, setDemoAuto] = useState(true);
-  useEffect(() => {
-    if (!demoAuto) return;
-    const t = setInterval(() => setDemoStep(s => (s + 1) % 3), 3800);
-    return () => clearInterval(t);
-  }, [demoAuto]);
+  const phaseInfo = PHASE_INFO[livePhase];
+  const isBusy = livePhase !== 'idle' && livePhase !== 'complete';
 
   return (
     <div className={styles.page}>
@@ -346,14 +436,15 @@ export default function LandingPage() {
       </section>
 
       {/* ══════════════════════════════════════════════════════
-          LIVE DEMO
+          LIVE DEMO (advanced — translation-first, summary & ask)
       ══════════════════════════════════════════════════════ */}
       <section className={styles.liveDemoSection} id="how-it-works">
         <div className={styles.sectionHeader}>
           <span className={styles.sectionLabel}>Nasıl Çalışır</span>
-          <h2 className={styles.sectionTitle}>Canlı demoyu kendiniz deneyin</h2>
+          <h2 className={styles.sectionTitle}>Önce çevir, sonra anla</h2>
           <p className={styles.sectionDesc}>
-            Gerçek bir çeviri simülasyonu — "Çevir" butonuna tıklayın ve izleyin.
+            PDF'i orijinal düzeniyle çeviririz — sonra özet çıkarın veya belgeye sorular sorun.
+            "Çevir" butonuna tıklayın ve canlı izleyin.
           </p>
         </div>
 
@@ -394,32 +485,39 @@ export default function LandingPage() {
                 </div>
               </div>
 
-              {/* Language row */}
+              {/* Language + domain row */}
               <div className={styles.liveLangRow}>
                 <div className={styles.liveLangChip}>
                   <Globe size={12} />
-                  English
+                  Otomatik
                 </div>
                 <ArrowRight size={13} className={styles.liveLangArrow} />
                 <div className={`${styles.liveLangChip} ${styles.liveLangChipTR}`}>
                   Türkçe
                 </div>
               </div>
+              <div className={styles.liveDomainChip}>
+                <Sparkles size={11} />
+                <span>Alan: <strong>Akademik / Tıp</strong></span>
+              </div>
 
-              {/* Progress */}
+              {/* Phase status — replaces simple progress */}
               <AP mode="wait">
-                {livePhase === 'translating' && (
+                {isBusy && (
                   <motion.div
-                    className={styles.liveProgressArea}
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.3 }}
+                    key="busy"
+                    className={styles.livePhaseBox}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
+                    transition={{ duration: 0.25 }}
                   >
-                    <div className={styles.liveProgressMeta}>
-                      <span>Sayfa {livePage} / 8 işleniyor</span>
+                    <div className={styles.livePhaseHead}>
+                      <span className={styles.livePhaseDot} />
+                      <span className={styles.livePhaseLabel}>{phaseInfo.label}</span>
                       <span className={styles.liveProgressPct}>{Math.round(liveProgress)}%</span>
                     </div>
+                    <div className={styles.livePhaseSub}>{phaseInfo.sub}</div>
                     <div className={styles.liveProgressTrack}>
                       <motion.div
                         className={styles.liveProgressFill}
@@ -427,10 +525,16 @@ export default function LandingPage() {
                         transition={{ duration: 0.08 }}
                       />
                     </div>
+                    {livePhase === 'translating' && (
+                      <div className={styles.livePageMeta}>
+                        <Layers size={11} /> Sayfa {livePage} / 8
+                      </div>
+                    )}
                   </motion.div>
                 )}
                 {livePhase === 'complete' && (
                   <motion.div
+                    key="done"
                     className={styles.liveCompleteBadge}
                     initial={{ opacity: 0, scale: 0.92 }}
                     animate={{ opacity: 1, scale: 1 }}
@@ -445,29 +549,29 @@ export default function LandingPage() {
               {/* Credit note */}
               <div className={styles.liveCreditNote}>
                 <Zap size={11} />
-                8 kredi kullanılacak
+                {livePhase === 'complete' ? '8 kredi kullanıldı' : '8 kredi kullanılacak'}
               </div>
 
               {/* CTA button */}
               <Magnetic strength={0.1}>
                 <motion.button
                   className={`${styles.liveBtn} ${
-                    livePhase === 'analyzing' || livePhase === 'translating'
+                    isBusy
                       ? styles.liveBtnBusy
                       : livePhase === 'complete'
                       ? styles.liveBtnReset
                       : styles.liveBtnActive
                   }`}
                   onClick={livePhase === 'complete' ? resetDemo : startDemo}
-                  disabled={livePhase === 'analyzing' || livePhase === 'translating'}
+                  disabled={isBusy}
                   whileTap={{ scale: 0.97 }}
                   transition={{ type: 'spring', stiffness: 500, damping: 28 }}
                 >
                   {livePhase === 'idle' && (
                     <><Zap size={15} /> Çevir</>
                   )}
-                  {(livePhase === 'analyzing' || livePhase === 'translating') && (
-                    <><Loader size={15} className={styles.spinIcon} /> İşleniyor...</>
+                  {isBusy && (
+                    <><Loader size={15} className={styles.spinIcon} /> İşleniyor…</>
                   )}
                   {livePhase === 'complete' && (
                     <><RotateCcw size={15} /> Tekrar Dene</>
@@ -475,7 +579,7 @@ export default function LandingPage() {
                 </motion.button>
               </Magnetic>
 
-              {/* Download buttons */}
+              {/* Download / share row */}
               <AP>
                 {livePhase === 'complete' && (
                   <motion.div
@@ -484,7 +588,7 @@ export default function LandingPage() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.1, duration: 0.3 }}
                   >
-                    <button className={styles.liveDlBtn}><FileText size={12} /> PDF</button>
+                    <button className={styles.liveDlBtn}><Download size={12} /> PDF</button>
                     <button className={styles.liveDlBtn}><FileType size={12} /> Word</button>
                     <button className={styles.liveDlBtn}><FileCode size={12} /> TXT</button>
                   </motion.div>
@@ -497,23 +601,46 @@ export default function LandingPage() {
 
             {/* ── Right result panel ── */}
             <div className={styles.liveRight}>
-              <div className={styles.liveRightHeader}>
-                <span className={styles.liveRightTitle}>Türkçe Çeviri</span>
-                <AP>
-                  {livePhase === 'complete' && (
-                    <motion.span
-                      className={styles.liveVerifiedBadge}
-                      initial={{ opacity: 0, scale: 0.85 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ type: 'spring', stiffness: 500, damping: 28 }}
-                    >
-                      <Check size={11} /> AI Onaylı
-                    </motion.span>
-                  )}
-                </AP>
-              </div>
+              {/* Tabs (visible only when complete) */}
+              {livePhase === 'complete' ? (
+                <div className={styles.liveTabs}>
+                  {([
+                    { id: 'translation', label: 'Çeviri',   icon: <Languages size={13} /> },
+                    { id: 'summary',     label: 'Özet',     icon: <Sparkles  size={13} /> },
+                    { id: 'ask',         label: 'Soru Sor', icon: <MessageSquare size={13} /> },
+                  ] as { id: ResultTab; label: string; icon: React.ReactNode }[]).map(t => {
+                    const active = resultTab === t.id;
+                    return (
+                      <button
+                        key={t.id}
+                        className={`${styles.liveTab} ${active ? styles.liveTabActive : ''}`}
+                        onClick={() => setResultTab(t.id)}
+                      >
+                        {active && (
+                          <motion.div
+                            className={styles.liveTabIndicator}
+                            layoutId="live-tab-indicator"
+                            transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                          />
+                        )}
+                        <span className={styles.liveTabContent}>{t.icon}{t.label}</span>
+                      </button>
+                    );
+                  })}
+                  <span className={styles.liveSourceTag}>
+                    <FileText size={10} /> neuroplasticity_en.pdf
+                  </span>
+                </div>
+              ) : (
+                <div className={styles.liveRightHeader}>
+                  <span className={styles.liveRightTitle}>
+                    {livePhase === 'idle' ? 'Türkçe Çeviri' : phaseInfo.label}
+                  </span>
+                </div>
+              )}
 
               <AP mode="wait">
+                {/* ─ Idle ─ */}
                 {livePhase === 'idle' && (
                   <motion.div
                     key="idle"
@@ -528,29 +655,32 @@ export default function LandingPage() {
                   </motion.div>
                 )}
 
-                {livePhase === 'analyzing' && (
+                {/* ─ Analyzing / Extracting / Composing → fancy loader ─ */}
+                {(livePhase === 'analyzing' || livePhase === 'extracting' || livePhase === 'composing') && (
                   <motion.div
-                    key="analyzing"
+                    key={livePhase}
                     className={styles.liveAnalyzingState}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                   >
-                    <div className={styles.liveAnalyzingDots}>
-                      {[0, 1, 2].map(i => (
-                        <motion.span
-                          key={i}
-                          className={styles.liveAnalyzingDot}
-                          animate={{ y: [0, -6, 0], opacity: [0.3, 1, 0.3] }}
-                          transition={{ duration: 0.8, delay: i * 0.15, repeat: Infinity }}
-                        />
-                      ))}
+                    <div className={styles.livePageSkeleton} aria-hidden>
+                      <div className={styles.livePageSkelLine} style={{ width: '70%' }} />
+                      <div className={styles.livePageSkelLine} style={{ width: '92%' }} />
+                      <div className={styles.livePageSkelLine} style={{ width: '85%' }} />
+                      <div className={styles.livePageSkelImg}>
+                        <ImageIcon size={18} />
+                      </div>
+                      <div className={styles.livePageSkelLine} style={{ width: '78%' }} />
+                      <div className={styles.livePageSkelLine} style={{ width: '88%' }} />
                     </div>
-                    <p className={styles.liveAnalyzingText}>Belge yapısı analiz ediliyor...</p>
+                    <p className={styles.liveAnalyzingText}>{phaseInfo.label}</p>
+                    <p className={styles.liveAnalyzingHint}>{phaseInfo.sub}</p>
                   </motion.div>
                 )}
 
-                {(livePhase === 'translating' || livePhase === 'complete') && (
+                {/* ─ Translating: streaming text ─ */}
+                {livePhase === 'translating' && (
                   <motion.div
                     key="translating"
                     className={styles.liveTextOutput}
@@ -558,13 +688,134 @@ export default function LandingPage() {
                     animate={{ opacity: 1 }}
                   >
                     {liveStreamed}
-                    {livePhase === 'translating' && (
-                      <motion.span
-                        className={styles.liveCursor}
-                        animate={{ opacity: [1, 0] }}
-                        transition={{ duration: 0.5, repeat: Infinity, repeatType: 'reverse' }}
+                    <motion.span
+                      className={styles.liveCursor}
+                      animate={{ opacity: [1, 0] }}
+                      transition={{ duration: 0.5, repeat: Infinity, repeatType: 'reverse' }}
+                    />
+                  </motion.div>
+                )}
+
+                {/* ─ Complete: tab content ─ */}
+                {livePhase === 'complete' && resultTab === 'translation' && (
+                  <motion.div
+                    key="result-tr"
+                    className={styles.liveTextOutput}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.25 }}
+                  >
+                    {DEMO_TR}
+                    <div className={styles.liveBadgeRow}>
+                      <span className={styles.liveVerifiedBadge}>
+                        <Check size={11} /> Düzen korundu
+                      </span>
+                      <span className={styles.liveVerifiedBadge}>
+                        <Brain size={11} /> Akademik bağlam
+                      </span>
+                    </div>
+                  </motion.div>
+                )}
+
+                {livePhase === 'complete' && resultTab === 'summary' && (
+                  <motion.div
+                    key="result-sum"
+                    className={styles.liveSummary}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.25 }}
+                  >
+                    <div className={styles.liveSummaryHead}>
+                      <Sparkles size={14} className={styles.liveSummaryHeadIcon} />
+                      AI tarafından oluşturulan özet
+                    </div>
+                    <ul className={styles.liveSummaryList}>
+                      {DEMO_SUMMARY_BULLETS.map((b, i) => (
+                        <motion.li
+                          key={i}
+                          className={styles.liveSummaryItem}
+                          initial={{ opacity: 0, x: -8 }}
+                          animate={{ opacity: i < summaryShown ? 1 : 0, x: i < summaryShown ? 0 : -8 }}
+                          transition={{ duration: 0.3 }}
+                        >
+                          <span className={styles.liveSummaryDot} />
+                          <span>{b}</span>
+                        </motion.li>
+                      ))}
+                    </ul>
+                  </motion.div>
+                )}
+
+                {livePhase === 'complete' && resultTab === 'ask' && (
+                  <motion.div
+                    key="result-ask"
+                    className={styles.liveAsk}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.25 }}
+                  >
+                    <div className={styles.liveAskMessages}>
+                      <AP>
+                        {chatStep >= 1 && (
+                          <motion.div
+                            key="user"
+                            className={`${styles.liveBubble} ${styles.liveBubbleUser}`}
+                            initial={{ opacity: 0, y: 6 }}
+                            animate={{ opacity: 1, y: 0 }}
+                          >
+                            {DEMO_CHAT[0].text}
+                          </motion.div>
+                        )}
+                      </AP>
+                      <AP>
+                        {chatStep === 2 && (
+                          <motion.div
+                            key="typing"
+                            className={`${styles.liveBubble} ${styles.liveBubbleAi} ${styles.liveBubbleTyping}`}
+                            initial={{ opacity: 0, y: 6 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0 }}
+                          >
+                            {[0, 1, 2].map(i => (
+                              <motion.span
+                                key={i}
+                                className={styles.liveTypingDot}
+                                animate={{ y: [0, -4, 0], opacity: [0.3, 1, 0.3] }}
+                                transition={{ duration: 0.7, delay: i * 0.12, repeat: Infinity }}
+                              />
+                            ))}
+                          </motion.div>
+                        )}
+                      </AP>
+                      <AP>
+                        {chatStep >= 3 && (
+                          <motion.div
+                            key="ai"
+                            className={`${styles.liveBubble} ${styles.liveBubbleAi}`}
+                            initial={{ opacity: 0, y: 6 }}
+                            animate={{ opacity: 1, y: 0 }}
+                          >
+                            <span dangerouslySetInnerHTML={{
+                              __html: chatTyped.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>'),
+                            }} />
+                          </motion.div>
+                        )}
+                      </AP>
+                    </div>
+                    <div className={styles.liveAskInput} aria-hidden>
+                      <input
+                        type="text"
+                        placeholder="Belgeye bir soru sor…"
+                        readOnly
+                        className={styles.liveAskInputField}
                       />
-                    )}
+                      <button className={styles.liveAskSend} type="button" aria-label="Gönder">
+                        <Send size={13} />
+                      </button>
+                    </div>
                   </motion.div>
                 )}
               </AP>
@@ -572,12 +823,12 @@ export default function LandingPage() {
           </div>
         </motion.div>
 
-        {/* Steps below */}
+        {/* Steps below — now reflect new translation-first flow */}
         <div className={styles.liveSteps}>
           {[
-            { num: '01', icon: <FileText size={18} />, title: 'Yükle', desc: 'PDF, Word, görsel veya slayt' },
-            { num: '02', icon: <Brain size={18} />, title: 'AI Çevirir', desc: 'Akademik terminolojiyle bilinçli çeviri' },
-            { num: '03', icon: <FileType size={18} />, title: 'İndir', desc: 'PDF, Word veya TXT olarak dışa aktar' },
+            { num: '01', icon: <FileText size={18} />, title: 'PDF Yükle',        desc: 'Sürükle bırak veya dosya seç' },
+            { num: '02', icon: <Brain size={18} />,     title: 'AI Çevirir',       desc: 'Orijinal düzen ve grafikler korunur' },
+            { num: '03', icon: <Sparkles size={18} />,  title: 'Özetle veya Sor',  desc: 'Belgenin içinden anında cevap al' },
           ].map((s, i) => (
             <motion.div
               key={s.num}
@@ -743,7 +994,9 @@ export default function LandingPage() {
       <footer className={styles.footer}>
         <div className={styles.footerInner}>
           <div className={styles.footerBrand}>
-            <div className={styles.footerLogo}>TL</div>
+            <div className={styles.footerLogo}>
+              <img src="/apple-touch-icon.png" alt="" width={22} height={22} draggable={false} />
+            </div>
             <span className={styles.footerBrandName}>TransLingua</span>
           </div>
           <nav className={styles.footerLinks}>
@@ -752,7 +1005,7 @@ export default function LandingPage() {
             <a href="#how-it-works" onClick={scrollTo('how-it-works')}>Nasıl Çalışır</a>
             <Link to="/auth">Giriş Yap</Link>
           </nav>
-          <p className={styles.footerCopy}>© {new Date().getFullYear()} TransLingua</p>
+          <p className={styles.footerCopy}>© {new Date().getFullYear()} TransLingua · Akademisyenler için ❤️ ile</p>
         </div>
       </footer>
     </div>
