@@ -686,11 +686,22 @@ async function withRetry<T>(
  * Formüller, semboller ve sayılar aynen korunur.
  * Tek API çağrısıyla tüm sayfa işlenir (verimli + bağlam korunur).
  */
+const DOMAIN_HINTS: Record<string, string> = {
+  medical:     'Alan: Tıp / Sağlık. İlaç adları, hastalık terimleri ve anatomi kelimeleri doğru çevrilmeli.',
+  legal:       'Alan: Hukuk. Hukuki terimler ve mevzuat referansları korunmalı.',
+  math:        'Alan: Matematik / İstatistik. Matematiksel kavramlar ve semboller doğru çevrilmeli.',
+  engineering: 'Alan: Mühendislik / Teknik. Teknik terimler doğru çevrilmeli.',
+  cs:          'Alan: Bilgisayar Bilimi / Yazılım. Teknik terimler çevrilmeli; kod, API adları ve değişken isimleri değiştirilmez.',
+  economics:   'Alan: İktisat / Finans. Ekonomik terimler doğru çevrilmeli.',
+  general:     '',
+};
+
 export async function translateTextBlocks(
   blocks: string[],
   sourceLang: string,
   targetLang = 'tr',
   signal?: AbortSignal,
+  domain = 'general',
 ): Promise<string[]> {
   if (blocks.length === 0) return [];
 
@@ -700,19 +711,35 @@ export async function translateTextBlocks(
     const results: string[] = [];
     for (let i = 0; i < blocks.length; i += BATCH) {
       const batch = blocks.slice(i, i + BATCH);
-      const translated = await translateTextBlocks(batch, sourceLang, targetLang, signal);
+      const translated = await translateTextBlocks(batch, sourceLang, targetLang, signal, domain);
       results.push(...translated);
     }
     return results;
   }
 
   const targetName = targetLang === 'tr' ? 'Türkçe' : targetLang;
+  const domainHint = DOMAIN_HINTS[domain] ?? '';
   const numbered = blocks.map((b, i) => `${i + 1}. ${b}`).join('\n');
+
+  const prompt = [
+    `${blocks.length} metin bloğunu ${targetName} diline çevir.`,
+    domainHint,
+    `Kurallar:
+- Aynı numarayla, aynı sırayla döndür
+- Matematiksel formüller ve denklemler (f(x), ∑, ∫, α, β, Δ, vb.) AYNEN koru
+- Kimyasal formüller (H₂O, CO₂, NaCl, vb.) değiştirme
+- Birim sembolleri (mg, km, Hz, kWh, mol, vb.) değiştirme
+- URL'ler, DOI'ler, ISBN/ISSN numaraları değiştirme
+- Yazar adları, kurum ve dergi isimleri değiştirme
+- Sadece numaralı liste döndür, ek açıklama ekleme`,
+    '',
+    numbered,
+  ].filter(Boolean).join('\n');
 
   const result = await callGemini({
     contents: [{
       role: 'user',
-      parts: [{ text: `${blocks.length} metin bloğunu ${targetName} diline çevir.\nKurallar:\n- Aynı numarayla, aynı sırayla döndür\n- Matematiksel formüller, özel semboller, sayılar ve kısaltmalar değiştirilmez\n- Sadece numaralı liste yaz, açıklama veya ek yorum ekleme\n\n${numbered}` }],
+      parts: [{ text: prompt }],
     }],
     temperature: 0.05,
     maxOutputTokens: 8192,
@@ -759,6 +786,7 @@ export async function translatePageWithVision(
   sourceLang: string,
   targetLang = 'tr',
   signal?: AbortSignal,
+  domain = 'general',
 ): Promise<PageVisionTranslation> {
 
   // ── Faz 1: Metin çevirisi (görsel yok, basit numara listesi) ─────────────
@@ -766,7 +794,7 @@ export async function translatePageWithVision(
   if (textBlocks.length > 0) {
     try {
       textTranslations = await withRetry(
-        () => translateTextBlocks(textBlocks.map(b => b.text), sourceLang, targetLang, signal),
+        () => translateTextBlocks(textBlocks.map(b => b.text), sourceLang, targetLang, signal, domain),
         2,
         2000,
       );

@@ -481,6 +481,35 @@
   .stepName { font-size: 9px; }
 }
 
+/* ── Domain Picker ── */
+.domainGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.domainOption {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 13px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  font-family: var(--font-family);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+  color: var(--color-text-secondary);
+}
+.domainOption:hover { border-color: var(--color-accent-medium); color: var(--color-accent); }
+.domainSelected {
+  background: var(--color-accent-light);
+  border-color: var(--color-accent-medium);
+  color: var(--color-accent);
+}
+
 /* ── Mode Choice (foreground / background) ── */
 .modeChoice {
   display: grid;

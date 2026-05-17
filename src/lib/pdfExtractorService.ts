@@ -29,6 +29,8 @@ export interface ServiceTextBlock {
   fontSize: number;
   fontName: string;
   bold: boolean;
+  /** Orijinal metin rengi [r, g, b] 0-1 aralığında */
+  color?: [number, number, number];
 }
 
 export interface ServicePageData {
@@ -104,6 +106,7 @@ export async function writePDFWithTranslations(
   pages: Array<Array<{
     x: number; y: number; w: number; h: number;
     fontSize: number; translated: string; original: string;
+    color?: [number, number, number];
   }>>,
 ): Promise<Blob | null> {
   if (!SERVICE_URL) return null;

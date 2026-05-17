@@ -51,6 +51,7 @@ class TextBlock(BaseModel):
     fontSize: float
     fontName: str = ""
     bold: bool = False
+    color: Optional[list[float]] = None  # [r, g, b] 0-1 aralığında
 
 
 class PageData(BaseModel):
@@ -125,6 +126,14 @@ async def extract_pdf(file: UploadFile = File(...)):
                 flags = int(first_span.get("flags", 0))
                 is_bold = bool(flags & 2**4)
 
+                # Renk: PyMuPDF packed int → [r, g, b] 0-1
+                color_int = int(first_span.get("color", 0))
+                color_rgb = [
+                    ((color_int >> 16) & 0xFF) / 255,
+                    ((color_int >> 8)  & 0xFF) / 255,
+                    ( color_int        & 0xFF) / 255,
+                ]
+
                 blocks.append(TextBlock(
                     text=text,
                     x=max(0.0, x0 / pw),
@@ -134,6 +143,7 @@ async def extract_pdf(file: UploadFile = File(...)):
                     fontSize=fs,
                     fontName=font_name,
                     bold=is_bold,
+                    color=color_rgb,
                 ))
 
         pages.append(PageData(
@@ -255,6 +265,13 @@ async def write_pdf(
                 continue
             fs = float(blk.get("fontSize", 10))
 
+            # Orijinal rengi kullan; yoksa near-black
+            raw_color = blk.get("color")
+            if isinstance(raw_color, list) and len(raw_color) == 3:
+                text_color = tuple(float(c) for c in raw_color)
+            else:
+                text_color = (0.05, 0.05, 0.08)
+
             # Font sığdırma: kutuya sığana kadar küçült (min 4pt)
             cur_size = max(fs, 7.0)
             while cur_size >= 4:
@@ -264,7 +281,7 @@ async def write_pdf(
                         text,
                         fontsize=cur_size,
                         fontname=effective_alias if effective_alias else "helv",
-                        color=(0.05, 0.05, 0.08),
+                        color=text_color,
                         align=0,
                     )
                     if rc >= 0:

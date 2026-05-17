@@ -54,6 +54,7 @@ interface StartParams {
   userId: string;
   credits: number;
   mode: JobMode;
+  domain?: string;
 }
 
 interface Ctx {
@@ -150,7 +151,7 @@ export function TranslationProvider({ children }: { children: ReactNode }) {
     }
   }, [job]);
 
-  const start = useCallback(async ({ file, sourceLang, userId, credits, mode }: StartParams) => {
+  const start = useCallback(async ({ file, sourceLang, userId, credits, mode, domain = 'general' }: StartParams) => {
     if (job?.status === 'running') {
       toast.error('Zaten bir çeviri çalışıyor. Önce mevcutu bitirin veya iptal edin.');
       return;
@@ -240,6 +241,7 @@ export function TranslationProvider({ children }: { children: ReactNode }) {
       const { pages: overlayPages } = await translatePDF(file, {
         sourceLang: detectedLang,
         targetLang: TARGET_LANGUAGE.code,
+        domain,
         signal,
         onProgress: (p) => {
           const pct = 15 + Math.round((p.current / Math.max(1, p.total)) * 75);
@@ -264,6 +266,7 @@ export function TranslationProvider({ children }: { children: ReactNode }) {
         version: 1,
         sourceLang: detectedLang,
         targetLang: TARGET_LANGUAGE.code,
+        domain,
         pages: overlayPages,
       };
       const flatText = overlayPages

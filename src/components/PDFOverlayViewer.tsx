@@ -13,6 +13,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChevronLeft, ChevronRight, X, Eye, EyeOff, Loader,
   ZoomIn, ZoomOut, Download, Sparkles, AlertCircle, CheckCircle2,
+  Columns2, SquareStack, Pencil,
 } from 'lucide-react';
 import { loadPDFFromURL, renderPageToDataURL, type PDFProxy } from '../lib/pdfRenderer';
 import { translatePDF } from '../lib/pdfTranslator';
@@ -61,6 +62,8 @@ export default function PDFOverlayViewer({
   const [genProgress, setGenProgress] = useState<{ current: number; total: number; eta?: number; message: string }>({ current: 0, total: 0, message: '' });
   const [localOverlay, setLocalOverlay] = useState<OverlayData | undefined>(overlayData);
   const [exporting, setExporting] = useState(false);
+  const [sideBySide, setSideBySide] = useState(false);
+  const [showEditor, setShowEditor] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
   const translatedBlobRef = useRef<string | null>(null);
@@ -280,6 +283,27 @@ export default function PDFOverlayViewer({
               <ZoomIn size={14} />
             </button>
 
+            {localOverlay && translatedProxy && (
+              <button
+                className={`${styles.toolBtn} ${sideBySide ? styles.toolBtnActive : ''}`}
+                onClick={() => setSideBySide(v => !v)}
+                title={sideBySide ? 'Tek sayfa görünümü' : 'Yan yana görünüm'}
+              >
+                {sideBySide ? <SquareStack size={14} /> : <Columns2 size={14} />}
+                <span className={styles.toolBtnLabel}>{sideBySide ? 'Tekli' : 'Yan Yana'}</span>
+              </button>
+            )}
+
+            {localOverlay && (
+              <button
+                className={styles.toolBtn}
+                onClick={() => setShowEditor(true)}
+                title="Çeviriyi düzenle"
+              >
+                <Pencil size={14} /> <span className={styles.toolBtnLabel}>Düzenle</span>
+              </button>
+            )}
+
             {localOverlay && (
               <button
                 className={`${styles.toolBtn} ${styles.toolBtnExport}`}
@@ -371,67 +395,81 @@ export default function PDFOverlayViewer({
           {/* Sayfa görüntüsü */}
           {!loading && !loadError && pdfProxy && !generating && (
             <div
-              className={styles.pageWrapper}
+              className={`${styles.pageWrapper} ${sideBySide ? styles.pageWrapperSbs : ''}`}
               style={{ transform: `scale(${scale})`, transformOrigin: 'top center' }}
             >
-              <div className={styles.pageContainer}>
-                <AnimatePresence mode="wait">
-                  {currentImage ? (
-                    <motion.img
-                      key={`${showingTranslated ? 'tr' : 'orig'}-p${currentPage}`}
-                      src={currentImage}
-                      alt={`Sayfa ${currentPage}`}
-                      className={styles.pageImg}
-                      draggable={false}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.18 }}
-                    />
-                  ) : (
-                    <motion.div
-                      key="page-loading"
-                      className={styles.pageLoading}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                    >
-                      <Loader size={22} className={styles.spin} />
-                    </motion.div>
+              {/* ── Tek sayfa modu ── */}
+              {!sideBySide && (
+                <div className={styles.pageContainer}>
+                  <AnimatePresence mode="wait">
+                    {currentImage ? (
+                      <motion.img
+                        key={`${showingTranslated ? 'tr' : 'orig'}-p${currentPage}`}
+                        src={currentImage}
+                        alt={`Sayfa ${currentPage}`}
+                        className={styles.pageImg}
+                        draggable={false}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.18 }}
+                      />
+                    ) : (
+                      <motion.div key="page-loading" className={styles.pageLoading} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                        <Loader size={22} className={styles.spin} />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {showTranslation && building && (
+                    <div className={styles.buildingBadge}>
+                      <Loader size={11} className={styles.spin} />
+                      <span>Çeviri hazırlanıyor…</span>
+                    </div>
                   )}
-                </AnimatePresence>
-
-                {/* Çeviri oluşturuluyor rozeti */}
-                {showTranslation && building && (
-                  <div className={styles.buildingBadge}>
-                    <Loader size={11} className={styles.spin} />
-                    <span>Çeviri hazırlanıyor…</span>
-                  </div>
-                )}
-
-                {/* Çeviri hazır rozeti (kısa süre görünür) */}
-                <AnimatePresence>
-                  {buildDone && showTranslation && !building && (
-                    <motion.div
-                      className={styles.readyBadge}
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.3 }}
-                    >
-                      <CheckCircle2 size={11} />
-                      <span>PyMuPDF ile çevrildi</span>
-                    </motion.div>
+                  <AnimatePresence>
+                    {buildDone && showTranslation && !building && (
+                      <motion.div className={styles.readyBadge} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }}>
+                        <CheckCircle2 size={11} /><span>PyMuPDF</span>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                  {buildError && showTranslation && (
+                    <div className={styles.errorBadge}><AlertCircle size={13} /><span>{buildError}</span></div>
                   )}
-                </AnimatePresence>
+                </div>
+              )}
 
-                {/* Build hatası */}
-                {buildError && showTranslation && (
-                  <div className={styles.errorBadge}>
-                    <AlertCircle size={13} />
-                    <span>{buildError}</span>
+              {/* ── Yan yana modu ── */}
+              {sideBySide && (
+                <div className={styles.sbsRow}>
+                  {/* Sol: Orijinal */}
+                  <div className={styles.sbsCol}>
+                    <div className={styles.sbsLabel}>Orijinal</div>
+                    <div className={styles.pageContainer}>
+                      {pageImages[currentPage]
+                        ? <img src={pageImages[currentPage]} alt="Orijinal" className={styles.pageImg} draggable={false} />
+                        : <div className={styles.pageLoading}><Loader size={20} className={styles.spin} /></div>
+                      }
+                    </div>
                   </div>
-                )}
-              </div>
+                  {/* Sağ: Çeviri */}
+                  <div className={styles.sbsCol}>
+                    <div className={styles.sbsLabel} style={{ color: 'var(--color-accent)' }}>
+                      Türkçe
+                      {building && <Loader size={11} className={styles.spin} style={{ marginLeft: 6 }} />}
+                    </div>
+                    <div className={styles.pageContainer}>
+                      {translatedImages[currentPage]
+                        ? <img src={translatedImages[currentPage]} alt="Çeviri" className={styles.pageImg} draggable={false} />
+                        : pageImages[currentPage]
+                          ? <div className={styles.pageLoading}><Loader size={20} className={styles.spin} /><span style={{ fontSize: 12, marginTop: 8 }}>Hazırlanıyor…</span></div>
+                          : <div className={styles.pageLoading}><Loader size={20} className={styles.spin} /></div>
+                      }
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

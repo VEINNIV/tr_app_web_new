@@ -43,8 +43,28 @@ export interface TranslationProgress {
 export interface TranslateOptions {
   sourceLang: string;
   targetLang?: string;
+  /** Belge alanı: 'general' | 'medical' | 'legal' | 'math' | 'engineering' | 'cs' | 'economics' */
+  domain?: string;
   onProgress?: (p: TranslationProgress) => void;
   signal?: AbortSignal;
+}
+
+// Sayfa numaraları, saf rakamlar, boşluklar vb. çevrilmez
+const SKIP_RE = [
+  /^\d+$/,             // saf rakam (sayfa no)
+  /^[ivxlcdmIVXLCDM]+$/, // Roma rakamları
+  /^\d+\s*[/-]\s*\d+$/, // X/Y veya X-Y format
+  /^\s*$/,             // boş
+  /^[.,;:!?\-–—|•·]+$/, // sadece noktalama
+];
+
+function shouldSkipTranslation(text: string, y: number): boolean {
+  const t = text.trim();
+  if (t.length <= 1) return true;
+  if (SKIP_RE.some(re => re.test(t))) return true;
+  // Header/footer bölgesi (üst %4 veya alt %7) + kısa metin → sayfa no veya başlık bilgisi
+  if ((y < 0.04 || y > 0.93) && t.length <= 15 && !/[a-zA-ZğüşöçıİĞÜŞÖÇ]{4,}/.test(t)) return true;
+  return false;
 }
 
 export interface TranslationResult {
@@ -58,7 +78,7 @@ export async function translatePDF(
   source: File | string,
   opts: TranslateOptions,
 ): Promise<TranslationResult> {
-  const { sourceLang, targetLang = 'tr', onProgress, signal } = opts;
+  const { sourceLang, targetLang = 'tr', domain = 'general', onProgress, signal } = opts;
 
   onProgress?.({ phase: 'loading', current: 0, total: 0, message: 'PDF açılıyor…' });
 
@@ -111,7 +131,7 @@ export async function translatePDF(
     emitProgress('translating', `Sayfa ${pageNum}: metin çıkarılıyor…`);
 
     // 1) Metin koordinatları
-    let lines: Array<{ text: string; x: number; y: number; w: number; h: number; fontSize: number }>;
+    let lines: Array<{ text: string; x: number; y: number; w: number; h: number; fontSize: number; color?: [number, number, number] }>;
     let pageWidthPts: number;
     let pageHeightPts: number;
 
@@ -132,23 +152,30 @@ export async function translatePDF(
     pageStatuses[pageNum - 1] = 2; // translating
     emitProgress('translating', `Sayfa ${pageNum}: çevriliyor (${lines.length} metin bloğu)`);
 
-    // 2) Çeviri — sadece metin, görsel analiz yok
-    let translations: string[] = lines.map(l => l.text);
-    if (lines.length > 0) {
+    // 2) Çeviri gerektirmeyen blokları filtrele (sayfa no, saf rakam, vb.)
+    const skipFlags = lines.map(l => shouldSkipTranslation(l.text, l.y));
+    const translatableTexts = lines
+      .filter((_, i) => !skipFlags[i])
+      .map(l => l.text);
+
+    let translatedTexts: string[] = translatableTexts;
+    if (translatableTexts.length > 0) {
       try {
-        translations = await translateTextBlocks(
-          lines.map(l => l.text),
+        translatedTexts = await translateTextBlocks(
+          translatableTexts,
           sourceLang,
           targetLang,
           signal,
+          domain,
         );
       } catch (e) {
         const msg = (e as Error)?.message ?? '';
         if (msg.includes('İptal')) throw e;
-        // çeviri başarısız → orijinal kalsın
       }
     }
 
+    // Çevrilebilenleri index'e göre geri eşle
+    let tIdx = 0;
     const blocks: OverlayBlock[] = lines.map((line, i) => ({
       x: line.x,
       y: line.y,
@@ -156,7 +183,8 @@ export async function translatePDF(
       h: line.h,
       fontSize: line.fontSize,
       original: line.text,
-      translated: translations[i] || line.text,
+      translated: skipFlags[i] ? line.text : (translatedTexts[tIdx++] || line.text),
+      ...(line.color ? { color: line.color } : {}),
     }));
 
     result[pageNum - 1] = { pageNum, pageWidthPts, pageHeightPts, blocks };

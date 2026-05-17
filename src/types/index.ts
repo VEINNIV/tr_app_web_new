@@ -67,6 +67,8 @@ export interface OverlayBlock {
   original: string;
   translated: string;
   visual?: boolean;          // true ise: görsel/grafik içinden tespit edilmiş
+  /** Orijinal metin rengi [r, g, b] 0-1 aralığında. Yoksa siyah kullanılır. */
+  color?: [number, number, number];
 }
 
 export interface OverlayPage {
@@ -77,6 +79,7 @@ export interface OverlayPage {
 }
 
 export interface OverlayData {
+  domain?: string;
   version: 1;
   sourceLang: string;
   targetLang: string;

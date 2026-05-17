@@ -224,6 +224,7 @@ export async function buildTranslatedPDF(opts: WriteOptions): Promise<Uint8Array
           fontSize: b.fontSize,
           translated: b.translated,
           original: b.original,
+          color: b.color,
         })));
 
         onProgress?.(0, pages.length);
@@ -309,9 +310,14 @@ export async function buildTranslatedPDF(opts: WriteOptions): Promise<Uint8Array
       const { fontSize, lines } = fitFontSize(text, usedFont, boxW - 1, boxH, startSize);
       const lineHeight = fontSize * 1.15;
 
-      // Metin rengi: background koyu ise beyaz, açık ise siyah
-      const bgLuma = sample ? (0.299 * sample[0] + 0.587 * sample[1] + 0.114 * sample[2]) / 255 : 1;
-      const textColor = bgLuma < 0.5 ? rgb(0.95, 0.95, 0.95) : BLACK;
+      // Metin rengi: orijinal renk varsa kullan; yoksa arka plana göre otomatik seç
+      let textColor;
+      if (block.color) {
+        textColor = rgb(block.color[0], block.color[1], block.color[2]);
+      } else {
+        const bgLuma = sample ? (0.299 * sample[0] + 0.587 * sample[1] + 0.114 * sample[2]) / 255 : 1;
+        textColor = bgLuma < 0.5 ? rgb(0.95, 0.95, 0.95) : BLACK;
+      }
 
       let baselineFromTop = boxYTop + fontSize * 0.85;
       for (const line of lines) {

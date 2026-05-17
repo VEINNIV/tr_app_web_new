@@ -34,6 +34,7 @@ export default function TranslatorPage() {
 
   const [file, setFile] = useState<File | null>(null);
   const [sourceLang, setSourceLang] = useState('auto');
+  const [domain, setDomain] = useState('general');
   const [chosenMode, setChosenMode] = useState<'foreground' | 'background'>('foreground');
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -109,6 +110,7 @@ export default function TranslatorPage() {
     await start({
       file,
       sourceLang,
+      domain,
       userId: profile.id,
       credits: profile.credits_remaining,
       mode: chosenMode,
@@ -118,6 +120,7 @@ export default function TranslatorPage() {
   const handleReset = () => {
     setFile(null);
     setSourceLang('auto');
+    setDomain('general');
     setChosenMode('foreground');
     setActivity([]);
     dismiss();
@@ -245,6 +248,31 @@ export default function TranslatorPage() {
                   <div className={styles.targetLang}>
                     <span className={styles.targetFlag}>{TARGET_LANGUAGE.flag}</span>
                     <span className={styles.targetText}>{TARGET_LANGUAGE.nativeName} ({TARGET_LANGUAGE.name})</span>
+                  </div>
+
+                  {/* Alan / bağlam seçimi */}
+                  <div className={styles.configLabel} style={{ marginTop: 'var(--space-5)' }}>
+                    <Search size={16} /> Belge Alanı
+                  </div>
+                  <div className={styles.domainGrid}>
+                    {([
+                      { id: 'general',     label: 'Genel',        emoji: '📄' },
+                      { id: 'medical',     label: 'Tıp',          emoji: '🏥' },
+                      { id: 'legal',       label: 'Hukuk',        emoji: '⚖️' },
+                      { id: 'math',        label: 'Matematik',    emoji: '∑' },
+                      { id: 'engineering', label: 'Mühendislik',  emoji: '⚙️' },
+                      { id: 'cs',          label: 'Bilgisayar',   emoji: '💻' },
+                      { id: 'economics',   label: 'İktisat',      emoji: '📊' },
+                    ] as const).map(d => (
+                      <button
+                        key={d.id}
+                        className={`${styles.domainOption} ${domain === d.id ? styles.domainSelected : ''}`}
+                        onClick={() => setDomain(d.id)}
+                        type="button"
+                      >
+                        <span>{d.emoji}</span> {d.label}
+                      </button>
+                    ))}
                   </div>
 
                   {/* Mod seçimi */}
