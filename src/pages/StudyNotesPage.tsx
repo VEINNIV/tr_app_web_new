@@ -110,19 +110,20 @@ export default function StudyNotesPage() {
     setStreamingText('');
 
     try {
-      // 1. Krediyi düş
-      await supabase.from('profiles').update({
-        credits_remaining: profile.credits_remaining - totalCost,
-      }).eq('id', profile.id);
-
-      // 2. Kredi işlemini kaydet
-      await supabase.from('credit_transactions').insert({
-        user_id: profile.id,
-        amount: -totalCost,
-        action: 'chat',
+      // 1. Atomic kredi düşümü — server-side RPC (consume_credits)
+      const { error: creditErr } = await supabase.rpc('consume_credits', {
+        p_action: 'study_notes',
+        p_amount: totalCost,
+        p_reference: null,
       });
+      if (creditErr) {
+        const msg = /Yetersiz/.test(creditErr.message) ? 'Yetersiz kredi.' : 'Kredi düşürülemedi.';
+        toast.error(msg);
+        setStep('upload');
+        return;
+      }
 
-      // 3. Session kaydı oluştur
+      // 2. Session kaydı oluştur
       const { data: session } = await supabase.from('study_sessions').insert({
         user_id: profile.id,
         title: `${subject} Notları - ${new Date().toLocaleDateString('tr-TR')}`,

@@ -19,10 +19,8 @@ import { supabase } from '../lib/supabase';
 import { detectLanguage } from '../lib/ai';
 import { notify, requestPermission } from '../lib/notifications';
 import { TARGET_LANGUAGE } from '../lib/constants';
-import * as pdfjsLib from 'pdfjs-dist';
+import { pdfjsLib } from '../lib/pdfWorker';
 import type { OverlayData, OverlayPage } from '../types';
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
 export type JobMode = 'foreground' | 'background';
 export type JobStatus = 'idle' | 'running' | 'completed' | 'error' | 'cancelled';
@@ -152,7 +150,7 @@ export function TranslationProvider({ children }: { children: ReactNode }) {
     }
   }, [job]);
 
-  const start = useCallback(async ({ file, sourceLang, userId, credits, mode, domain = 'general', glossary }: StartParams) => {
+  const start = useCallback(async ({ file, sourceLang, userId, credits: _credits, mode, domain = 'general', glossary }: StartParams) => {
     if (job?.status === 'running') {
       toast.error('Zaten bir çeviri çalışıyor. Önce mevcutu bitirin veya iptal edin.');
       return;
@@ -276,7 +274,7 @@ export function TranslationProvider({ children }: { children: ReactNode }) {
         .join('\n\n---\n\n');
 
       const creditsCost = Math.max(1, pageCount);
-      await supabase.from('translations').insert({
+      const { data: trans, error: transErr } = await supabase.from('translations').insert({
         document_id: docId,
         user_id: userId,
         target_language: TARGET_LANGUAGE.code,
@@ -284,11 +282,20 @@ export function TranslationProvider({ children }: { children: ReactNode }) {
         progress: 100,
         status: 'completed',
         credits_used: creditsCost,
-      });
+      }).select('id').single();
+      if (transErr) throw new Error('Çeviri kaydedilemedi: ' + transErr.message);
       await supabase.from('documents').update({ status: 'completed', original_language: detectedLang }).eq('id', docId);
-      await supabase.from('profiles').update({
-        credits_remaining: Math.max(0, credits - creditsCost),
-      }).eq('id', userId);
+
+      // Atomic kredi düşümü — server-side RPC
+      const { error: creditErr } = await supabase.rpc('consume_credits', {
+        p_action: 'translation',
+        p_amount: creditsCost,
+        p_reference: trans?.id ?? null,
+      });
+      if (creditErr) {
+        // Kredi düşürülemese bile çeviri tamam — sadece uyar
+        console.warn('[Credits] Kredi düşümü başarısız:', creditErr.message);
+      }
 
       // ── Tamamlandı ────────────────────────────────────────────────────────
       setJob(j => j && {

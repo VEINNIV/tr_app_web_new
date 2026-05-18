@@ -2,12 +2,10 @@
  * PDF sayfa render yardımcıları — PDF.js üzerinde çalışır.
  * Canvas'a render edip JPEG data URL veya inline base64 döner.
  */
-import * as pdfjsLib from 'pdfjs-dist';
+import { pdfjsLib } from './pdfWorker';
+import type * as pdfjsLibType from 'pdfjs-dist';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc =
-  `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
-
-export type PDFProxy = pdfjsLib.PDFDocumentProxy;
+export type PDFProxy = pdfjsLibType.PDFDocumentProxy;
 
 export async function loadPDFFromURL(url: string): Promise<PDFProxy> {
   return pdfjsLib.getDocument({ url, cMapPacked: true }).promise;

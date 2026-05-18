@@ -31,87 +31,100 @@ export default function AdminDashboardPage() {
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   const [creditAmount, setCreditAmount] = useState(5);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 50;
 
+  // Aramada her tuş basışında DB'ye gitmesin diye 300ms debounce
   useEffect(() => {
-    fetchData();
-  }, []);
+    const t = setTimeout(() => { fetchData(); }, searchTerm ? 300 : 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, searchTerm]);
 
   const fetchData = async () => {
     setLoading(true);
 
-    // Tüm kullanıcıları çek
-    const { data: usersData } = await supabase
+    // Sayfalama + arama — search query varsa filtre uygula
+    let q = supabase
       .from('profiles')
-      .select('*')
-      .order('created_at', { ascending: false });
+      .select('*', { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
 
-    // Platform istatistikleri
-    const { count: docCount } = await supabase.from('documents').select('*', { count: 'exact', head: true });
-    const { count: transCount } = await supabase.from('translations').select('*', { count: 'exact', head: true });
-    const { count: studyCount } = await supabase.from('study_sessions').select('*', { count: 'exact', head: true });
+    if (searchTerm.trim()) {
+      const s = searchTerm.trim().replace(/[%_]/g, '');
+      q = q.or(`email.ilike.%${s}%,full_name.ilike.%${s}%`);
+    }
+
+    const { data: usersData, count: userCount } = await q;
+
+    // Platform istatistikleri (sadece ilk sayfada çek — tekrar etmeye gerek yok)
+    let nextStats = stats;
+    if (page === 0 && !searchTerm) {
+      const [docs, trans, study] = await Promise.all([
+        supabase.from('documents').select('*', { count: 'exact', head: true }),
+        supabase.from('translations').select('*', { count: 'exact', head: true }),
+        supabase.from('study_sessions').select('*', { count: 'exact', head: true }),
+      ]);
+      nextStats = {
+        totalUsers: userCount ?? 0,
+        totalDocuments: docs.count ?? 0,
+        totalTranslations: trans.count ?? 0,
+        totalStudySessions: study.count ?? 0,
+      };
+    } else {
+      nextStats = { ...stats, totalUsers: userCount ?? stats.totalUsers };
+    }
 
     if (usersData) setUsers(usersData as User[]);
-    setStats({
-      totalUsers: usersData?.length ?? 0,
-      totalDocuments: docCount ?? 0,
-      totalTranslations: transCount ?? 0,
-      totalStudySessions: studyCount ?? 0,
-    });
+    setStats(nextStats);
     setLoading(false);
   };
 
-  /** Kullanıcının planını güncelle */
-  const updateUserPlan = async (userId: string, newPlan: Plan) => {
-    const planCredits: Record<Plan, number> = { free: 5, starter: 50, pro: 500, enterprise: 9999 };
-    const { error } = await supabase
-      .from('profiles')
-      .update({ plan: newPlan, credits_monthly_limit: planCredits[newPlan] })
-      .eq('id', userId);
+  const totalPages = Math.max(1, Math.ceil(stats.totalUsers / PAGE_SIZE));
 
-    if (error) { toast.error('Plan güncellenemedi'); return; }
+  /** Kullanıcının planını güncelle (admin RPC) */
+  const updateUserPlan = async (userId: string, newPlan: Plan) => {
+    const { error } = await supabase.rpc('update_user_plan', {
+      p_user_id: userId,
+      p_plan: newPlan,
+    });
+    if (error) { toast.error('Plan güncellenemedi: ' + error.message); return; }
     toast.success(`Plan güncellendi: ${newPlan.toUpperCase()}`);
     fetchData();
   };
 
-  /** Kullanıcının rolünü güncelle */
+  /** Kullanıcının rolünü güncelle (admin RPC) */
   const updateUserRole = async (userId: string, newRole: UserRole) => {
-    const { error } = await supabase
-      .from('profiles')
-      .update({ role: newRole })
-      .eq('id', userId);
-
-    if (error) { toast.error('Rol güncellenemedi'); return; }
+    const { error } = await supabase.rpc('update_user_role', {
+      p_user_id: userId,
+      p_role: newRole,
+    });
+    if (error) { toast.error('Rol güncellenemedi: ' + error.message); return; }
     toast.success(`Rol güncellendi: ${newRole}`);
     fetchData();
   };
 
-  /** Kullanıcıya kredi ver */
+  /** Kullanıcıya kredi ver (admin RPC) */
   const giveCredits = async (userId: string, amount: number) => {
-    const user = users.find(u => u.id === userId);
-    if (!user) return;
-
-    const { error } = await supabase
-      .from('profiles')
-      .update({ credits_remaining: user.credits_remaining + amount })
-      .eq('id', userId);
-
-    if (error) { toast.error('Kredi verilemedi'); return; }
-
-    // Kredi işlem kaydı oluştur
-    await supabase.from('credit_transactions').insert({
-      user_id: userId,
-      amount: amount,
-      action: 'admin_grant',
+    const { error } = await supabase.rpc('grant_credits', {
+      p_user_id: userId,
+      p_amount: amount,
+      p_reason: 'admin_grant',
     });
-
+    if (error) { toast.error('Kredi verilemedi: ' + error.message); return; }
     toast.success(`${amount} kredi verildi`);
     fetchData();
   };
 
-  const filteredUsers = users.filter(u =>
-    u.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.email.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Server-side filtreleme yapılıyor; users zaten filtreli geliyor
+  const filteredUsers = users;
+
+  // Aramada page'i sıfırla
+  const onSearch = (v: string) => {
+    setSearchTerm(v);
+    setPage(0);
+  };
 
   if (loading) {
     return (
@@ -174,7 +187,7 @@ export default function AdminDashboardPage() {
               type="text"
               placeholder="İsim veya e-posta ara..."
               value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
+              onChange={e => onSearch(e.target.value)}
             />
           </div>
         </div>
@@ -302,6 +315,30 @@ export default function AdminDashboardPage() {
             </motion.div>
           )}
         </motion.div>
+
+        {/* ── Pagination ──────────────────────────────────────── */}
+        {totalPages > 1 && (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, marginTop: 24, fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>
+            <button
+              onClick={() => setPage(p => Math.max(0, p - 1))}
+              disabled={page === 0}
+              style={{ padding: '6px 14px', borderRadius: 8, background: 'var(--color-bg-alt)', border: '1px solid var(--color-border)', cursor: page === 0 ? 'not-allowed' : 'pointer', opacity: page === 0 ? 0.5 : 1, font: 'inherit', fontWeight: 500 }}
+            >
+              ← Önceki
+            </button>
+            <span style={{ padding: '6px 12px' }}>
+              Sayfa <strong style={{ color: 'var(--color-text-primary)' }}>{page + 1}</strong> / {totalPages}
+              <span style={{ marginLeft: 8, color: 'var(--color-text-tertiary)' }}>({stats.totalUsers} kullanıcı)</span>
+            </span>
+            <button
+              onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+              disabled={page >= totalPages - 1}
+              style={{ padding: '6px 14px', borderRadius: 8, background: 'var(--color-bg-alt)', border: '1px solid var(--color-border)', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer', opacity: page >= totalPages - 1 ? 0.5 : 1, font: 'inherit', fontWeight: 500 }}
+            >
+              Sonraki →
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

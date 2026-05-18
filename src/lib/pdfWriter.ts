@@ -115,9 +115,8 @@ async function sampleBackgroundColors(
   pdfBytes: Uint8Array,
   pages: OverlayPage[],
 ): Promise<Map<string, [number, number, number]>> {
-  // PDF.js dinamik import — sadece fallback'te gerekiyor
-  const pdfjsLib = await import('pdfjs-dist');
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+  // PDF.js dinamik import — sadece fallback'te gerekiyor; worker globalde set edilmiş.
+  const { pdfjsLib } = await import('./pdfWorker');
 
   const result = new Map<string, [number, number, number]>();
   const SCALE = 1.5;

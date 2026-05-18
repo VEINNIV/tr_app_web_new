@@ -268,10 +268,13 @@ export default function ChatPage() {
       role: 'user', content: text, credits_used: 0.5,
     });
 
+    // Atomic kredi düşümü — server-side RPC
     if (profile.credits_remaining >= 0.5) {
-      void supabase.from('profiles').update({
-        credits_remaining: Math.max(0, profile.credits_remaining - 0.5),
-      }).eq('id', profile.id);
+      void supabase.rpc('consume_credits', {
+        p_action: 'chat',
+        p_amount: 0.5,
+        p_reference: selectedDocId ?? null,
+      });
     }
 
     abortRef.current = new AbortController();

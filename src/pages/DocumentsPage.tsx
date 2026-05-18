@@ -50,12 +50,16 @@ export default function DocumentsPage() {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const summaryAbortRef = useRef<AbortController | null>(null);
 
-  // Belgeleri ve çevirilerini birlikte çek
+  // Belgeleri ve çevirilerini birlikte çek (sayfalı — performans)
+  const [docPage, setDocPage] = useState(0);
+  const [hasMoreDocs, setHasMoreDocs] = useState(false);
+  const DOC_PAGE_SIZE = 30;
+
   useEffect(() => {
     if (!profile) return;
 
     const fetchDocuments = async () => {
-      // Belgeler + her belgeye ait tamamlanan ilk çeviriyi join et
+      const start = docPage * DOC_PAGE_SIZE;
       const { data: docs } = await supabase
         .from('documents')
         .select(`
@@ -63,20 +67,23 @@ export default function DocumentsPage() {
           translation:translations(*)
         `)
         .eq('user_id', profile.id)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .range(start, start + DOC_PAGE_SIZE);  // +1 fazla çek → "daha var mı?" kontrolü
 
       if (docs) {
-        // translations dizisinin ilk elemanını translation olarak ata
-        const mapped = docs.map((d: DocumentWithTranslation & { translation: Translation[] }) => ({
+        const more = docs.length > DOC_PAGE_SIZE;
+        const slice = more ? docs.slice(0, DOC_PAGE_SIZE) : docs;
+        const mapped = slice.map((d: DocumentWithTranslation & { translation: Translation[] }) => ({
           ...d,
           translation: Array.isArray(d.translation) ? d.translation[0] ?? null : d.translation,
         }));
-        setDocuments(mapped as DocumentWithTranslation[]);
+        setDocuments(prev => docPage === 0 ? mapped : [...prev, ...mapped]);
+        setHasMoreDocs(more);
       }
     };
 
     fetchDocuments();
-  }, [profile]);
+  }, [profile, docPage]);
 
   /** Belge durumuna göre renk sınıfı döndürür */
   const statusClass = (s: string) => {
@@ -354,6 +361,28 @@ export default function DocumentsPage() {
               </motion.div>
             ))}
           </AnimatePresence>
+        </div>
+      )}
+
+      {/* Daha fazla yükle */}
+      {hasMoreDocs && (
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24 }}>
+          <button
+            onClick={() => setDocPage(p => p + 1)}
+            style={{
+              padding: '10px 24px',
+              borderRadius: 12,
+              background: 'var(--color-surface)',
+              border: '1px solid var(--color-border)',
+              cursor: 'pointer',
+              font: 'inherit',
+              fontSize: '0.875rem',
+              fontWeight: 600,
+              color: 'var(--color-text-primary)',
+            }}
+          >
+            Daha fazla yükle
+          </button>
         </div>
       )}
 

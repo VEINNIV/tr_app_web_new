@@ -102,7 +102,7 @@ export default function PDFOverlayViewer({
         if (cancelled) return;
         setTranslatedBytes(bytes);
 
-        const blob = new Blob([bytes], { type: 'application/pdf' });
+        const blob = new Blob([bytes as BlobPart], { type: 'application/pdf' });
         const blobUrl = URL.createObjectURL(blob);
         if (translatedBlobRef.current) URL.revokeObjectURL(translatedBlobRef.current);
         translatedBlobRef.current = blobUrl;

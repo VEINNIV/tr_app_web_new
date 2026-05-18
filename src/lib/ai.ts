@@ -1,7 +1,8 @@
 /**
- * TransLingua — AI Servis Katmanı (v3)
+ * TransLingua — AI Servis Katmanı (v4 — secure proxy)
  *
- * Gemini API üzerinden yürütülen tüm AI iş akışları.
+ * Tüm Gemini çağrıları Supabase Edge Function `ai-proxy` üzerinden gider.
+ * API anahtarı artık taraf-istemciye gönderilmez — sadece sunucuda kalır.
  *
  * Özellikler:
  *  • Multimodal input: metin + görsel + PDF (hem sayısal hem taranmış)
@@ -12,20 +13,25 @@
  *  • Akademik format korunumu (formül, tablo, dipnot, şekil)
  */
 
-const AI_API_KEY = import.meta.env.VITE_AI_API_KEY as string | undefined;
-const AI_API_URL = (import.meta.env.VITE_AI_API_URL as string | undefined) || '';
+import { supabase } from './supabase';
 
-// Streaming URL: :generateContent → :streamGenerateContent
-const STREAM_URL = AI_API_URL.replace(':generateContent', ':streamGenerateContent');
+// Aktif modelleri burada tutuyoruz — edge function whitelist'iyle aynı olmalı.
+const MODEL_FLASH = 'gemini-3.1-flash-lite-preview';
+const MODEL_PRO   = 'gemini-3.1-pro-preview';
 
-// Pro model URL — çeviri kalitesi için kullanılır
-// VITE_AI_PRO_API_URL yoksa flash-lite → pro değiştirilerek türetilir
-const AI_PRO_API_URL =
-  (import.meta.env.VITE_AI_PRO_API_URL as string | undefined) ||
-  AI_API_URL
-    .replace('flash-lite-preview', 'pro-preview')
-    .replace('flash-lite:', 'pro:')
-    .replace('-flash-lite', '-pro');
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+const PROXY_URL = SUPABASE_URL ? `${SUPABASE_URL}/functions/v1/ai-proxy` : '';
+
+async function authHeaders(): Promise<Record<string, string>> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    ...(SUPABASE_ANON_KEY ? { 'apikey': SUPABASE_ANON_KEY } : {}),
+  };
+}
 
 // Multimodal için boyut sınırı: 15 MB altı PDF'ler doğrudan Gemini'ye gönderilir
 const MULTIMODAL_PDF_LIMIT = 15 * 1024 * 1024; // 15 MB
@@ -66,7 +72,7 @@ function checkFinishReason(reason?: string) {
 }
 
 export function isAIAvailable(): boolean {
-  return !!(AI_API_KEY && AI_API_KEY !== 'YOUR_AI_API_KEY_HERE' && AI_API_URL);
+  return !!PROXY_URL;
 }
 
 // ─── Düşük seviyeli API çağrısı ─────────────────────────────────────────────
@@ -86,9 +92,9 @@ async function callGemini({
 }: CallOpts & { _useProModel?: boolean }): Promise<string> {
   if (!isAIAvailable()) return demoResponse(contents);
 
-  const apiUrl = _useProModel ? AI_PRO_API_URL : AI_API_URL;
-
   const body: Record<string, unknown> = {
+    mode: 'generate',
+    model: _useProModel ? MODEL_PRO : MODEL_FLASH,
     contents,
     generationConfig: { temperature, maxOutputTokens },
   };
@@ -96,23 +102,23 @@ async function callGemini({
     body.systemInstruction = { parts: [{ text: systemInstruction }] };
   }
 
-  const res = await fetch(`${apiUrl}?key=${AI_API_KEY}`, {
+  const res = await fetch(PROXY_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify(body),
   });
 
   if (!res.ok) {
     const errData = await res.json().catch(() => null);
-    const msg = errData?.error?.message || `HTTP ${res.status}`;
-    // 400 çoğunlukla istek formatı veya model sorunu, 429 rate limit, 503 model yoğunluğu
-    if (res.status === 429) throw new Error('AI servis yoğunluğu — birkaç saniye sonra tekrar deneyin.');
+    const msg = errData?.error || `HTTP ${res.status}`;
+    if (res.status === 401) throw new Error('Oturum süresi dolmuş — tekrar giriş yapın.');
+    if (res.status === 429) throw new Error('Çok fazla istek — birkaç saniye bekleyin.');
     if (res.status === 503) throw new Error('AI servisi geçici olarak kullanılamıyor — lütfen bekleyin.');
-    throw new Error(`AI API hatası (${res.status}): ${msg}`);
+    throw new Error(`AI hatası (${res.status}): ${msg}`);
   }
 
   const data: AIResponseRaw = await res.json();
-  if (data.error) throw new Error(`AI API hatası: ${data.error.message || 'Bilinmeyen hata'}`);
+  if (data.error) throw new Error(`AI hatası: ${data.error.message || 'Bilinmeyen hata'}`);
 
   const candidate = data.candidates?.[0];
   checkFinishReason(candidate?.finishReason);
@@ -126,6 +132,7 @@ export async function streamGemini(
   opts: CallOpts & {
     onChunk?: (delta: string, full: string) => void;
     signal?: AbortSignal;
+    _useProModel?: boolean;
   },
 ): Promise<string> {
   if (!isAIAvailable()) {
@@ -142,6 +149,8 @@ export async function streamGemini(
   }
 
   const body: Record<string, unknown> = {
+    mode: 'stream',
+    model: opts._useProModel ? MODEL_PRO : MODEL_FLASH,
     contents: opts.contents,
     generationConfig: {
       temperature: opts.temperature ?? 0.25,
@@ -152,19 +161,19 @@ export async function streamGemini(
     body.systemInstruction = { parts: [{ text: opts.systemInstruction }] };
   }
 
-  const url = `${STREAM_URL}?alt=sse&key=${AI_API_KEY}`;
-  const res = await fetch(url, {
+  const res = await fetch(PROXY_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify(body),
     signal: opts.signal,
   });
 
   if (!res.ok || !res.body) {
-    if (res.status === 429) throw new Error('AI servis yoğunluğu — birkaç saniye sonra tekrar deneyin.');
+    if (res.status === 401) throw new Error('Oturum süresi dolmuş — tekrar giriş yapın.');
+    if (res.status === 429) throw new Error('Çok fazla istek — birkaç saniye bekleyin.');
     if (res.status === 503) throw new Error('AI servisi geçici olarak kullanılamıyor — lütfen bekleyin.');
     const errJson = await res.json().catch(() => null);
-    const errMsg = errJson?.error?.message || '';
+    const errMsg = errJson?.error || '';
     throw new Error(`AI stream hatası (${res.status})${errMsg ? ': ' + errMsg : ''}`);
   }
 
@@ -214,9 +223,9 @@ function demoResponse(contents: AIMessage[]): string {
   const last = contents[contents.length - 1];
   const txt = last?.parts.map(p => p.text ?? '').join(' ') ?? '';
   return (
-    `**Demo Modu** — AI motoru yapılandırılmamış.\n\n` +
-    `\`VITE_AI_API_KEY\` ve \`VITE_AI_API_URL\` ortam değişkenleri ayarlandığında ` +
-    `gerçek yanıtlar burada görünecek.\n\n` +
+    `**Demo Modu** — Supabase yapılandırması eksik.\n\n` +
+    `\`VITE_SUPABASE_URL\` ve \`VITE_SUPABASE_ANON_KEY\` ortam değişkenleri ayarlandığında ` +
+    `gerçek AI yanıtları burada görünecek.\n\n` +
     `Gönderilen içerik: "${txt.slice(0, 100).replace(/\n/g, ' ')}..."`
   );
 }

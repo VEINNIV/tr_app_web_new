@@ -21,7 +21,7 @@ export async function exportOverlayToPDF(
   overlayPages: OverlayPage[],
   opts: ExportOptions = {},
 ): Promise<Blob> {
-  const { onProgress, signal, filename = 'ceviri.pdf' } = opts;
+  const { onProgress, signal } = opts;
 
   const pdf: PDFProxy = typeof pdfSource === 'string'
     ? await loadPDFFromURL(pdfSource)
