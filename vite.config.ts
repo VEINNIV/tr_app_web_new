@@ -19,7 +19,7 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    include: ['docx', 'file-saver'],
+    include: ['docx', 'file-saver', 'cookie'],
     exclude: ['micromark'],
   },
   build: {
