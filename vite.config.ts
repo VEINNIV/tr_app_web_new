@@ -13,21 +13,40 @@ const CHUNKS: Record<string, string[]> = {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+
   resolve: {
     alias: {
+      // micromark/dev build'ları Vite 8 / Rolldown ile çözülemiyor (debug CJS sorunu).
+      // Production build'ına yönlendiriyoruz.
       'micromark/dev': 'micromark',
     },
   },
+
   optimizeDeps: {
-    include: ['docx', 'file-saver', 'cookie'],
-    exclude: ['micromark'],
+    include: [
+      // Açık CJS paketler — Rolldown'un ESM'e dönüştürmesi için force include.
+      'docx',
+      'file-saver',
+      // react-router-dom v7'nin bağımlılığı; Rolldown pre-bundle'da bulamıyor.
+      'cookie',
+      // pdf-lib ve fontkit saf CJS/UMD; module field yok, Rolldown ile sorun çıkabilir.
+      'pdf-lib',
+      '@pdf-lib/fontkit',
+    ],
+    exclude: [
+      // micromark'ı Rolldown pre-bundle'dan çıkar; alias zaten dev→prod yönlendiriyor.
+      'micromark',
+    ],
   },
+
   build: {
     rollupOptions: {
       output: {
         manualChunks(id) {
+          // Windows'ta Rolldown path ayırıcısı ters slash olabilir; normalize et.
+          const normalizedId = id.replace(/\\/g, '/')
           for (const [chunk, pkgs] of Object.entries(CHUNKS)) {
-            if (pkgs.some(pkg => id.includes(`/node_modules/${pkg}/`))) return chunk
+            if (pkgs.some(pkg => normalizedId.includes(`/node_modules/${pkg}/`))) return chunk
           }
         },
       },
