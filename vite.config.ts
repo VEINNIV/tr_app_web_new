@@ -13,8 +13,14 @@ const CHUNKS: Record<string, string[]> = {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      'micromark/dev': 'micromark',
+    },
+  },
   optimizeDeps: {
     include: ['docx', 'file-saver'],
+    exclude: ['micromark'],
   },
   build: {
     rollupOptions: {
