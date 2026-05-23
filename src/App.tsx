@@ -11,6 +11,7 @@ import TranslationStatusBar from './components/TranslationStatusBar';
 import EnvErrorPage from './components/EnvErrorPage';
 import OnboardingModal from './components/OnboardingModal';
 import { checkEnv } from './lib/env';
+import ErrorBoundary from './components/ErrorBoundary';
 
 const LandingPage        = lazy(() => import('./pages/LandingPage'));
 const AuthPage           = lazy(() => import('./pages/AuthPage'));
@@ -126,14 +127,16 @@ export default function App() {
   if (!env.ok) return <EnvErrorPage missing={env.missing} />;
 
   return (
-    <BrowserRouter>
-      <ThemeProvider>
-        <AuthProvider>
-          <TranslationProvider>
-            <AppLayout />
-          </TranslationProvider>
-        </AuthProvider>
-      </ThemeProvider>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <ThemeProvider>
+          <AuthProvider>
+            <TranslationProvider>
+              <AppLayout />
+            </TranslationProvider>
+          </AuthProvider>
+        </ThemeProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }

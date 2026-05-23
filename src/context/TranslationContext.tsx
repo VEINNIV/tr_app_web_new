@@ -127,7 +127,7 @@ export function TranslationProvider({ children }: { children: ReactNode }) {
         source = fileRef.current;
       } else if (job.docId) {
         // dosya artık bellekte yok → storage'dan çek
-        const { data: doc } = await supabase.from('documents').select('original_storage_path').eq('id', job.docId).single();
+        const { data: doc } = await supabase.from('documents').select('original_storage_path').eq('id', job.docId).eq('user_id', userId).single();
         if (!doc?.original_storage_path) throw new Error('Orijinal PDF bulunamadı');
         const { data: signed } = await supabase.storage.from('originals').createSignedUrl(doc.original_storage_path, 600);
         if (!signed?.signedUrl) throw new Error('İndirme linki alınamadı');

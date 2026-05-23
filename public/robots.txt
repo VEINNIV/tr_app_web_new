@@ -1,0 +1,22 @@
+User-agent: *
+
+# Public routes — indexable
+Allow: /$
+Allow: /auth$
+
+# App routes — require login, no index value
+Disallow: /dashboard
+Disallow: /translate
+Disallow: /documents
+Disallow: /chat
+Disallow: /study-notes
+Disallow: /glossary
+Disallow: /settings
+
+# Admin
+Disallow: /admin
+
+# Shared document links (user-generated, no crawl value)
+Disallow: /shared/
+
+Sitemap: https://transwordly.com/sitemap.xml

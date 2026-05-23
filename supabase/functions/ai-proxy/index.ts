@@ -1,8 +1,18 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+// ── CORS ─────────────────────────────────────────────────────────────────────
+// In production set the ALLOWED_ORIGIN secret to your exact domain, e.g.
+//   supabase secrets set ALLOWED_ORIGIN=https://transwordly.com
+// Leave it unset (or set to '*') only during local dev.
+const allowedOrigin = Deno.env.get('ALLOWED_ORIGIN') ?? '*';
+
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': allowedOrigin,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface AIRequest {
   prompt?: string;
@@ -18,6 +28,8 @@ interface GeminiResponse {
   };
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -25,7 +37,10 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+// ── Handler ───────────────────────────────────────────────────────────────────
+
 Deno.serve(async (req) => {
+  // CORS pre-flight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -33,6 +48,27 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') {
     return jsonResponse({ error: 'Method not allowed' }, 405);
   }
+
+  // ── JWT validation ────────────────────────────────────────────────────────
+  // Every request MUST carry a valid Supabase session token.
+  const authHeader = req.headers.get('Authorization');
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return jsonResponse({ error: 'Missing or malformed Authorization header' }, 401);
+  }
+
+  const supabaseUrl  = Deno.env.get('SUPABASE_URL')!;
+  const supabaseKey  = Deno.env.get('SUPABASE_ANON_KEY')!;
+  const token        = authHeader.replace('Bearer ', '');
+
+  const supabase = createClient(supabaseUrl, supabaseKey, {
+    global: { headers: { Authorization: authHeader } },
+  });
+
+  const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+  if (authError || !user) {
+    return jsonResponse({ error: 'Unauthorized — invalid or expired session' }, 401);
+  }
+  // ── End JWT validation ─────────────────────────────────────────────────────
 
   const apiKey = Deno.env.get('AI_API_KEY');
   const apiUrl = Deno.env.get('AI_API_URL');
