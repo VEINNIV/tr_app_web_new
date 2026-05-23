@@ -25,10 +25,59 @@ const scrollTo = (id: string) => (e: React.MouseEvent) => {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
 
+/* ── Hero demo metinleri (typewriter) ────────────────────── */
+const HERO_DEMOS = [
+  {
+    file: 'neuroplasticity_en.pdf',
+    en: '"This study examines neuroplasticity and its effects on cognitive learning. Early interventions yield significant long-term cognitive benefits..."',
+    tr: '"Bu çalışmada nöroplastisite ve bilişsel öğrenme süreçleri incelenmiştir. Erken müdahaleler uzun vadeli bilişsel faydalar sağlamaktadır..."',
+  },
+  {
+    file: 'climate_report_2024.pdf',
+    en: '"Global climate indicators show accelerating warming trends. Immediate decarbonization policies are critical to limiting temperature rise to 1.5°C..."',
+    tr: '"Küresel iklim göstergeleri hızlanan ısınma eğilimi göstermektedir. Sıcaklık artışını 1.5°C ile sınırlamak için acil karbonsuzlaştırma politikaları kritik öneme sahiptir..."',
+  },
+  {
+    file: 'quantum_computing.pdf',
+    en: '"Quantum entanglement enables particles to be correlated regardless of distance. This principle forms the foundation of quantum cryptography..."',
+    tr: '"Kuantum dolanıklığı, parçacıkların mesafeden bağımsız olarak ilişkilendirilmesini sağlar. Bu ilke, kuantum kriptografisinin temelini oluşturur..."',
+  },
+];
+
+/* ── Typewriter hook ─────────────────────────────────────── */
+function useTypewriter(texts: string[], speed = 28, pause = 2800) {
+  const [displayed, setDisplayed] = useState('');
+  const [demoIdx, setDemoIdx] = useState(0);
+  const [phase, setPhase] = useState<'typing' | 'waiting' | 'erasing'>('typing');
+
+  useEffect(() => {
+    let timeout: ReturnType<typeof setTimeout>;
+    const target = texts[demoIdx];
+
+    if (phase === 'typing') {
+      if (displayed.length < target.length) {
+        timeout = setTimeout(() => setDisplayed(target.slice(0, displayed.length + 1)), speed);
+      } else {
+        timeout = setTimeout(() => setPhase('erasing'), pause);
+      }
+    } else if (phase === 'erasing') {
+      if (displayed.length > 0) {
+        timeout = setTimeout(() => setDisplayed(d => d.slice(0, -1)), speed / 2);
+      } else {
+        setDemoIdx(i => (i + 1) % texts.length);
+        setPhase('typing');
+      }
+    }
+    return () => clearTimeout(timeout);
+  }, [displayed, phase, demoIdx, texts, speed, pause]);
+
+  return { displayed, demoIdx, isTyping: phase === 'typing' };
+}
+
 /* ── Data ─────────────────────────────────────────────────── */
 const TESTIMONIALS = [
   {
-    quote: 'Bir haftada 3 makale okudum — hepsini TransLingua ile çevirdim. Normalde birkaç günümü alırdı.',
+    quote: 'Bir haftada 3 makale okudum — hepsini TransWordly ile çevirdim. Normalde birkaç günümü alırdı.',
     name: 'Zeynep A.',
     role: 'Tıp Fakültesi, 4. Sınıf',
     stars: 5,
@@ -112,6 +161,13 @@ const PHASE_INFO: Record<LivePhase, { label: string; sub: string; pct: [number, 
 /* ════════════════════════════════════════════════════════════ */
 export default function LandingPage() {
   const reduced = useReducedMotion();
+
+  /* ── Hero typewriter ── */
+  const trTexts = HERO_DEMOS.map(d => d.tr);
+  const { displayed: twDisplayed, demoIdx: twIdx, isTyping: twIsTyping } = useTypewriter(
+    reduced ? trTexts : trTexts,
+    reduced ? 0 : 28,
+  );
 
   /* ── Live demo state ── */
   const [livePhase, setLivePhase] = useState<LivePhase>('idle');
@@ -337,7 +393,7 @@ export default function LandingPage() {
               <div className={styles.mockupDots}>
                 <span /><span /><span />
               </div>
-              <div className={styles.mockupUrl}>translingua.app/translate</div>
+              <div className={styles.mockupUrl}>transwordly.com/translate</div>
               <div className={styles.mockupActions}>
                 <div className={styles.mockupActionBtn} />
                 <div className={styles.mockupActionBtn} />
@@ -348,14 +404,32 @@ export default function LandingPage() {
               <div className={styles.mockupPane}>
                 <div className={styles.mockupPaneHeader}>
                   <div className={styles.mockupPaneLang}>EN</div>
-                  <div className={styles.mockupPaneFile}>
-                    <FileText size={11} />
-                    neuroplasticity_en.pdf
-                  </div>
+                  <AP mode="wait">
+                    <motion.div
+                      key={twIdx}
+                      className={styles.mockupPaneFile}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.3 }}
+                    >
+                      <FileText size={11} />
+                      {HERO_DEMOS[twIdx].file}
+                    </motion.div>
+                  </AP>
                 </div>
-                <p className={styles.mockupPaneText}>
-                  "This study comprehensively examines neuroplasticity and its effects on cognitive learning processes. Research findings suggest that early interventions yield significant long-term cognitive benefits..."
-                </p>
+                <AP mode="wait">
+                  <motion.p
+                    key={twIdx}
+                    className={styles.mockupPaneText}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.4 }}
+                  >
+                    {HERO_DEMOS[twIdx].en}
+                  </motion.p>
+                </AP>
               </div>
               {/* Divider */}
               <div className={styles.mockupPaneDivider} />
@@ -365,11 +439,12 @@ export default function LandingPage() {
                   <div className={`${styles.mockupPaneLang} ${styles.mockupPaneLangTR}`}>TR</div>
                   <div className={styles.mockupPaneBadge}>
                     <Check size={10} />
-                    Tamamlandı
+                    {twIsTyping ? 'Çevriliyor…' : 'Tamamlandı'}
                   </div>
                 </div>
                 <p className={`${styles.mockupPaneText} ${styles.mockupPaneTextTR}`}>
-                  "Bu çalışmada nöroplastisite ve bilişsel öğrenme süreçleri kapsamlı biçimde incelenmiştir. Bulgular, erken müdahalelerin uzun vadeli bilişsel faydalar sağladığını göstermektedir..."
+                  {twDisplayed}
+                  <span className={styles.typewriterCursor} aria-hidden="true">|</span>
                 </p>
                 <div className={styles.mockupDownloads}>
                   <button className={styles.mockupDlBtn}><FileText size={10} /> PDF</button>
@@ -460,7 +535,7 @@ export default function LandingPage() {
             <div className={styles.liveBoxDots}>
               <span /><span /><span />
             </div>
-            <span className={styles.liveBoxUrl}>translingua.app/translate</span>
+            <span className={styles.liveBoxUrl}>transwordly.com/translate</span>
             <div className={styles.liveBoxBadge}>
               <motion.span
                 className={styles.liveBoxBadgeDot}
@@ -995,9 +1070,9 @@ export default function LandingPage() {
         <div className={styles.footerInner}>
           <div className={styles.footerBrand}>
             <div className={styles.footerLogo}>
-              <img src="/apple-touch-icon.png" alt="" width={22} height={22} draggable={false} />
+              <img src="/trans_wordly.png" alt="" width={22} height={22} draggable={false} />
             </div>
-            <span className={styles.footerBrandName}>TransLingua</span>
+            <span className={styles.footerBrandName}>TransWordly</span>
           </div>
           <nav className={styles.footerLinks}>
             <a href="#features"  onClick={scrollTo('features')}>Özellikler</a>
@@ -1005,7 +1080,7 @@ export default function LandingPage() {
             <a href="#how-it-works" onClick={scrollTo('how-it-works')}>Nasıl Çalışır</a>
             <Link to="/auth">Giriş Yap</Link>
           </nav>
-          <p className={styles.footerCopy}>© {new Date().getFullYear()} TransLingua · Akademisyenler için ❤️ ile</p>
+          <p className={styles.footerCopy}>© {new Date().getFullYear()} TransWordly · Akademisyenler için ❤️ ile</p>
         </div>
       </footer>
     </div>

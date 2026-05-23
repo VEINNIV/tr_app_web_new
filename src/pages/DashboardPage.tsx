@@ -12,8 +12,11 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { STATUS_LABELS } from '../lib/constants';
+import { formatTrDate } from '../lib/utils';
 import type { Document } from '../types';
 import { useAnimatedNumber, SPRING_TIGHT } from '../components/ui/motion';
+import { useOnboardingTour } from '../hooks/useOnboardingTour';
+import OnboardingTour from '../components/OnboardingTour';
 import styles from '../styles/components/dashboard.module.css';
 
 const stagger = {
@@ -29,6 +32,7 @@ const item = {
 export default function DashboardPage() {
   const { profile, isAdmin, loading: authLoading, refreshProfile } = useAuth();
   const reduced = useReducedMotion();
+  const { runTour, finishTour } = useOnboardingTour();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [totalTranslations, setTotalTranslations] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -102,9 +106,11 @@ export default function DashboardPage() {
 
   return (
     <div className={styles.dashboard}>
+      <OnboardingTour run={runTour} onFinish={finishTour} />
 
       {/* ── Header row ── */}
       <motion.div
+        id="tour-header"
         className={styles.header}
         initial={{ opacity: 0, y: -12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -116,7 +122,7 @@ export default function DashboardPage() {
             whileHover={reduced ? undefined : { rotate: -6, scale: 1.05 }}
             transition={SPRING_TIGHT}
           >
-            <img src="/apple-touch-icon.png" alt="" width={26} height={26} draggable={false} />
+            <img src="/trans_wordly.png" alt="" width={26} height={26} draggable={false} />
           </motion.div>
           <div>
             <h1 className={styles.headerTitle}>
@@ -148,6 +154,7 @@ export default function DashboardPage() {
 
       {/* ── Stats row ── */}
       <motion.div
+        id="tour-stats"
         className={styles.statsRow}
         variants={stagger}
         initial="hidden"
@@ -179,25 +186,24 @@ export default function DashboardPage() {
 
       {/* ── Credit bar ── */}
       <motion.div
+        id="tour-credits"
         className={styles.creditCard}
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2, duration: 0.4 }}
       >
         <div className={styles.creditTop}>
-          <div className={styles.creditTopLeft}>
-            <div className={styles.creditTitle}>Aylık Kredi</div>
-            {profile.credits_reset_at && (
-              <div className={styles.creditSub}>
-                {new Date(profile.credits_reset_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })} tarihinde sıfırlanır
-              </div>
-            )}
-          </div>
+          <span className={styles.creditTitle}>Aylık Kredi</span>
           <div className={styles.creditNum}>
             <span className={styles.creditRemain}>{profile.credits_remaining}</span>
             <span className={styles.creditTotal}> / {profile.credits_monthly_limit}</span>
           </div>
         </div>
+        {profile.credits_reset_at && (
+          <div className={styles.creditSub}>
+            {new Date(profile.credits_reset_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })} tarihinde sıfırlanır
+          </div>
+        )}
         <div className={styles.creditTrack}>
           <motion.div
             className={styles.creditFill}
@@ -226,7 +232,7 @@ export default function DashboardPage() {
             <Zap size={13} />
             Hızlı Erişim
           </h2>
-          <div className={styles.actionsList}>
+          <div id="tour-actions" className={styles.actionsList}>
             {actions.map(({ to, Icon, label, desc, accent }) => (
               <motion.div
                 key={to}
@@ -310,7 +316,7 @@ export default function DashboardPage() {
                     <span className={styles.docName}>{doc.original_name}</span>
                     <span className={styles.docDate}>
                       {doc.page_count ? `${doc.page_count} sayfa · ` : ''}
-                      {new Date(doc.created_at).toLocaleDateString('tr-TR')}
+                      {formatTrDate(doc.created_at)}
                     </span>
                   </div>
                   <span className={`${styles.docBadge} ${doc.status === 'completed' ? styles.done : doc.status === 'error' ? styles.err : styles.proc}`}>

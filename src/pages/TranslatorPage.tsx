@@ -58,6 +58,7 @@ export default function TranslatorPage() {
       .from('glossaries')
       .select('source_term, target_term, domain')
       .eq('user_id', profile.id)
+      .limit(2000)
       .then(({ data }) => { if (data) setGlossaryEntries(data); });
   }, [profile?.id]);
 

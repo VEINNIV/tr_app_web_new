@@ -9,15 +9,24 @@ import { useNavigate } from 'react-router-dom';
 import { motion, useReducedMotion, type Variants } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { User, CreditCard, LogOut, Shield } from 'lucide-react';
+import { User, CreditCard, LogOut, Shield, HelpCircle, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { SPRING_TIGHT } from '../components/ui/motion';
+import { useOnboardingTour } from '../hooks/useOnboardingTour';
 import styles from '../styles/components/settings.module.css';
 
 export default function SettingsPage() {
   const { profile, signOut, refreshProfile } = useAuth();
   const navigate = useNavigate();
   const reduced = useReducedMotion();
+  const { resetTour } = useOnboardingTour();
+
+  const restartOnboarding = async () => {
+    if (!profile) return;
+    await supabase.from('profiles').update({ onboarding_completed: false }).eq('id', profile.id);
+    await refreshProfile();
+    navigate('/dashboard');
+  };
   const [fullName, setFullName] = useState(profile?.full_name || '');
   const [saving, setSaving] = useState(false);
 
@@ -164,6 +173,60 @@ export default function SettingsPage() {
         <p className={styles.securityNote}>
           Şifrenizi değiştirmek için kayıtlı e-posta adresinize sıfırlama bağlantısı gönderilir.
         </p>
+      </motion.div>
+
+      {/* ── Profil Tercihleri ────────────────────────────────── */}
+      <motion.div className={styles.card} variants={cardVariants}>
+        <div className={styles.cardTitle}>
+          <Sparkles size={16} /> Kişiselleştirme
+        </div>
+        <div className={styles.row}>
+          <span className={styles.rowLabel}>Meslek</span>
+          <span className={styles.rowValue} style={{ textTransform: 'capitalize' }}>
+            {profile.profession
+              ? { student: 'Öğrenci', researcher: 'Araştırmacı', medical: 'Sağlık Prof.', legal: 'Hukuk Prof.', engineer: 'Mühendis', business: 'İş/Finans', teacher: 'Öğretmen', other: 'Diğer' }[profile.profession] ?? profile.profession
+              : '—'}
+          </span>
+        </div>
+        <div className={styles.row}>
+          <span className={styles.rowLabel}>Kullanım Amacı</span>
+          <span className={styles.rowValue} style={{ textTransform: 'capitalize' }}>
+            {profile.primary_use_case
+              ? { academic: 'Akademik', medical: 'Tıbbi', legal: 'Hukuki', engineering: 'Teknik', business: 'İş/Finans', general: 'Genel' }[profile.primary_use_case] ?? profile.primary_use_case
+              : '—'}
+          </span>
+        </div>
+        <p className={styles.securityNote} style={{ marginBottom: '1rem' }}>
+          Bu bilgileri değiştirmek için yeniden kurulum sihirbazını başlatabilirsiniz.
+        </p>
+        <motion.button
+          className={styles.btnPrimary}
+          onClick={restartOnboarding}
+          whileHover={reduced ? undefined : { y: -2 }}
+          whileTap={reduced ? undefined : { scale: 0.97 }}
+          transition={SPRING_TIGHT}
+        >
+          Kurulum Sihirbazını Yeniden Çalıştır
+        </motion.button>
+      </motion.div>
+
+      {/* ── Tur Kartı ───────────────────────────────────────── */}
+      <motion.div className={styles.card} variants={cardVariants}>
+        <div className={styles.cardTitle}>
+          <HelpCircle size={16} /> Rehber Tur
+        </div>
+        <p className={styles.rowLabel} style={{ marginBottom: '1rem' }}>
+          Uygulamayı keşfetmek için adım adım rehber turu tekrar başlatabilirsiniz.
+        </p>
+        <motion.button
+          className={styles.btnPrimary}
+          onClick={() => { resetTour(); navigate('/dashboard'); }}
+          whileHover={reduced ? undefined : { y: -2 }}
+          whileTap={reduced ? undefined : { scale: 0.97 }}
+          transition={SPRING_TIGHT}
+        >
+          Turu Tekrar Göster
+        </motion.button>
       </motion.div>
 
       {/* ── Hesap Çıkış Kartı ────────────────────────────────── */}

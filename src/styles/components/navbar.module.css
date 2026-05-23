@@ -42,6 +42,12 @@
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08);
 }
 
+:global([data-theme="dark"]) .navbarScrolled .navbarInner {
+  background: rgba(28, 28, 31, 0.88);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+}
+
 /* ── Brand ─────────────────────────── */
 .navBrand {
   display: flex;
@@ -80,7 +86,22 @@
   display: block;
 }
 
-.navTitle {
+.navTitleWrapper {
+  display: flex;
+  align-items: baseline;
+}
+
+.navTitleTrans {
+  font-size: 1.0625rem;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: -0.02em;
+  color: var(--color-accent);
+  display: inline-block;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.navTitleWordly {
   font-size: 1.0625rem;
   font-weight: var(--font-weight-bold);
   letter-spacing: -0.02em;
@@ -332,6 +353,27 @@
 .dropdownItemDanger:hover {
   background: var(--color-error-bg);
   color: var(--color-error);
+}
+
+/* ── Theme Toggle ──────────────────── */
+.themeToggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+.themeToggle:hover {
+  color: var(--color-text-primary);
+  border-color: var(--color-border-strong);
+  box-shadow: var(--shadow-xs);
 }
 
 /* ── Mobile Toggle ─────────────────── */

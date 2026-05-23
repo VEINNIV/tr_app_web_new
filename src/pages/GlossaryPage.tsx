@@ -6,9 +6,10 @@
  */
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Trash2, ScrollText, Search, X, Check, Loader } from 'lucide-react';
+import { Plus, Trash2, ScrollText, Search, X, Check, Loader, Sparkles } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/auth';
+import { generateGlossarySuggestions } from '../lib/ai';
 import toast from 'react-hot-toast';
 import type { GlossaryEntry } from '../types';
 
@@ -39,6 +40,7 @@ export default function GlossaryPage() {
   const [domainFilter, setDomainFilter] = useState('all');
   const [showForm, setShowForm] = useState(false);
   const [newEntry, setNewEntry] = useState<NewEntry>(EMPTY);
+  const [aiGenerating, setAiGenerating] = useState(false);
 
   useEffect(() => {
     fetchEntries();
@@ -87,6 +89,30 @@ export default function GlossaryPage() {
     toast('Terim silindi.', { icon: '🗑' });
   };
 
+  const handleAIGenerate = async () => {
+    if (!profile?.id) return;
+    const prof = profile.profession ?? 'other';
+    const uc   = profile.primary_use_case ?? 'general';
+    const lang = profile.native_language ?? 'tr';
+    setAiGenerating(true);
+    toast.loading('AI sözlük önerileri oluşturuluyor...', { id: 'ai-gloss' });
+    try {
+      const suggestions = await generateGlossarySuggestions(prof, uc, lang);
+      if (suggestions.length === 0) { toast.error('Öneri üretilemedi.', { id: 'ai-gloss' }); return; }
+      const { data, error } = await supabase.from('glossaries')
+        .insert(suggestions.map(s => ({ ...s, user_id: profile.id })))
+        .select();
+      if (error) { toast.error('Kayıt hatası: ' + error.message, { id: 'ai-gloss' }); return; }
+      setEntries(prev => [...(data as GlossaryEntry[]), ...prev]);
+      await supabase.from('profiles').update({ glossary_generated: true }).eq('id', profile.id);
+      toast.success(`${suggestions.length} terim eklendi! 🎉`, { id: 'ai-gloss' });
+    } catch {
+      toast.error('AI hatası, tekrar deneyin.', { id: 'ai-gloss' });
+    } finally {
+      setAiGenerating(false);
+    }
+  };
+
   const domainLabel = (d: string) => DOMAINS.find(x => x.value === d)?.label ?? d;
 
   const filtered = entries.filter(e => {
@@ -111,18 +137,35 @@ export default function GlossaryPage() {
             Tanımladığınız terimler çeviri sırasında AI'a iletilir — her zaman tutarlı çevrilir.
           </p>
         </div>
-        <button
-          onClick={() => setShowForm(v => !v)}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 7,
-            padding: '9px 18px', background: 'var(--color-accent)', color: 'white',
-            border: 'none', borderRadius: 12, font: 'inherit', fontSize: '0.875rem',
-            fontWeight: 700, cursor: 'pointer',
-          }}
-        >
-          {showForm ? <X size={15} /> : <Plus size={15} />}
-          {showForm ? 'İptal' : 'Yeni Terim'}
-        </button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            onClick={handleAIGenerate}
+            disabled={aiGenerating}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 7,
+              padding: '9px 18px',
+              background: 'linear-gradient(135deg, #6366f1, #0ea5e9)',
+              color: 'white', border: 'none', borderRadius: 12,
+              font: 'inherit', fontSize: '0.875rem', fontWeight: 700,
+              cursor: aiGenerating ? 'not-allowed' : 'pointer', opacity: aiGenerating ? 0.7 : 1,
+            }}
+          >
+            {aiGenerating ? <Loader size={14} style={{ animation: 'spin 0.8s linear infinite' }} /> : <Sparkles size={14} />}
+            AI Öner
+          </button>
+          <button
+            onClick={() => setShowForm(v => !v)}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 7,
+              padding: '9px 18px', background: 'var(--color-accent)', color: 'white',
+              border: 'none', borderRadius: 12, font: 'inherit', fontSize: '0.875rem',
+              fontWeight: 700, cursor: 'pointer',
+            }}
+          >
+            {showForm ? <X size={15} /> : <Plus size={15} />}
+            {showForm ? 'İptal' : 'Yeni Terim'}
+          </button>
+        </div>
       </div>
 
       {/* Add form */}

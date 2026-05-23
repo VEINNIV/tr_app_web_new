@@ -3,9 +3,10 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Menu, X, LogOut, Settings, LayoutDashboard, Languages, FolderOpen,
-  MessageSquare, BookOpen, Shield, ChevronDown, User, ScrollText,
+  MessageSquare, BookOpen, Shield, ChevronDown, User, ScrollText, Sun, Moon,
 } from 'lucide-react';
 import { useAuth } from '../../context/auth';
+import { useThemeContext } from '../../context/ThemeContext';
 import styles from '../../styles/components/navbar.module.css';
 
 // Smooth scroll to anchor
@@ -21,10 +22,12 @@ const handleAnchorClick = (id: string) => (e: React.MouseEvent) => {
 
 export default function Navbar() {
   const { user, profile, isAdmin, signOut } = useAuth();
+  const { theme, toggle: toggleTheme } = useThemeContext();
   const location = useLocation();
   const navigate = useNavigate();
   const [scrolled, setScrolled] = useState(() => typeof window !== 'undefined' ? window.scrollY > 20 : false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [logoHovered, setLogoHovered] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [activeSection, setActiveSection] = useState('');
   const profileRef = useRef<HTMLDivElement>(null);
@@ -101,16 +104,36 @@ export default function Navbar() {
           transition={{ type: 'spring', stiffness: 400, damping: 30 }}
         >
           {/* Logo */}
-          <Link to="/" className={styles.navBrand} aria-label="TransLingua ana sayfa">
+          <Link
+            to="/"
+            className={styles.navBrand}
+            aria-label="TransWordly ana sayfa"
+            onMouseEnter={() => setLogoHovered(true)}
+            onMouseLeave={() => setLogoHovered(false)}
+          >
             <motion.div
               className={styles.navLogo}
               whileHover={{ scale: 1.06, rotate: -3 }}
               whileTap={{ scale: 0.94 }}
               transition={{ type: 'spring', stiffness: 420, damping: 17 }}
             >
-              <img src="/apple-touch-icon.png" alt="" width={28} height={28} draggable={false} />
+              <img src="/trans_wordly.png" alt="" width={28} height={28} draggable={false} />
             </motion.div>
-            <span className={styles.navTitle}>TransLingua</span>
+            <div className={styles.navTitleWrapper}>
+              <motion.span
+                className={styles.navTitleTrans}
+                initial={{ maxWidth: 0, opacity: 0, x: -8 }}
+                animate={{
+                  maxWidth: logoHovered ? 64 : 0,
+                  opacity: logoHovered ? 1 : 0,
+                  x: logoHovered ? 0 : -8,
+                }}
+                transition={{ type: 'spring', stiffness: 380, damping: 28 }}
+              >
+                Trans
+              </motion.span>
+              <span className={styles.navTitleWordly}>Wordly</span>
+            </div>
           </Link>
 
           {/* Desktop Links */}
@@ -250,6 +273,18 @@ export default function Navbar() {
               </motion.div>
             </>
           )}
+
+            {/* Theme Toggle */}
+            <motion.button
+              className={styles.themeToggle}
+              onClick={toggleTheme}
+              aria-label={theme === 'dark' ? 'Açık moda geç' : 'Koyu moda geç'}
+              whileHover={{ scale: 1.1, rotate: 15 }}
+              whileTap={{ scale: 0.9 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 17 }}
+            >
+              {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+            </motion.button>
 
             {/* Mobile Toggle */}
             <button

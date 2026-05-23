@@ -1,0 +1,69 @@
+/* Bottom Navigation — sadece mobile görünür */
+.bar {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .bar {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 90;
+    background: var(--color-surface);
+    border-top: 1px solid var(--color-border);
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+    gap: 0;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.06);
+  }
+}
+
+.item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  text-decoration: none;
+  color: var(--color-text-tertiary);
+  padding: 4px 2px;
+  border-radius: var(--radius-md);
+  transition: color var(--duration-fast) var(--ease-out);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.itemActive {
+  color: var(--color-accent);
+}
+
+.iconWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 28px;
+}
+
+.pill {
+  position: absolute;
+  inset: 0;
+  background: var(--color-accent-light);
+  border-radius: var(--radius-full);
+}
+
+.icon {
+  position: relative;
+  z-index: 1;
+  display: flex;
+}
+
+.label {
+  font-size: 10px;
+  font-weight: var(--font-weight-medium);
+  letter-spacing: 0.01em;
+  line-height: 1;
+}

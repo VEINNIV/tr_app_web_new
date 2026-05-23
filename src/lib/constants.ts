@@ -88,7 +88,7 @@ export const CREDIT_COSTS = {
   STUDY_NOTES_PER_SOURCE: 0.5,
 };
 
-export const APP_NAME = 'TransLingua';
+export const APP_NAME = 'TransWordly';
 export const APP_TAGLINE = 'Gelişmiş AI ile Belge Çevirisi';
 export const APP_DESCRIPTION = 'Belgelerinizi yapay zeka ile saniyeler içinde Türkçe\'ye çevirin.';
 

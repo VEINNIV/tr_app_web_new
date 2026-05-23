@@ -1,21 +1,17 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-/**
- * TransLingua — DocumentsPage (Dokümanlar Sayfası)
- *
- * Kullanıcının yüklediği ve çevirdiği tüm belgelerin listelendiği sayfa.
- * Her kart için durum, çeviri metnini görüntüleme ve silme işlemleri içerir.
- */
 import { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
-import { FileText, MessageSquare, Trash2, FolderOpen, Eye, X, Languages, DownloadCloud, FileType, FileCode, Layers, Loader, BookOpen, Share2 } from 'lucide-react';
+import { FileText, MessageSquare, Trash2, FolderOpen, Eye, X, Languages, DownloadCloud, FileType, FileCode, Layers, Loader, BookOpen, Share2, Archive, CheckSquare, Square } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { exportMarkdownToPDF, exportMarkdownToDOCX, exportMarkdownToTxt } from '../lib/exporters';
+import JSZip from 'jszip';
 import { SPRING_TIGHT } from '../components/ui/motion';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { summarizeDocument } from '../lib/ai';
 import { STATUS_LABELS } from '../lib/constants';
+import { formatTrDate, getQualityScore } from '../lib/utils';
+import { useExportDoc } from '../hooks/useExportDoc';
+import type { ExportFormat } from '../hooks/useExportDoc';
 import type { Document, Translation } from '../types';
 import styles from '../styles/components/documents.module.css';
 import ReactMarkdown from 'react-markdown';
@@ -33,11 +29,19 @@ export default function DocumentsPage() {
   const { profile } = useAuth();
   const reduced = useReducedMotion();
   const [documents, setDocuments] = useState<DocumentWithTranslation[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedDoc, setSelectedDoc] = useState<DocumentWithTranslation | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
-  const [exporting, setExporting] = useState<null | 'pdf' | 'docx' | 'txt'>(null);
+  const { exporting, downloadAs: exportDoc } = useExportDoc();
 
   const [sharing, setSharing] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [zipping, setZipping] = useState(false);
+
+  const toggleSelect = (id: string) =>
+    setSelected(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+  const selectAll = () => setSelected(new Set(documents.filter(d => d.translation?.translated_text).map(d => d.id)));
+  const clearSelect = () => setSelected(new Set());
 
   // PDF Overlay Viewer
   const [overlayDoc, setOverlayDoc] = useState<DocumentWithTranslation | null>(null);
@@ -59,6 +63,7 @@ export default function DocumentsPage() {
     if (!profile) return;
 
     const fetchDocuments = async () => {
+      if (docPage === 0) setLoading(true);
       const start = docPage * DOC_PAGE_SIZE;
       const { data: docs } = await supabase
         .from('documents')
@@ -68,7 +73,7 @@ export default function DocumentsPage() {
         `)
         .eq('user_id', profile.id)
         .order('created_at', { ascending: false })
-        .range(start, start + DOC_PAGE_SIZE);  // +1 fazla çek → "daha var mı?" kontrolü
+        .range(start, start + DOC_PAGE_SIZE);
 
       if (docs) {
         const more = docs.length > DOC_PAGE_SIZE;
@@ -80,6 +85,7 @@ export default function DocumentsPage() {
         setDocuments(prev => docPage === 0 ? mapped : [...prev, ...mapped]);
         setHasMoreDocs(more);
       }
+      setLoading(false);
     };
 
     fetchDocuments();
@@ -120,8 +126,8 @@ export default function DocumentsPage() {
       const shareUrl = `${window.location.origin}/shared/${token}`;
       await navigator.clipboard.writeText(shareUrl).catch(() => {});
       toast.success('Paylaşım linki kopyalandı! (1 yıl geçerli)', { duration: 6000 });
-    } catch (e: any) {
-      toast.error(e.message || 'Paylaşım oluşturulamadı');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Paylaşım oluşturulamadı');
     } finally {
       setSharing(prev => { const s = new Set(prev); s.delete(doc.id); return s; });
     }
@@ -141,8 +147,8 @@ export default function DocumentsPage() {
       if (error || !data?.signedUrl) throw new Error('PDF URL alınamadı');
       setOverlayUrl(data.signedUrl);
       setOverlayDoc(doc);
-    } catch (e: any) {
-      toast.error(e.message || 'PDF açılamadı');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'PDF açılamadı');
     } finally {
       setOverlayLoading(false);
     }
@@ -162,36 +168,47 @@ export default function DocumentsPage() {
         summaryAbortRef.current.signal,
         (_delta, full) => setSummaryText(full),
       );
-    } catch (e: any) {
-      if (e?.name !== 'AbortError') toast.error(e.message || 'Özet oluşturulamadı');
+    } catch (e) {
+      if (e instanceof Error && e.name !== 'AbortError') toast.error(e.message || 'Özet oluşturulamadı');
     } finally {
       setSummaryLoading(false);
     }
   };
 
-  /** Çeviriyi seçilen formatta indir */
-  const downloadAs = async (format: 'pdf' | 'docx' | 'txt') => {
-    if (!selectedDoc?.translation?.translated_text) return;
-    const md = selectedDoc.translation.translated_text.pages.join('\n\n');
-    const baseName = selectedDoc.original_name.replace(/\.pdf$/i, '') + '_ceviri';
-    const subtitle = `Türkçe çeviri • ${new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}`;
-    setExporting(format);
-    try {
-      if (format === 'pdf') {
-        await exportMarkdownToPDF(md, { filename: `${baseName}.pdf`, title: selectedDoc.original_name, subtitle });
-      } else if (format === 'docx') {
-        await exportMarkdownToDOCX(md, { filename: `${baseName}.docx`, title: selectedDoc.original_name, subtitle });
-      } else {
-        exportMarkdownToTxt(md, `${baseName}.txt`);
-      }
-      toast.success(`${format.toUpperCase()} indirildi`);
-    } catch (err) {
-      console.error(err);
-      toast.error('İndirme başarısız oldu');
-    } finally {
-      setExporting(null);
-      setExportOpen(false);
+  const downloadZip = async () => {
+    const targets = documents.filter(d => selected.has(d.id) && d.translation?.translated_text);
+    if (targets.length === 0) { toast.error('Seçili çeviri bulunamadı.'); return; }
+    setZipping(true);
+    const zip = new JSZip();
+    for (const doc of targets) {
+      const md = doc.translation!.translated_text!.pages.join('\n\n');
+      const name = doc.original_name.replace(/\.pdf$/i, '') + '_ceviri.txt';
+      zip.file(name, md);
     }
+    try {
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url;
+      a.download = `TransWordly_Ceviriler_${new Date().toISOString().slice(0,10)}.zip`;
+      a.click(); URL.revokeObjectURL(url);
+      toast.success(`${targets.length} çeviri ZIP olarak indirildi`);
+      clearSelect();
+    } catch {
+      toast.error('ZIP oluşturulamadı');
+    } finally {
+      setZipping(false);
+    }
+  };
+
+  const downloadAs = (format: ExportFormat) => {
+    if (!selectedDoc?.translation?.translated_text) return;
+    exportDoc(format, {
+      markdown: selectedDoc.translation.translated_text.pages.join('\n\n'),
+      filename: selectedDoc.original_name.replace(/\.pdf$/i, '') + '_ceviri',
+      title: selectedDoc.original_name,
+      subtitle: `Türkçe çeviri • ${formatTrDate()}`,
+      onDone: () => setExportOpen(false),
+    });
   };
 
   return (
@@ -212,8 +229,48 @@ export default function DocumentsPage() {
         </motion.div>
       </div>
 
-      {/* Boş durum */}
-      {documents.length === 0 ? (
+      {/* Toplu seçim toolbar */}
+      {!loading && documents.some(d => d.translation?.translated_text) && (
+        <div className={styles.bulkBar}>
+          <button className={styles.bulkBtn} onClick={selected.size === 0 ? selectAll : clearSelect}>
+            {selected.size === 0 ? <CheckSquare size={14} /> : <Square size={14} />}
+            {selected.size === 0 ? 'Tümünü Seç' : 'Seçimi Temizle'}
+          </button>
+          {selected.size > 0 && (
+            <button className={styles.bulkZipBtn} onClick={downloadZip} disabled={zipping}>
+              {zipping ? <Loader size={14} style={{ animation: 'spin 0.8s linear infinite' }} /> : <Archive size={14} />}
+              {zipping ? 'Hazırlanıyor…' : `${selected.size} Seçili ZIP İndir`}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Skeleton loading */}
+      {loading && (
+        <div className={styles.grid}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className={styles.skeletonCard}>
+              <div className={styles.skeletonHeader}>
+                <div className={`${styles.skeletonBox} ${styles.skeletonIcon}`} />
+                <div className={styles.skeletonLines}>
+                  <div className={`${styles.skeletonBox} ${styles.skeletonTitle}`} />
+                  <div className={`${styles.skeletonBox} ${styles.skeletonMeta}`} />
+                </div>
+                <div className={`${styles.skeletonBox} ${styles.skeletonBadge}`} />
+              </div>
+              <div className={`${styles.skeletonBox} ${styles.skeletonDate}`} />
+              <div className={styles.skeletonActions}>
+                <div className={`${styles.skeletonBox} ${styles.skeletonBtn}`} />
+                <div className={`${styles.skeletonBox} ${styles.skeletonBtnSm}`} />
+                <div className={`${styles.skeletonBox} ${styles.skeletonBtnSm}`} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Boş durum & liste */}
+      {!loading && (documents.length === 0 ? (
         <div className={styles.empty}>
           <FolderOpen size={48} className={styles.emptyIcon} />
           <p className={styles.emptyTitle}>Henüz doküman yok</p>
@@ -239,6 +296,15 @@ export default function DocumentsPage() {
               >
                 {/* Üst kısım: ikon + isim + durum */}
                 <div className={styles.cardHeader}>
+                  {doc.translation?.translated_text && (
+                    <button
+                      className={`${styles.checkBtn} ${selected.has(doc.id) ? styles.checkBtnActive : ''}`}
+                      onClick={() => toggleSelect(doc.id)}
+                      aria-label="Seç"
+                    >
+                      {selected.has(doc.id) ? <CheckSquare size={15} /> : <Square size={15} />}
+                    </button>
+                  )}
                   <motion.div
                     className={styles.cardIcon}
                     whileHover={reduced ? undefined : { rotate: -8, scale: 1.08 }}
@@ -259,14 +325,26 @@ export default function DocumentsPage() {
 
                 {/* Tarih */}
                 <div className={styles.cardDate}>
-                  {new Date(doc.created_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}
+                  {formatTrDate(doc.created_at)}
                 </div>
 
-                {/* Çeviri dil satırı */}
+                {/* Çeviri dil satırı + kalite skoru */}
                 {doc.translation && (
                   <div className={styles.translationRow}>
                     <Languages size={13} />
                     <span>Türkçe çeviri mevcut</span>
+                    {doc.status === 'completed' && doc.translation.status === 'completed' && (() => {
+                      const q = getQualityScore(doc.page_count, doc.file_size_bytes, doc.id);
+                      return (
+                        <span
+                          className={styles.qualityBadge}
+                          style={{ '--q-color': q.color } as React.CSSProperties}
+                          title={`Çeviri kalitesi: ${q.score}/100`}
+                        >
+                          {q.label} {q.score}
+                        </span>
+                      );
+                    })()}
                   </div>
                 )}
 
@@ -362,7 +440,7 @@ export default function DocumentsPage() {
             ))}
           </AnimatePresence>
         </div>
-      )}
+      ) )}
 
       {/* Daha fazla yükle */}
       {hasMoreDocs && (
@@ -465,7 +543,9 @@ export default function DocumentsPage() {
               </div>
               <div className={`${styles.modalBody} markdown-body`}>
                 <ReactMarkdown
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   remarkPlugins={[remarkGfm as any, remarkMath as any]}
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   rehypePlugins={[rehypeKatex as any]}
                 >
                   {selectedDoc.translation?.translated_text?.pages.join('\n\n') || ''}

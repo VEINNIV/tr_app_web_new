@@ -32,6 +32,8 @@ export default defineConfig({
       // pdf-lib ve fontkit saf CJS/UMD; module field yok, Rolldown ile sorun çıkabilir.
       'pdf-lib',
       '@pdf-lib/fontkit',
+      // debug CJS paketi — micromark/create-tokenizer içinden require ediliyor, Vite ESM'e çeviremiyor
+      'debug',
     ],
     exclude: [
       // micromark'ı Rolldown pre-bundle'dan çıkar; alias zaten dev→prod yönlendiriyor.

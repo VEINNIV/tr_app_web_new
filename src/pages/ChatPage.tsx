@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
@@ -14,27 +13,15 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { streamDocumentChat, type ChatTurn } from '../lib/ai';
 import {
   loadPDFFromURL,
   renderPageToDataURL,
   dataURLToFile,
   type PDFProxy,
 } from '../lib/pdfRenderer';
-import type { Document } from '../types';
+import { useChatSession } from '../hooks/useChatSession';
 import styles from '../styles/components/chat.module.css';
 import { SPRING_TIGHT } from '../components/ui/motion';
-
-// ─── Tipler ─────────────────────────────────────────────────────────────────
-
-interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  attachmentNames?: string[];
-  timestamp: Date;
-  pending?: boolean;
-}
 
 // ─── Sabit hızlı promptlar ───────────────────────────────────────────────────
 
@@ -73,18 +60,17 @@ export default function ChatPage() {
   const location = useLocation();
   const reduced = useReducedMotion();
 
-  // Initialize selectedDocId from navigation state so history loads correctly on first render
   const initDocId = (location.state as { documentId?: string } | null)?.documentId || '';
 
-  // Chat state
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [documents, setDocuments] = useState<Document[]>([]);
-  const [selectedDocId, setSelectedDocId] = useState(initDocId);
+  const {
+    messages, input, setInput, loading,
+    documents, selectedDocId, setSelectedDocId,
+    pendingFiles, setPendingFiles, abortRef,
+    sendMessage, clearChat,
+  } = useChatSession({ profile, initDocId });
+
+  // UI-only state
   const [showDocPicker, setShowDocPicker] = useState(false);
-  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
-  const [docContext, setDocContext] = useState<string | null>(null);
 
   // PDF viewer state
   const [showPDFPanel, setShowPDFPanel] = useState(false);
@@ -97,78 +83,14 @@ export default function ChatPage() {
 
   const bodyRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const abortRef = useRef<AbortController | null>(null);
   const pdfProxyRef = useRef<PDFProxy | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // ── Belgeleri çek ──────────────────────────────────────────────────────────
+  // Clear navigation state after consuming initDocId
   useEffect(() => {
-    if (!profile) return;
-    supabase
-      .from('documents')
-      .select('*')
-      .eq('user_id', profile.id)
-      .eq('status', 'completed')
-      .order('created_at', { ascending: false })
-      .then(({ data }) => { if (data) setDocuments(data as Document[]); });
-  }, [profile]);
-
-  // ── Sohbet geçmişini yükle (belge bazlı) ──────────────────────────────────
-  // Uses profile.id (not profile object) so auth re-events don't wipe mid-session messages.
-  const profileId = profile?.id;
-  useEffect(() => {
-    if (!profileId) return;
-    setMessages([]);
-    const base = supabase
-      .from('chat_messages')
-      .select('*')
-      .eq('user_id', profileId)
-      .order('created_at', { ascending: true })
-      .limit(80);
-
-    const scoped = selectedDocId
-      ? base.eq('document_id', selectedDocId)
-      : base.is('document_id', null);
-
-    scoped.then(({ data, error }) => {
-      if (error) console.error('[Chat] history load error', error);
-      if (data && data.length > 0) {
-        setMessages(data.map((m: any) => ({
-          id: m.id,
-          role: m.role as 'user' | 'assistant',
-          content: m.content || '',
-          timestamp: new Date(m.created_at),
-        })));
-      }
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profileId, selectedDocId]);
-
-  // ── Dokümanlar sayfasından geçilen belge — nav state'i temizle ────────────
-  useEffect(() => {
-    if (initDocId) {
-      navigate(location.pathname, { replace: true, state: {} });
-    }
+    if (initDocId) navigate(location.pathname, { replace: true, state: {} });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // ── Seçili belgenin çevirisini önbelleğe al ────────────────────────────────
-  useEffect(() => {
-    if (!selectedDocId) { setDocContext(null); return; }
-    supabase
-      .from('translations')
-      .select('translated_text')
-      .eq('document_id', selectedDocId)
-      .eq('status', 'completed')
-      .single()
-      .then(({ data }) => {
-        setDocContext(
-          data?.translated_text?.pages
-            ? data.translated_text.pages.join('\n\n')
-            : null
-        );
-      });
-  }, [selectedDocId]);
 
   // ── PDF viewer: belge değişince sıfırla ───────────────────────────────────
   useEffect(() => {
@@ -226,95 +148,17 @@ export default function ChatPage() {
     setPageCache(prev => ({ ...prev, [pageNum]: dataURL }));
   }, [totalPages, pageCache]);
 
-  // ── Mesaj gönder ──────────────────────────────────────────────────────────
-  const sendMessage = async (overrideText?: string) => {
-    const text = (overrideText ?? input).trim();
-    if ((!text && pendingFiles.length === 0) || loading || !profile) return;
-
-    const historySnapshot: ChatTurn[] = messages
-      .filter(m => !m.pending && m.content)
-      .map(m => ({ role: m.role, content: m.content }));
-
-    // Geçerli PDF sayfasını ekle
-    let pageFile: File | null = null;
+  const handleSend = async (overrideText?: string) => {
+    let pageFile: File | undefined;
     if (includeCurrentPage && pageCache[currentPage]) {
-      pageFile = await dataURLToFile(pageCache[currentPage], `sayfa-${currentPage}.jpg`);
+      pageFile = await dataURLToFile(pageCache[currentPage], `Sayfa ${currentPage} (PDF görüntüsü).jpg`);
     }
-
-    const filesToSend = [...pendingFiles, ...(pageFile ? [pageFile] : [])];
-    const attachmentNames = [
-      ...pendingFiles.map(f => f.name),
-      ...(pageFile ? [`Sayfa ${currentPage} (PDF görüntüsü)`] : []),
-    ];
-
-    const userMsg: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: text || '(eklenen dosyaları incele)',
-      attachmentNames: attachmentNames.length ? attachmentNames : undefined,
-      timestamp: new Date(),
-    };
-    const asstId = (Date.now() + 1).toString();
-    const asstMsg: Message = { id: asstId, role: 'assistant', content: '', timestamp: new Date(), pending: true };
-
-    setMessages(prev => [...prev, userMsg, asstMsg]);
-    if (!overrideText) setInput('');
-    setLoading(true);
-    setPendingFiles([]);
-
-    void supabase.from('chat_messages').insert({
-      user_id: profile.id,
-      ...(selectedDocId ? { document_id: selectedDocId } : {}),
-      role: 'user', content: text, credits_used: 0.5,
-    });
-
-    // Atomic kredi düşümü — server-side RPC
-    if (profile.credits_remaining >= 0.5) {
-      void supabase.rpc('consume_credits', {
-        p_action: 'chat',
-        p_amount: 0.5,
-        p_reference: selectedDocId ?? null,
-      });
-    }
-
-    abortRef.current = new AbortController();
-
-    try {
-      let final = '';
-      await streamDocumentChat(
-        historySnapshot,
-        text || 'Eklenen dosyaları incele ve ne yapabileceğini açıkla.',
-        docContext,
-        filesToSend,
-        (_delta, full) => {
-          final = full;
-          setMessages(prev => prev.map(m => m.id === asstId ? { ...m, content: full } : m));
-        },
-        abortRef.current.signal,
-      );
-      setMessages(prev => prev.map(m => m.id === asstId ? { ...m, content: final, pending: false } : m));
-      void supabase.from('chat_messages').insert({
-        user_id: profile.id,
-        ...(selectedDocId ? { document_id: selectedDocId } : {}),
-        role: 'assistant', content: final, credits_used: 0,
-      });
-    } catch (err: any) {
-      const isAbort = err?.name === 'AbortError' || /İptal/.test(err?.message || '');
-      const errText = isAbort
-        ? '_Yanıt durduruldu._'
-        : `**Hata:** ${err?.message || 'Lütfen tekrar deneyin.'}`;
-      setMessages(prev => prev.map(m => m.id === asstId ? { ...m, content: errText, pending: false } : m));
-    } finally {
-      setLoading(false);
-      abortRef.current = null;
-    }
+    await sendMessage({ overrideText, pageFile });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleSend(); }
   };
-
-  const clearChat = () => { if (!loading) setMessages([]); };
 
   const selectedDoc = documents.find(d => d.id === selectedDocId);
   const initials = profile?.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?';
@@ -464,7 +308,7 @@ export default function ChatPage() {
                     <motion.button
                       key={qp.label}
                       className={styles.quickBtn}
-                      onClick={() => sendMessage(qp.text)}
+                      onClick={() => void handleSend(qp.text)}
                       disabled={loading}
                       whileHover={reduced ? undefined : { y: -2 }}
                       whileTap={reduced ? undefined : { scale: 0.97 }}
@@ -655,7 +499,7 @@ export default function ChatPage() {
             ) : (
               <button
                 className={styles.sendBtn}
-                onClick={() => sendMessage()}
+                onClick={() => void handleSend()}
                 disabled={!input.trim() && pendingFiles.length === 0}
                 title="Gönder"
               >

@@ -64,9 +64,9 @@ export default function AuthPage() {
 
         <div className={styles.authLeftLogo}>
           <div className={styles.authLeftLogoMark}>
-            <img src="/apple-touch-icon.png" alt="" width={28} height={28} draggable={false} />
+            <img src="/trans_wordly.png" alt="" width={28} height={28} draggable={false} />
           </div>
-          <span className={styles.authLeftLogoText}>TransLingua</span>
+          <span className={styles.authLeftLogoText}>TransWordly</span>
         </div>
 
         <div className={styles.authLeftContent}>

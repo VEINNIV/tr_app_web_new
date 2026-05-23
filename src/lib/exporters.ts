@@ -250,7 +250,7 @@ em{font-style:italic}
 <div class="pg">
 ${title ? `<div class="hdr"><div class="htl">${title}</div>${subtitle ? `<div class="hsb">${subtitle}</div>` : ''}</div>` : ''}
 ${content}
-<div class="ftr"><span>TransLingua</span><span>${date}</span></div>
+<div class="ftr"><span>TransWordly</span><span>${date}</span></div>
 </div>
 </body></html>`);
     doc.close();
@@ -351,7 +351,7 @@ export async function exportMarkdownToDOCX(markdown: string, opts: PDFExportOpts
   }
 
   const document = new Document({
-    creator: 'TransLingua',
+    creator: 'TransWordly',
     title: opts.title || opts.filename,
     sections: [{ children }],
   });

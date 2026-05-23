@@ -1,11 +1,12 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { generateStudyNotes } from '../lib/ai';
-import { exportMarkdownToPDF, exportMarkdownToDOCX, exportMarkdownToTxt } from '../lib/exporters';
 import { STUDY_SUBJECTS, CREDIT_COSTS } from '../lib/constants';
+import { formatTrDate, formatFileSize } from '../lib/utils';
+import { useExportDoc } from '../hooks/useExportDoc';
+import type { ExportFormat } from '../hooks/useExportDoc';
 import toast from 'react-hot-toast';
 import {
   BookOpen, Upload, File as FileIcon, X, Check,
@@ -31,7 +32,7 @@ export default function StudyNotesPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [generatedNotes, setGeneratedNotes] = useState<string>('');
   const [streamingText, setStreamingText] = useState<string>('');
-  const [exporting, setExporting] = useState<null | 'pdf' | 'docx' | 'txt'>(null);
+  const { exporting, downloadAs: exportDoc } = useExportDoc();
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -85,14 +86,6 @@ export default function StudyNotesPage() {
     setFiles(prev => prev.filter(f => f.id !== id));
   };
 
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
-
   const startProcessing = async () => {
     if (!profile) return;
     if (files.length === 0) {
@@ -126,7 +119,7 @@ export default function StudyNotesPage() {
       // 2. Session kaydı oluştur
       const { data: session } = await supabase.from('study_sessions').insert({
         user_id: profile.id,
-        title: `${subject} Notları - ${new Date().toLocaleDateString('tr-TR')}`,
+        title: `${subject} Notları - ${formatTrDate()}`,
         subject: subject,
         source_count: files.length,
         status: 'processing',
@@ -161,26 +154,14 @@ export default function StudyNotesPage() {
     }
   };
 
-  /** Notu seçilen formatta indir */
-  const downloadAs = async (format: 'pdf' | 'docx' | 'txt') => {
+  const downloadAs = (format: ExportFormat) => {
     if (!generatedNotes) return;
-    const baseName = `${subject}_Notlari_${new Date().toISOString().slice(0, 10)}`;
-    const subtitle = `${subject} • ${new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}`;
-    setExporting(format);
-    try {
-      if (format === 'pdf') {
-        await exportMarkdownToPDF(generatedNotes, { filename: `${baseName}.pdf`, title: `${subject} Notları`, subtitle });
-      } else if (format === 'docx') {
-        await exportMarkdownToDOCX(generatedNotes, { filename: `${baseName}.docx`, title: `${subject} Notları`, subtitle });
-      } else {
-        exportMarkdownToTxt(generatedNotes, `${baseName}.txt`);
-      }
-      toast.success(`${format.toUpperCase()} indirildi`);
-    } catch {
-      toast.error('İndirme başarısız oldu');
-    } finally {
-      setExporting(null);
-    }
+    exportDoc(format, {
+      markdown: generatedNotes,
+      filename: `${subject}_Notlari_${new Date().toISOString().slice(0, 10)}`,
+      title: `${subject} Notları`,
+      subtitle: `${subject} • ${formatTrDate()}`,
+    });
   };
 
   const handleCopy = () => {

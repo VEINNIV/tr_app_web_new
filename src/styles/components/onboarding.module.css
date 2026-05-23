@@ -1,0 +1,370 @@
+/* ── Backdrop & Modal ────────────────────────────────────────── */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.modal {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 20px;
+  width: 100%;
+  max-width: 520px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.22);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Progress ────────────────────────────────────────────────── */
+.progressBar {
+  height: 3px;
+  background: var(--color-border);
+}
+
+.progressFill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-accent), #0ea5e9);
+  border-radius: 0 2px 2px 0;
+}
+
+.stepDots {
+  display: flex;
+  gap: 6px;
+  padding: 14px 20px 0;
+}
+
+.stepDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-border);
+  transition: background 0.25s, transform 0.25s;
+}
+
+.stepDotActive {
+  background: var(--color-accent);
+  transform: scale(1.3);
+}
+
+/* ── Body ────────────────────────────────────────────────────── */
+.body {
+  padding: 20px 28px 8px;
+  min-height: 340px;
+  overflow: hidden;
+}
+
+.stepContent {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.emoji {
+  font-size: 2.5rem;
+  margin-bottom: 12px;
+  line-height: 1;
+}
+
+.stepTitle {
+  font-family: var(--font-heading);
+  font-size: 1.25rem;
+  font-weight: var(--font-weight-black);
+  color: var(--color-text-primary);
+  margin: 0 0 8px;
+  letter-spacing: -0.02em;
+}
+
+.stepDesc {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  margin: 0 0 20px;
+  line-height: 1.55;
+}
+
+.stepHint {
+  font-size: 0.75rem;
+  color: var(--color-text-tertiary);
+  background: var(--color-bg-alt);
+  border-radius: 10px;
+  padding: 10px 14px;
+  line-height: 1.5;
+  margin-top: 4px;
+}
+
+/* ── Theme step ──────────────────────────────────────────────── */
+.themeRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.themeCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 20px;
+  border: 2px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-bg-alt);
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
+  transition: border-color 0.2s, background 0.2s, color 0.2s;
+}
+
+.themeCard:hover {
+  border-color: var(--color-accent);
+  color: var(--color-text-primary);
+}
+
+.themeCardActive {
+  border-color: var(--color-accent);
+  background: var(--color-accent-light);
+  color: var(--color-accent);
+}
+
+/* ── Profession grid ─────────────────────────────────────────── */
+.profGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.profCard {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1.5px solid var(--color-border);
+  border-radius: 12px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.2s, background 0.2s;
+  position: relative;
+}
+
+.profCard:hover {
+  border-color: var(--prof-color, var(--color-accent));
+  background: color-mix(in srgb, var(--prof-color, var(--color-accent)) 6%, transparent);
+}
+
+.profCardActive {
+  border-color: var(--prof-color, var(--color-accent));
+  background: color-mix(in srgb, var(--prof-color, var(--color-accent)) 10%, transparent);
+}
+
+.profIcon {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--prof-color, var(--color-accent)) 14%, transparent);
+  color: var(--prof-color, var(--color-accent));
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.profLabel {
+  font-size: 0.8125rem;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  flex: 1;
+}
+
+.profCheck {
+  color: var(--prof-color, var(--color-accent));
+  flex-shrink: 0;
+}
+
+/* ── Use case grid ───────────────────────────────────────────── */
+.ucGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.ucCard {
+  position: relative;
+  padding: 12px 14px;
+  border: 1.5px solid var(--color-border);
+  border-radius: 12px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.ucCard:hover {
+  border-color: var(--color-accent);
+  background: var(--color-accent-light);
+}
+
+.ucCardActive {
+  border-color: var(--color-accent);
+  background: var(--color-accent-light);
+}
+
+.ucLabel {
+  font-size: 0.8125rem;
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  margin-bottom: 3px;
+}
+
+.ucDesc {
+  font-size: 0.7rem;
+  color: var(--color-text-tertiary);
+  line-height: 1.4;
+}
+
+.ucCheck {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  color: var(--color-accent);
+}
+
+/* ── Language grid ───────────────────────────────────────────── */
+.langGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.langBtn {
+  padding: 9px 16px;
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  transition: border-color 0.2s, background 0.2s, color 0.2s;
+}
+
+.langBtn:hover {
+  border-color: var(--color-accent);
+  color: var(--color-text-primary);
+}
+
+.langBtnActive {
+  border-color: var(--color-accent);
+  background: var(--color-accent-light);
+  color: var(--color-accent);
+  font-weight: var(--font-weight-semibold);
+}
+
+.aiHint {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 16px;
+  padding: 10px 14px;
+  background: color-mix(in srgb, var(--color-accent) 7%, transparent);
+  border: 1px solid var(--color-accent-medium);
+  border-radius: 10px;
+  font-size: 0.75rem;
+  color: var(--color-accent);
+}
+
+/* ── Footer ──────────────────────────────────────────────────── */
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 28px 24px;
+  border-top: 1px solid var(--color-border);
+  margin-top: 8px;
+}
+
+.backBtn {
+  padding: 9px 18px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.backBtn:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
+}
+
+.nextBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 22px;
+  border-radius: var(--radius-full);
+  border: none;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.nextBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.nextBtn:not(:disabled):hover { opacity: 0.88; }
+
+.finishBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 22px;
+  border-radius: var(--radius-full);
+  border: none;
+  background: linear-gradient(135deg, var(--color-accent) 0%, #0ea5e9 100%);
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0, 87, 255, 0.3);
+  transition: opacity 0.15s, box-shadow 0.15s;
+}
+
+.finishBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.finishBtn:not(:disabled):hover {
+  opacity: 0.9;
+  box-shadow: 0 6px 24px rgba(0, 87, 255, 0.4);
+}
+
+/* ── Mobile ──────────────────────────────────────────────────── */
+@media (max-width: 560px) {
+  .body { padding: 16px 18px 6px; }
+  .footer { padding: 14px 18px 20px; }
+  .profGrid { grid-template-columns: 1fr; }
+  .ucGrid { grid-template-columns: 1fr; }
+  .themeRow { gap: 8px; }
+}

@@ -584,7 +584,7 @@ export async function streamDocumentChat(
   signal?: AbortSignal,
 ): Promise<string> {
   const systemPrompt =
-    `Sen TransLingua'nın öğrenci asistanısın. Akademik sorulara doğrudan, net ve sade yanıt ver.
+    `Sen TransWordly'nin öğrenci asistanısın. Akademik sorulara doğrudan, net ve sade yanıt ver.
 
 Kesin kurallar:
 - Emoji kullanma. Hiç.
@@ -1008,4 +1008,71 @@ Türkçe yaz. Öğrencinin anlayacağı sadelikte ama akademik doğrulukta ol.`;
     `Konuyu anlamayı kolaylaştıracak şekilde yapılandır.`;
 
   return processFilesMultimodal(files, prompt, systemPrompt, onChunk);
+}
+
+// ─── 7) Profil tabanlı otomatik sözlük üretimi ───────────────────────────────
+
+export interface GlossarySuggestion {
+  source_term: string;
+  target_term: string;
+  domain: string;
+}
+
+const PROFESSION_LABELS: Record<string, string> = {
+  student: 'üniversite öğrencisi', researcher: 'akademik araştırmacı',
+  medical: 'sağlık profesyoneli', legal: 'hukuk profesyoneli',
+  engineer: 'mühendis/teknisyen', business: 'iş/finans profesyoneli',
+  teacher: 'öğretmen/akademisyen', other: 'genel kullanıcı',
+};
+
+const USE_CASE_LABELS: Record<string, string> = {
+  academic: 'akademik makaleler ve tezler', medical: 'tıbbi belgeler ve raporlar',
+  legal: 'hukuki sözleşmeler ve kararlar', engineering: 'teknik belgeler ve standartlar',
+  business: 'iş ve finans belgeleri', general: 'genel belgeler',
+};
+
+export async function generateGlossarySuggestions(
+  profession: string,
+  useCase: string,
+  nativeLanguage: string,
+): Promise<GlossarySuggestion[]> {
+  const profLabel = PROFESSION_LABELS[profession] ?? profession;
+  const ucLabel   = USE_CASE_LABELS[useCase] ?? useCase;
+  const langLabel = nativeLanguage === 'tr' ? 'Türkçe' : nativeLanguage === 'en' ? 'İngilizce' : nativeLanguage;
+
+  const systemPrompt = `Sen uzman bir çeviri terminoloji asistanısın. Kullanıcının mesleki geçmişine ve çeviri ihtiyaçlarına göre kısmen teknik, kısmen akademik bir sözlük listesi üretiyorsun.`;
+
+  const userPrompt = `Kullanıcı profili:
+- Meslek: ${profLabel}
+- Çeviri amacı: ${ucLabel}
+- Hedef dil: Türkçe (kaynak dil genellikle İngilizce)
+
+Bu profile uygun, çeviride tutarlılık sağlayacak 15 İngilizce→Türkçe terim çifti öner.
+Yanıtını SADECE aşağıdaki JSON formatında ver, başka hiçbir şey ekleme:
+
+[
+  {"source": "term in English", "target": "Türkçe karşılık", "domain": "alan_kodu"},
+  ...
+]
+
+Domain kodları: medical, legal, engineering, academic, business, general, cs, math
+
+Terimleri ${profLabel} için gerçekten yararlı, sık kullanılan akademik/teknik kelimeler seç.`;
+
+  const contents: AIMessage[] = [{ role: 'user', parts: [{ text: userPrompt }] }];
+
+  try {
+    const raw = await callGemini({ contents, systemInstruction: systemPrompt, maxOutputTokens: 1024 });
+    // Extract JSON array from response
+    const match = raw.match(/\[[\s\S]*\]/);
+    if (!match) return [];
+    const parsed = JSON.parse(match[0]) as Array<{ source: string; target: string; domain: string }>;
+    return parsed.map(item => ({
+      source_term: item.source?.trim() ?? '',
+      target_term: item.target?.trim() ?? '',
+      domain: item.domain?.trim() ?? 'general',
+    })).filter(e => e.source_term && e.target_term);
+  } catch {
+    return [];
+  }
 }

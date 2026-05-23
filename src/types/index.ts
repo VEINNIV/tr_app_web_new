@@ -2,6 +2,9 @@
 
 export type UserRole = 'user' | 'subscriber' | 'admin';
 
+export type Profession = 'student' | 'researcher' | 'medical' | 'legal' | 'engineer' | 'business' | 'teacher' | 'other';
+export type UseCase    = 'academic' | 'medical' | 'legal' | 'engineering' | 'business' | 'general';
+
 export interface User {
   id: string;
   email: string;
@@ -13,6 +16,11 @@ export interface User {
   credits_monthly_limit: number;
   credits_reset_at: string | null;
   preferred_language: string;
+  profession: Profession | null;
+  primary_use_case: UseCase | null;
+  native_language: string;
+  onboarding_completed: boolean;
+  glossary_generated: boolean;
   created_at: string;
   updated_at: string;
 }

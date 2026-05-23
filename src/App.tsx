@@ -4,8 +4,13 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { TranslationProvider } from './context/TranslationContext';
+import { ThemeProvider } from './context/ThemeContext';
 import Navbar from './components/ui/Navbar';
+import BottomNav from './components/ui/BottomNav';
 import TranslationStatusBar from './components/TranslationStatusBar';
+import EnvErrorPage from './components/EnvErrorPage';
+import OnboardingModal from './components/OnboardingModal';
+import { checkEnv } from './lib/env';
 
 const LandingPage        = lazy(() => import('./pages/LandingPage'));
 const AuthPage           = lazy(() => import('./pages/AuthPage'));
@@ -63,7 +68,10 @@ function PageTransition({ children }: { children: React.ReactNode }) {
 
 function AppLayout() {
   const location = useLocation();
+  const { user, profile, refreshProfile } = useAuth();
   const hideNavbar = location.pathname === '/auth';
+  const showBottomNav = !!user && location.pathname !== '/auth' && location.pathname !== '/';
+  const showOnboarding = !!user && !!profile && profile.onboarding_completed === false;
 
   return (
     <>
@@ -90,6 +98,10 @@ function AppLayout() {
         </Suspense>
       </main>
       <TranslationStatusBar />
+      {showBottomNav && <BottomNav />}
+      {showOnboarding && (
+        <OnboardingModal userId={user!.id} onComplete={refreshProfile} />
+      )}
       <Toaster
         position="bottom-right"
         toastOptions={{
@@ -110,13 +122,18 @@ function AppLayout() {
 }
 
 export default function App() {
+  const env = checkEnv();
+  if (!env.ok) return <EnvErrorPage missing={env.missing} />;
+
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <TranslationProvider>
-          <AppLayout />
-        </TranslationProvider>
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <TranslationProvider>
+            <AppLayout />
+          </TranslationProvider>
+        </AuthProvider>
+      </ThemeProvider>
     </BrowserRouter>
   );
 }

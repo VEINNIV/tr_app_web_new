@@ -117,11 +117,11 @@ export default function SharedDocumentPage() {
         }}
       >
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-          <img src="/apple-touch-icon.png" alt="" width={20} height={20} />
+          <img src="/trans_wordly.png" alt="" width={20} height={20} />
           Paylaşılan çeviri — <strong style={{ color: 'var(--color-text-primary)' }}>{docName}</strong>
         </span>
         <Link to="/" style={{ color: 'var(--color-accent)', fontWeight: 700, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          TransLingua ile çevir <ExternalLink size={12} />
+          TransWordly ile çevir <ExternalLink size={12} />
         </Link>
       </motion.div>
 

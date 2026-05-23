@@ -178,6 +178,7 @@ export function TranslationProvider({ children }: { children: ReactNode }) {
     };
     setJob(initial);
 
+    abortRef.current?.abort(); // önceki iş varsa temizle (race condition önleme)
     abortRef.current = new AbortController();
     const signal = abortRef.current.signal;
 
@@ -309,7 +310,7 @@ export function TranslationProvider({ children }: { children: ReactNode }) {
       });
       toast.success(`"${file.name}" çevirisi tamamlandı`, { duration: 6000 });
       notify({
-        title: 'TransLingua — Çeviri tamamlandı',
+        title: 'TransWordly — Çeviri tamamlandı',
         body: `"${file.name}" hazır. PDF olarak indirebilirsiniz.`,
         tag: id,
         onClick: () => {
@@ -325,7 +326,7 @@ export function TranslationProvider({ children }: { children: ReactNode }) {
       setJob(j => j && { ...j, status: 'error', errorMessage: msg, message: msg });
       toast.error(msg, { duration: 6000 });
       notify({
-        title: 'TransLingua — Çeviri başarısız',
+        title: 'TransWordly — Çeviri başarısız',
         body: msg,
         tag: id,
       });

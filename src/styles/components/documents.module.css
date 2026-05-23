@@ -84,6 +84,50 @@
   font-weight: var(--font-weight-medium);
 }
 
+/* ── Skeleton Loading ──────────────────────────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position:  400px 0; }
+}
+
+.skeletonBox {
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    90deg,
+    var(--color-surface-hover) 25%,
+    var(--color-bg-alt) 50%,
+    var(--color-surface-hover) 75%
+  );
+  background-size: 800px 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+.skeletonCard {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.skeletonHeader {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.skeletonIcon  { width: 40px; height: 40px; border-radius: var(--radius-md); flex-shrink: 0; }
+.skeletonLines { flex: 1; display: flex; flex-direction: column; gap: var(--space-2); }
+.skeletonTitle { height: 14px; width: 65%; }
+.skeletonMeta  { height: 11px; width: 45%; }
+.skeletonBadge { width: 62px; height: 22px; border-radius: var(--radius-full); flex-shrink: 0; }
+.skeletonDate  { height: 11px; width: 38%; }
+.skeletonActions { display: flex; gap: var(--space-2); }
+.skeletonBtn   { height: 34px; flex: 1; border-radius: var(--radius-md); }
+.skeletonBtnSm { height: 34px; width: 60px; border-radius: var(--radius-md); }
+
 /* ── Belge Kartları Grid ──────────────────────────────────────────────── */
 .grid {
   display: grid;
@@ -162,6 +206,20 @@
   padding: 4px var(--space-3);
   border-radius: var(--radius-full);
   width: fit-content;
+  flex-wrap: wrap;
+}
+
+.qualityBadge {
+  margin-left: var(--space-1);
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.02em;
+  background: color-mix(in srgb, var(--q-color) 14%, transparent);
+  color: var(--q-color);
+  border: 1px solid color-mix(in srgb, var(--q-color) 28%, transparent);
+  white-space: nowrap;
 }
 
 /* ── Durum Badge ─────────────────────────────────────────────────────── */
@@ -324,9 +382,101 @@
   white-space: pre-wrap;
 }
 
+/* ── Bulk selection toolbar ──────────────────────────────────────────── */
+.bulkBar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.bulkBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px var(--space-3);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+.bulkBtn:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
+}
+
+.bulkZipBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px var(--space-4);
+  background: var(--color-accent);
+  border: none;
+  border-radius: var(--radius-md);
+  color: #fff;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease-out);
+  margin-left: auto;
+}
+.bulkZipBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.bulkZipBtn:not(:disabled):hover {
+  opacity: 0.88;
+}
+
+/* Checkbox buttons on document cards */
+.checkBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out);
+  flex-shrink: 0;
+}
+.checkBtn:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text-secondary);
+}
+
+.checkBtnActive {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+}
+.checkBtnActive:hover {
+  background: var(--color-accent);
+  opacity: 0.88;
+}
+
 /* ── Responsive ──────────────────────────────────────────────────────── */
-@media (max-width: 640px) {
+@media (max-width: 768px) {
+  .page { padding: calc(var(--navbar-height) + var(--space-4)) var(--space-4) var(--space-20); }
   .grid { grid-template-columns: 1fr; }
-  .header { flex-direction: column; }
+  .header { flex-direction: column; gap: var(--space-3); }
   .newBtn { width: 100%; justify-content: center; }
+  .bulkBar { flex-wrap: wrap; gap: var(--space-2); padding: var(--space-2) var(--space-3); }
+  .bulkZipBtn { margin-left: 0; width: 100%; justify-content: center; }
+  .cardActions { flex-wrap: wrap; gap: var(--space-2); }
+  .cardActions > * { flex: 1 1 auto; min-width: 80px; justify-content: center; }
+  .btnOverlay { width: 100%; }
+  .translationRow { flex-wrap: wrap; }
 }
