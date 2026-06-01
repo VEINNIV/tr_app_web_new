@@ -72,6 +72,8 @@ interface AIRequest {
   contents?: AIContent[];
   systemInstruction?: { parts: Array<{ text: string }> };
   generationConfig?: { temperature?: number; maxOutputTokens?: number };
+  /** Zorunlu — begin_ai_operation ile alınan operasyon jetonu. Kredi/limit zorlaması için. */
+  operationId?: string;
 }
 
 // ── Yardımcılar ────────────────────────────────────────────────────────────
@@ -137,6 +139,34 @@ Deno.serve(async (req) => {
   }
   if (!Array.isArray(payload.contents) || payload.contents.length === 0) {
     return jsonResponse({ error: 'contents is required' }, 400);
+  }
+
+  // ── Kredi/limit zorlaması (server-side, bypass edilemez) ─────────────────
+  // Her çağrı, begin_ai_operation ile önceden kredi harcanarak alınmış bir
+  // operasyon jetonu taşımak zorundadır. Proxy bu jetondan bir "çağrı hakkı"
+  // atomik olarak tüketir (claim_ai_call). Jeton yok / süresi dolmuş / hakkı
+  // bitmişse Gemini'ye HİÇ gidilmez → kredi harcamadan AI kullanımı imkânsız.
+  const operationId = typeof payload.operationId === 'string' ? payload.operationId.trim() : '';
+  if (!operationId) {
+    return jsonResponse({ error: 'operationId required' }, 400);
+  }
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!serviceKey) {
+    return jsonResponse({ error: 'Server misconfigured: service role key missing' }, 500);
+  }
+  const admin = createClient(supabaseUrl, serviceKey);
+  const { data: claimed, error: claimErr } = await admin.rpc('claim_ai_call', {
+    p_op_id: operationId,
+    p_user_id: user.id,
+  });
+  if (claimErr) {
+    return jsonResponse({ error: 'Kredi doğrulaması başarısız' }, 500);
+  }
+  if (claimed !== true) {
+    return jsonResponse(
+      { error: 'Geçersiz veya tükenmiş AI işlem jetonu — kredi/limit dolmuş olabilir' },
+      402,
+    );
   }
 
   // ── Gemini istek gövdesi ────────────────────────────────────────────────

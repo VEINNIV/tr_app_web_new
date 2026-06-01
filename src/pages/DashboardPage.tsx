@@ -7,7 +7,7 @@ import { motion, useReducedMotion } from 'framer-motion';
 import {
   FileText, Languages, MessageSquare, Clock,
   Zap, BookOpen, Shield, ArrowRight, ChevronRight,
-  Activity, Coins, CheckCircle2,
+  Activity, Coins, CheckCircle2, Sunrise, Sun, Sunset, Moon,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -32,7 +32,8 @@ const item = {
 export default function DashboardPage() {
   const { profile, isAdmin, loading: authLoading, refreshProfile } = useAuth();
   const reduced = useReducedMotion();
-  const { runTour, finishTour } = useOnboardingTour();
+  // Tur yalnızca kurulum sihirbazı tamamlandıktan SONRA başlar (ikisi sırayla aksın)
+  const { runTour, finishTour } = useOnboardingTour(profile?.onboarding_completed === true);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [totalTranslations, setTotalTranslations] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -78,7 +79,7 @@ export default function DashboardPage() {
   const creditPercent = profile.credits_monthly_limit > 0
     ? Math.round((profile.credits_remaining / profile.credits_monthly_limit) * 100)
     : 0;
-  const displayName = profile.full_name || profile.email.split('@')[0];
+  const displayName = profile.nickname || profile.full_name || profile.email.split('@')[0];
   const firstName = displayName.split(' ')[0];
   const isFirstTime = !loading && documents.length === 0;
 
@@ -88,6 +89,17 @@ export default function DashboardPage() {
     hour < 12 ? 'Günaydın' :
     hour < 18 ? 'İyi günler' :
     hour < 22 ? 'İyi akşamlar' : 'İyi geceler';
+  // Zaman dilimine göre zarif ikon (ai-slop emoji yerine tutarlı lucide ikonu)
+  const GreetIcon =
+    hour < 5 ? Moon :
+    hour < 12 ? Sunrise :
+    hour < 18 ? Sun :
+    hour < 22 ? Sunset : Moon;
+  const greetIconColor =
+    hour < 5 ? '#818cf8' :
+    hour < 12 ? '#f59e0b' :
+    hour < 18 ? '#f59e0b' :
+    hour < 22 ? '#fb7185' : '#818cf8';
 
   const stats = [
     { icon: FileText, value: cDocs, label: 'Belge', color: '#6366f1' },
@@ -126,7 +138,15 @@ export default function DashboardPage() {
           </motion.div>
           <div>
             <h1 className={styles.headerTitle}>
-              {greeting}, <span className={styles.headerName}>{firstName}</span> 👋
+              {greeting}, <span className={styles.headerName}>{firstName}</span>
+              <motion.span
+                style={{ display: 'inline-flex', verticalAlign: 'middle', marginLeft: 8, color: greetIconColor }}
+                initial={reduced ? false : { rotate: -12, scale: 0.6, opacity: 0 }}
+                animate={{ rotate: 0, scale: 1, opacity: 1 }}
+                transition={{ type: 'spring', stiffness: 260, damping: 16, delay: 0.15 }}
+              >
+                <GreetIcon size={20} strokeWidth={2.2} />
+              </motion.span>
             </h1>
             <p className={styles.headerSub}>Bugün ne çevirelim?</p>
           </div>

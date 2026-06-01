@@ -10,6 +10,7 @@ import { Plus, Trash2, ScrollText, Search, X, Check, Loader, Sparkles } from 'lu
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/auth';
 import { generateGlossarySuggestions } from '../lib/ai';
+import { getCreditCosts } from '../lib/creditConfig';
 import toast from 'react-hot-toast';
 import type { GlossaryEntry } from '../types';
 
@@ -32,7 +33,7 @@ interface NewEntry {
 const EMPTY: NewEntry = { source_term: '', target_term: '', domain: 'general' };
 
 export default function GlossaryPage() {
-  const { profile } = useAuth();
+  const { profile, refreshProfile } = useAuth();
   const [entries, setEntries] = useState<GlossaryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -96,8 +97,29 @@ export default function GlossaryPage() {
     const lang = profile.native_language ?? 'tr';
     setAiGenerating(true);
     toast.loading('AI sözlük önerileri oluşturuluyor...', { id: 'ai-gloss' });
+    // Operasyon jetonu — küçük kredi maliyeti + proxy çağrı hakkı (bypass'ı önler)
+    const cost = (await getCreditCosts()).glossary;
+    const { data: opData, error: opErr } = await supabase.rpc('begin_ai_operation', {
+      p_action: 'glossary',
+      p_amount: cost,
+      p_calls: 2,
+      p_reference: null,
+    });
+    const operationId = (opData as Array<{ operation_id: string }> | null)?.[0]?.operation_id;
+    if (opErr || !operationId) {
+      const m = opErr?.message ?? '';
+      toast.error(
+        /Yetersiz/.test(m) ? `Yetersiz kredi — AI öneri için ${cost} kredi gerekiyor.`
+          : /fazla istek/.test(m) ? 'Çok fazla istek — biraz bekleyin.'
+          : 'İşlem başlatılamadı.',
+        { id: 'ai-gloss' },
+      );
+      setAiGenerating(false);
+      return;
+    }
+    void refreshProfile?.();
     try {
-      const suggestions = await generateGlossarySuggestions(prof, uc, lang);
+      const suggestions = await generateGlossarySuggestions(prof, uc, lang, operationId);
       if (suggestions.length === 0) { toast.error('Öneri üretilemedi.', { id: 'ai-gloss' }); return; }
       const { data, error } = await supabase.from('glossaries')
         .insert(suggestions.map(s => ({ ...s, user_id: profile.id })))

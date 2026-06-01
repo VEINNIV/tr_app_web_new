@@ -50,6 +50,8 @@ export interface TranslateOptions {
   glossary?: Record<string, string>;
   /** true ise görsel içi metinler de çevrilir (ek adım) */
   translateImages?: boolean;
+  /** begin_ai_operation jetonu — proxy kredi/limit zorlaması için zorunlu. */
+  operationId?: string;
   onProgress?: (p: TranslationProgress) => void;
   signal?: AbortSignal;
 }
@@ -84,7 +86,7 @@ export async function translatePDF(
   source: File | string,
   opts: TranslateOptions,
 ): Promise<TranslationResult> {
-  const { sourceLang, targetLang = 'tr', domain = 'general', glossary, translateImages, onProgress, signal } = opts;
+  const { sourceLang, targetLang = 'tr', domain = 'general', glossary, translateImages, operationId, onProgress, signal } = opts;
 
   onProgress?.({ phase: 'loading', current: 0, total: 0, message: 'PDF açılıyor…' });
 
@@ -184,6 +186,7 @@ export async function translatePDF(
           signal,
           domain,
           glossary,
+          operationId,
         );
       } catch (e) {
         const msg = (e as Error)?.message ?? '';
@@ -285,6 +288,7 @@ export async function translatePDF(
               mimeType,
               sourceLang,
               targetLang,
+              operationId,
             );
 
             if (regions.length > 0) {

@@ -106,16 +106,24 @@ export default function StudyNotesPage() {
     setStep('processing');
     setStreamingText('');
 
+    let operationId: string | undefined;
     try {
-      // 1. Atomic kredi düşümü — server-side RPC (consume_credits)
-      const { error: creditErr } = await supabase.rpc('consume_credits', {
+      // 1. Operasyon jetonu al — krediyi atomik düş + proxy çağrı hakkı üret.
+      //    Jeton olmadan ai-proxy çağrılamaz (kredi-bypass imkânsız).
+      const { data: opData, error: creditErr } = await supabase.rpc('begin_ai_operation', {
         p_action: 'study_notes',
         p_amount: totalCost,
+        p_calls: files.length * 2 + 5,
         p_reference: null,
       });
-      if (creditErr) {
-        const msg = /Yetersiz/.test(creditErr.message) ? 'Yetersiz kredi.' : 'Kredi düşürülemedi.';
-        toast.error(msg);
+      operationId = (opData as Array<{ operation_id: string }> | null)?.[0]?.operation_id;
+      if (creditErr || !operationId) {
+        const m = creditErr?.message ?? '';
+        toast.error(
+          /Yetersiz/.test(m) ? 'Yetersiz kredi.'
+            : /fazla istek/.test(m) ? 'Çok fazla istek — biraz bekleyin.'
+            : 'İşlem başlatılamadı.',
+        );
         setStep('upload');
         return;
       }
@@ -137,6 +145,7 @@ export default function StudyNotesPage() {
         subject,
         undefined,
         (_delta, full) => setStreamingText(full),
+        operationId,
       );
 
       // 5. Sonucu kaydet
@@ -153,6 +162,11 @@ export default function StudyNotesPage() {
       toast.success('Ders notu başarıyla oluşturuldu!');
     } catch (error) {
       console.error(error);
+      // Henüz hiç AI çağrısı yapılmadıysa krediyi iade et
+      if (operationId) {
+        try { await supabase.rpc('refund_ai_operation', { p_op_id: operationId }); } catch { /* yut */ }
+        await refreshProfile();
+      }
       toast.error('Notlar oluşturulurken bir hata oluştu.');
       setStep('upload');
     }

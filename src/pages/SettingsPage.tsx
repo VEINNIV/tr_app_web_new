@@ -9,7 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, useReducedMotion, type Variants } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { User, CreditCard, LogOut, Shield, HelpCircle, Sparkles } from 'lucide-react';
+import { User, CreditCard, LogOut, HelpCircle, Sparkles, AtSign, KeyRound, Mail } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { SPRING_TIGHT } from '../components/ui/motion';
 import { useOnboardingTour } from '../hooks/useOnboardingTour';
@@ -28,7 +28,17 @@ export default function SettingsPage() {
     navigate('/dashboard');
   };
   const [fullName, setFullName] = useState(profile?.full_name || '');
+  const [nickname, setNickname] = useState(profile?.nickname || '');
   const [saving, setSaving] = useState(false);
+
+  // Şifre değiştirme
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [pwSaving, setPwSaving] = useState(false);
+
+  // E-posta değiştirme
+  const [newEmail, setNewEmail] = useState('');
+  const [emailSaving, setEmailSaving] = useState(false);
 
   if (!profile) {
     return (
@@ -47,18 +57,68 @@ export default function SettingsPage() {
     navigate('/');
   };
 
-  /** Profil adını Supabase'e kaydeder */
+  /** Profil adı + takma adı Supabase'e kaydeder */
   const handleSave = async () => {
     setSaving(true);
+    const cleanNick = nickname.trim();
+    if (cleanNick.length > 30) {
+      toast.error('Takma ad en fazla 30 karakter olabilir.');
+      setSaving(false);
+      return;
+    }
     const { error } = await supabase
       .from('profiles')
-      .update({ full_name: fullName })
+      .update({ full_name: fullName, nickname: cleanNick || null })
       .eq('id', profile.id);
 
     if (error) toast.error('Kayıt başarısız. Lütfen tekrar deneyin.');
     else { toast.success('Profil başarıyla güncellendi ✓'); await refreshProfile(); }
 
     setSaving(false);
+  };
+
+  /** Şifre değiştir — aktif oturum üzerinden (Supabase auth) */
+  const handleChangePassword = async () => {
+    if (newPassword.length < 8) {
+      toast.error('Şifre en az 8 karakter olmalı.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error('Şifreler eşleşmiyor.');
+      return;
+    }
+    setPwSaving(true);
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    setPwSaving(false);
+    if (error) {
+      toast.error(/same/i.test(error.message) ? 'Yeni şifre eskisiyle aynı olamaz.' : 'Şifre güncellenemedi: ' + error.message);
+      return;
+    }
+    setNewPassword('');
+    setConfirmPassword('');
+    toast.success('Şifreniz güncellendi ✓');
+  };
+
+  /** E-posta değiştir — Supabase yeni adrese doğrulama bağlantısı gönderir */
+  const handleChangeEmail = async () => {
+    const email = newEmail.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      toast.error('Geçerli bir e-posta girin.');
+      return;
+    }
+    if (email === profile.email.toLowerCase()) {
+      toast.error('Bu zaten mevcut e-posta adresiniz.');
+      return;
+    }
+    setEmailSaving(true);
+    const { error } = await supabase.auth.updateUser(
+      { email },
+      { emailRedirectTo: window.location.origin + '/settings' },
+    );
+    setEmailSaving(false);
+    if (error) { toast.error('E-posta güncellenemedi: ' + error.message); return; }
+    setNewEmail('');
+    toast.success('Doğrulama bağlantısı yeni e-posta adresinize gönderildi. Onayladıktan sonra değişir.', { duration: 7000 });
   };
 
   const cardVariants: Variants = {
@@ -91,6 +151,25 @@ export default function SettingsPage() {
             onChange={e => setFullName(e.target.value)}
             placeholder="Adınız Soyadınız"
           />
+        </div>
+
+        <div className={styles.fieldGroup}>
+          <label className={styles.fieldLabel} htmlFor="nickname">
+            <AtSign size={13} style={{ verticalAlign: '-2px', marginRight: 4 }} />
+            Takma Ad (anonim)
+          </label>
+          <input
+            id="nickname"
+            className={styles.input}
+            type="text"
+            value={nickname}
+            maxLength={30}
+            onChange={e => setNickname(e.target.value)}
+            placeholder="Örn: gezgin_42 — uygulamada bu isim görünür"
+          />
+          <p className={styles.securityNote} style={{ marginTop: 6, marginBottom: 0 }}>
+            Belirlerseniz uygulama genelinde adınız yerine bu takma ad gösterilir. Boş bırakabilirsiniz.
+          </p>
         </div>
 
         <div className={styles.row}>
@@ -161,18 +240,81 @@ export default function SettingsPage() {
         </div>
       </motion.div>
 
-      {/* ── Güvenlik Kartı ───────────────────────────────────── */}
+      {/* ── Güvenlik Kartı: Şifre değiştir ───────────────────── */}
       <motion.div className={styles.card} variants={cardVariants}>
         <div className={styles.cardTitle}>
-          <Shield size={16} /> Güvenlik
+          <KeyRound size={16} /> Şifre Değiştir
+        </div>
+        <div className={styles.fieldGroup}>
+          <label className={styles.fieldLabel} htmlFor="newPassword">Yeni Şifre</label>
+          <input
+            id="newPassword"
+            className={styles.input}
+            type="password"
+            autoComplete="new-password"
+            value={newPassword}
+            onChange={e => setNewPassword(e.target.value)}
+            placeholder="En az 8 karakter"
+          />
+        </div>
+        <div className={styles.fieldGroup}>
+          <label className={styles.fieldLabel} htmlFor="confirmPassword">Yeni Şifre (Tekrar)</label>
+          <input
+            id="confirmPassword"
+            className={styles.input}
+            type="password"
+            autoComplete="new-password"
+            value={confirmPassword}
+            onChange={e => setConfirmPassword(e.target.value)}
+            placeholder="Yeni şifreyi tekrar girin"
+          />
+        </div>
+        <motion.button
+          className={styles.btnPrimary}
+          onClick={handleChangePassword}
+          disabled={pwSaving || !newPassword}
+          whileHover={reduced || pwSaving ? undefined : { y: -2 }}
+          whileTap={reduced || pwSaving ? undefined : { scale: 0.97 }}
+          transition={SPRING_TIGHT}
+        >
+          {pwSaving ? 'Güncelleniyor...' : 'Şifreyi Güncelle'}
+        </motion.button>
+      </motion.div>
+
+      {/* ── E-posta değiştir ─────────────────────────────────── */}
+      <motion.div className={styles.card} variants={cardVariants}>
+        <div className={styles.cardTitle}>
+          <Mail size={16} /> E-posta Değiştir
         </div>
         <div className={styles.row}>
-          <span className={styles.rowLabel}>Şifre</span>
-          <span className={styles.rowValue}>••••••••</span>
+          <span className={styles.rowLabel}>Mevcut E-posta</span>
+          <span className={styles.rowValue}>{profile.email}</span>
         </div>
-        <p className={styles.securityNote}>
-          Şifrenizi değiştirmek için kayıtlı e-posta adresinize sıfırlama bağlantısı gönderilir.
+        <div className={styles.fieldGroup}>
+          <label className={styles.fieldLabel} htmlFor="newEmail">Yeni E-posta</label>
+          <input
+            id="newEmail"
+            className={styles.input}
+            type="email"
+            autoComplete="email"
+            value={newEmail}
+            onChange={e => setNewEmail(e.target.value)}
+            placeholder="yeni@eposta.com"
+          />
+        </div>
+        <p className={styles.securityNote} style={{ marginBottom: '1rem' }}>
+          Yeni adresinize bir doğrulama bağlantısı göndeririz. Bağlantıyı onayladıktan sonra e-postanız değişir.
         </p>
+        <motion.button
+          className={styles.btnPrimary}
+          onClick={handleChangeEmail}
+          disabled={emailSaving || !newEmail}
+          whileHover={reduced || emailSaving ? undefined : { y: -2 }}
+          whileTap={reduced || emailSaving ? undefined : { scale: 0.97 }}
+          transition={SPRING_TIGHT}
+        >
+          {emailSaving ? 'Gönderiliyor...' : 'Doğrulama Bağlantısı Gönder'}
+        </motion.button>
       </motion.div>
 
       {/* ── Profil Tercihleri ────────────────────────────────── */}

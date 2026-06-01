@@ -128,7 +128,12 @@ export default function Navbar() {
                   opacity: logoHovered ? 1 : 0,
                   x: logoHovered ? 0 : -8,
                 }}
-                transition={{ type: 'spring', stiffness: 380, damping: 28 }}
+                transition={{
+                  maxWidth: { duration: 0.5, ease: [0.22, 1, 0.36, 1] },
+                  x: { duration: 0.5, ease: [0.22, 1, 0.36, 1] },
+                  // Açılırken metin yavaşça belirir, kapanırken aceleye gelmeden solar
+                  opacity: { duration: logoHovered ? 0.45 : 0.3, ease: 'easeInOut', delay: logoHovered ? 0.08 : 0 },
+                }}
               >
                 Trans
               </motion.span>
@@ -209,7 +214,7 @@ export default function Navbar() {
                   <div className={styles.navAvatar}>{initials}</div>
                   <div className={styles.profileInfo}>
                     <span className={styles.profileName}>
-                      {profile?.full_name || user.email?.split('@')[0]}
+                      {profile?.nickname || profile?.full_name || user.email?.split('@')[0]}
                     </span>
                     <span className={styles.profilePlan}>
                       {profile?.plan?.toUpperCase()} Plan
@@ -332,7 +337,7 @@ export default function Navbar() {
                 <div className={styles.mobileProfile}>
                   <div className={styles.navAvatar}>{initials}</div>
                   <div>
-                    <div className={styles.mobileProfileName}>{profile.full_name || 'Kullanıcı'}</div>
+                    <div className={styles.mobileProfileName}>{profile.nickname || profile.full_name || 'Kullanıcı'}</div>
                     <div className={styles.mobileProfilePlan}>{profile.plan.toUpperCase()} Plan</div>
                   </div>
                 </div>

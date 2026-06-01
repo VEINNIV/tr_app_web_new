@@ -8,11 +8,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   GraduationCap, Stethoscope, Scale, Wrench, Briefcase,
   BookOpen, User, CheckCircle2, Sparkles, Sun, Moon,
-  Globe, ChevronRight, Loader,
+  Globe, ChevronRight, Loader, AtSign,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
 import { generateGlossarySuggestions } from '../lib/ai';
+import { getCreditCosts } from '../lib/creditConfig';
 import { useThemeContext } from '../context/ThemeContext';
 import type { Profession, UseCase } from '../types';
 import styles from '../styles/components/onboarding.module.css';
@@ -61,14 +62,16 @@ export default function OnboardingModal({ userId, onComplete }: Props) {
   const [profession, setProfession] = useState<Profession | null>(null);
   const [useCase, setUseCase] = useState<UseCase | null>(null);
   const [nativeLang, setNativeLang] = useState('tr');
+  const [nickname, setNickname] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const STEPS = ['Hoş Geldin', 'Tema', 'Meslek', 'Kullanım', 'Dil'];
+  const STEPS = ['Hoş Geldin', 'Tema', 'Meslek', 'Kullanım', 'Dil', 'Takma Ad'];
   const canNext = [
     true,
     true,
     profession !== null,
     useCase !== null,
+    true,
     true,
   ];
 
@@ -84,12 +87,22 @@ export default function OnboardingModal({ userId, onComplete }: Props) {
         profession,
         primary_use_case: useCase,
         native_language: nativeLang,
+        nickname: nickname.trim() ? nickname.trim().slice(0, 30) : null,
         onboarding_completed: true,
       }).eq('id', userId);
 
-      // 2) Generate AI glossary suggestions
+      // 2) Generate AI glossary suggestions (operasyon jetonuyla — proxy bypass'ı önler)
       toast.loading('Sözlük önerileri hazırlanıyor...', { id: 'glossary-gen' });
-      const suggestions = await generateGlossarySuggestions(profession, useCase, nativeLang);
+      const { data: opData } = await supabase.rpc('begin_ai_operation', {
+        p_action: 'glossary',
+        p_amount: (await getCreditCosts()).glossary,
+        p_calls: 2,
+        p_reference: null,
+      });
+      const operationId = (opData as Array<{ operation_id: string }> | null)?.[0]?.operation_id;
+      const suggestions = operationId
+        ? await generateGlossarySuggestions(profession, useCase, nativeLang, operationId)
+        : [];
 
       if (suggestions.length > 0) {
         await supabase.from('glossaries').insert(
@@ -237,6 +250,33 @@ export default function OnboardingModal({ userId, onComplete }: Props) {
                   <Sparkles size={14} />
                   <span>Cevaplarınıza göre AI sözlüğünüzü otomatik dolduracağız.</span>
                 </div>
+              </motion.div>
+            )}
+
+            {/* Step 5: Nickname (opsiyonel) */}
+            {step === 5 && (
+              <motion.div key="step5" className={styles.stepContent} {...stepAnim}>
+                <AtSign size={36} strokeWidth={1.3} style={{ color: 'var(--color-accent)', marginBottom: 12 }} />
+                <h2 className={styles.stepTitle}>Bir takma ad ister misiniz?</h2>
+                <p className={styles.stepDesc}>
+                  İsterseniz anonim bir takma ad belirleyin — uygulamada adınız yerine bu görünür.
+                  Boş bırakabilir, sonra Ayarlar'dan değiştirebilirsiniz.
+                </p>
+                <input
+                  type="text"
+                  value={nickname}
+                  maxLength={30}
+                  onChange={e => setNickname(e.target.value)}
+                  placeholder="Örn: gezgin_42"
+                  style={{
+                    width: '100%', maxWidth: 320, margin: '4px auto 0', display: 'block',
+                    padding: '12px 16px', borderRadius: 12, textAlign: 'center',
+                    border: '1px solid var(--color-border)', background: 'var(--color-bg-alt)',
+                    color: 'var(--color-text-primary)', font: 'inherit', fontSize: '1rem', fontWeight: 600,
+                    outline: 'none', boxSizing: 'border-box',
+                  }}
+                  onKeyDown={e => { if (e.key === 'Enter' && !saving) finish(); }}
+                />
               </motion.div>
             )}
           </AnimatePresence>

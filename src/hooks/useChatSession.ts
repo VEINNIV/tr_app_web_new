@@ -107,20 +107,26 @@ export function useChatSession({ profile, initDocId, refreshProfile }: UseChatSe
     ];
 
     // ── Kredi zorlaması (server-side, atomik) — "bedava sohbet" sızıntısını önler ──
-    // Eski kod yalnızca bayat local krediye bakıp yetersizse mesajı yine de gönderiyordu.
+    // begin_ai_operation krediyi atomik düşer VE ai-proxy'nin bu mesaj için çağrı
+    // yapmasına izin veren bir jeton üretir. Jeton olmadan proxy çağrılamaz.
     const CHAT_COST = (await getCreditCosts()).chat;
-    const { error: creditErr } = await supabase.rpc('consume_credits', {
+    const { data: opData, error: creditErr } = await supabase.rpc('begin_ai_operation', {
       p_action: 'chat',
       p_amount: CHAT_COST,
+      p_calls: 5, // stream + non-stream fallback + retry payı
       p_reference: selectedDocId || null,
     });
-    if (creditErr) {
-      if (/Yetersiz/.test(creditErr.message)) {
+    const operationId = (opData as Array<{ operation_id: string }> | null)?.[0]?.operation_id;
+    if (creditErr || !operationId) {
+      const m = creditErr?.message ?? '';
+      if (/Yetersiz/.test(m)) {
         toast.error(`Krediniz yetersiz. Sohbet için en az ${CHAT_COST} kredi gerekiyor.`);
-        return; // mesaj gönderilmez, hiçbir şey yazılmaz
+      } else if (/fazla istek/.test(m)) {
+        toast.error('Çok fazla istek — birkaç saniye bekleyin.');
+      } else {
+        toast.error('Mesaj gönderilemedi, tekrar deneyin.');
       }
-      // Geçici/altyapı hatası → kullanıcının önünü kesme ama logla
-      console.warn('[Chat] kredi düşümü hatası:', creditErr.message);
+      return; // mesaj gönderilmez
     }
     void refreshProfile?.(); // local kredi sayacını güncel tut
 
@@ -160,6 +166,7 @@ export function useChatSession({ profile, initDocId, refreshProfile }: UseChatSe
           setMessages(prev => prev.map(m => m.id === asstId ? { ...m, content: full } : m));
         },
         abortRef.current.signal,
+        operationId,
       );
       setMessages(prev => prev.map(m => m.id === asstId ? { ...m, content: final, pending: false } : m));
       void supabase.from('chat_messages').insert({

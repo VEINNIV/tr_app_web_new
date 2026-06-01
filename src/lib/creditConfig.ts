@@ -15,12 +15,14 @@ export interface CreditCosts {
   translationPerPage: number;
   chat: number;
   studyNotes: number;
+  glossary: number;
 }
 
 const FALLBACK: CreditCosts = {
   translationPerPage: CREDIT_COSTS.TRANSLATION_PER_PAGE,
   chat: CREDIT_COSTS.CHAT_PER_QUESTION,
   studyNotes: CREDIT_COSTS.STUDY_NOTES_PER_SOURCE,
+  glossary: CREDIT_COSTS.GLOSSARY_SUGGEST,
 };
 
 let cache: CreditCosts | null = null;
@@ -44,6 +46,7 @@ export async function getCreditCosts(force = false): Promise<CreditCosts> {
           translationPerPage: map['credit_cost.translation_per_page'] ?? FALLBACK.translationPerPage,
           chat: map['credit_cost.chat'] ?? FALLBACK.chat,
           studyNotes: map['credit_cost.study_notes'] ?? FALLBACK.studyNotes,
+          glossary: map['credit_cost.glossary'] ?? FALLBACK.glossary,
         };
       } else {
         cache = FALLBACK;

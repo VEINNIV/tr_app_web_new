@@ -86,6 +86,7 @@ export const CREDIT_COSTS = {
   TRANSLATION_PER_PAGE: 1,
   CHAT_PER_QUESTION: 0.5,
   STUDY_NOTES_PER_SOURCE: 0.5,
+  GLOSSARY_SUGGEST: 0.5,
 };
 
 export const APP_NAME = 'TransWordly';

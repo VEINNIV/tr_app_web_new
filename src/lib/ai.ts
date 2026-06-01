@@ -82,6 +82,8 @@ interface CallOpts {
   systemInstruction?: string;
   temperature?: number;
   maxOutputTokens?: number;
+  /** begin_ai_operation ile alınan operasyon jetonu — proxy kredi/limit zorlaması için zorunlu. */
+  operationId?: string;
 }
 
 async function callGemini({
@@ -89,6 +91,7 @@ async function callGemini({
   systemInstruction,
   temperature = 0.25,
   maxOutputTokens = 16384,
+  operationId,
   _useProModel = false,
 }: CallOpts & { _useProModel?: boolean }): Promise<string> {
   if (!isAIAvailable()) return demoResponse(contents);
@@ -98,6 +101,7 @@ async function callGemini({
     model: _useProModel ? MODEL_PRO : MODEL_FLASH,
     contents,
     generationConfig: { temperature, maxOutputTokens },
+    ...(operationId ? { operationId } : {}),
   };
   if (systemInstruction) {
     body.systemInstruction = { parts: [{ text: systemInstruction }] };
@@ -157,6 +161,7 @@ export async function streamGemini(
       temperature: opts.temperature ?? 0.25,
       maxOutputTokens: opts.maxOutputTokens ?? 16384,
     },
+    ...(opts.operationId ? { operationId: opts.operationId } : {}),
   };
   if (opts.systemInstruction) {
     body.systemInstruction = { parts: [{ text: opts.systemInstruction }] };
@@ -534,7 +539,7 @@ export async function translateDocument(
 }
 
 // ─── 3) Dil tespiti ─────────────────────────────────────────────────────────
-export async function detectLanguage(text: string): Promise<string> {
+export async function detectLanguage(text: string, operationId?: string): Promise<string> {
   const prompt =
     `Aşağıdaki metnin dilini tespit et. SADECE ISO 639-1 dil kodunu yaz (ör: en, de, fr, ar, zh). ` +
     `Açıklama, noktalama veya başka karakter ekleme.\n\nMetin:\n${text.slice(0, 600)}`;
@@ -543,6 +548,7 @@ export async function detectLanguage(text: string): Promise<string> {
       contents: [userText(prompt)],
       temperature: 0,
       maxOutputTokens: 8,
+      operationId,
     });
     return result.trim().toLowerCase().replace(/[^a-z]/g, '').slice(0, 2);
   } catch {
@@ -556,6 +562,7 @@ export async function processFilesMultimodal(
   prompt: string,
   systemInstruction?: string,
   onChunk?: (delta: string, full: string) => void,
+  operationId?: string,
 ): Promise<string> {
   const inlineParts: AIPart[] = [];
   for (const f of files) {
@@ -566,9 +573,9 @@ export async function processFilesMultimodal(
     parts: [...inlineParts, { text: prompt }],
   }];
   if (onChunk) {
-    return streamGemini({ contents, systemInstruction, onChunk, maxOutputTokens: 16384 });
+    return streamGemini({ contents, systemInstruction, onChunk, maxOutputTokens: 16384, operationId });
   }
-  return callGemini({ contents, systemInstruction, maxOutputTokens: 16384 });
+  return callGemini({ contents, systemInstruction, maxOutputTokens: 16384, operationId });
 }
 
 // ─── 5) AI Sohbet (multi-turn, streaming) ───────────────────────────────────
@@ -585,6 +592,7 @@ export async function streamDocumentChat(
   attachments: File[] = [],
   onChunk?: (delta: string, full: string) => void,
   signal?: AbortSignal,
+  operationId?: string,
 ): Promise<string> {
   const systemPrompt =
     `Sen TransWordly'nin öğrenci asistanısın. Akademik sorulara doğrudan, net ve sade yanıt ver.
@@ -639,6 +647,7 @@ Kesin kurallar:
         maxOutputTokens: 8192,
         onChunk,
         signal,
+        operationId,
       });
       if (result) return result;
     } catch (err) {
@@ -657,6 +666,7 @@ Kesin kurallar:
     contents,
     systemInstruction: systemPrompt,
     maxOutputTokens: 8192,
+    operationId,
   });
 }
 
@@ -715,6 +725,7 @@ export async function translateTextBlocks(
   signal?: AbortSignal,
   domain = 'general',
   glossary?: Record<string, string>,
+  operationId?: string,
 ): Promise<string[]> {
   if (blocks.length === 0) return [];
 
@@ -724,7 +735,7 @@ export async function translateTextBlocks(
     const results: string[] = [];
     for (let i = 0; i < blocks.length; i += BATCH) {
       const batch = blocks.slice(i, i + BATCH);
-      const translated = await translateTextBlocks(batch, sourceLang, targetLang, signal, domain, glossary);
+      const translated = await translateTextBlocks(batch, sourceLang, targetLang, signal, domain, glossary, operationId);
       results.push(...translated);
     }
     return results;
@@ -771,6 +782,7 @@ Kurallar:
     }],
     temperature: 0.05,
     maxOutputTokens: 8192,
+    operationId,
   });
 
   // Numaralı çıktıyı parse et
@@ -934,6 +946,7 @@ export async function detectImageText(
   imageMimeType: string,
   sourceLang: string,
   targetLang = 'tr',
+  operationId?: string,
 ): Promise<Array<{
   x: number; y: number; w: number; h: number;
   fontSize: number;
@@ -965,6 +978,7 @@ export async function detectImageText(
     temperature: 0.05,
     maxOutputTokens: 4096,
     _useProModel: true,
+    operationId,
   });
 
   // JSON'u yanıt içinden çıkar (markdown code block olsa bile)
@@ -1026,6 +1040,7 @@ export async function summarizeDocument(
   text: string,
   signal?: AbortSignal,
   onChunk?: (delta: string, full: string) => void,
+  operationId?: string,
 ): Promise<string> {
   const truncated = text.slice(0, 48_000);
   const systemPrompt =
@@ -1042,9 +1057,9 @@ export async function summarizeDocument(
   }];
 
   if (onChunk) {
-    return streamGemini({ contents, systemInstruction: systemPrompt, maxOutputTokens: 2048, onChunk, signal });
+    return streamGemini({ contents, systemInstruction: systemPrompt, maxOutputTokens: 2048, onChunk, signal, operationId });
   }
-  return callGemini({ contents, systemInstruction: systemPrompt, maxOutputTokens: 2048 });
+  return callGemini({ contents, systemInstruction: systemPrompt, maxOutputTokens: 2048, operationId });
 }
 
 // ─── 6) Ders Notu Üretimi (multimodal, öğrenci odaklı) ──────────────────────
@@ -1053,6 +1068,7 @@ export async function generateStudyNotes(
   subject?: string,
   _title?: string,
   onChunk?: (delta: string, full: string) => void,
+  operationId?: string,
 ): Promise<string> {
   const subjectLine = subject ? `Ders/Konu: **${subject}**` : '';
 
@@ -1106,7 +1122,7 @@ Türkçe yaz. Öğrencinin anlayacağı sadelikte ama akademik doğrulukta ol.`;
     `Görsellerdeki TÜM yazıları, formülleri ve şemaları oku ve not haline getir. ` +
     `Konuyu anlamayı kolaylaştıracak şekilde yapılandır.`;
 
-  return processFilesMultimodal(files, prompt, systemPrompt, onChunk);
+  return processFilesMultimodal(files, prompt, systemPrompt, onChunk, operationId);
 }
 
 // ─── 7) Profil tabanlı otomatik sözlük üretimi ───────────────────────────────
@@ -1134,6 +1150,7 @@ export async function generateGlossarySuggestions(
   profession: string,
   useCase: string,
   nativeLanguage: string,
+  operationId?: string,
 ): Promise<GlossarySuggestion[]> {
   const profLabel = PROFESSION_LABELS[profession] ?? profession;
   const ucLabel   = USE_CASE_LABELS[useCase] ?? useCase;
@@ -1161,7 +1178,7 @@ Terimleri ${profLabel} için gerçekten yararlı, sık kullanılan akademik/tekn
   const contents: AIMessage[] = [{ role: 'user', parts: [{ text: userPrompt }] }];
 
   try {
-    const raw = await callGemini({ contents, systemInstruction: systemPrompt, maxOutputTokens: 1024 });
+    const raw = await callGemini({ contents, systemInstruction: systemPrompt, maxOutputTokens: 1024, operationId });
     // Extract JSON array from response
     const match = raw.match(/\[[\s\S]*\]/);
     if (!match) return [];

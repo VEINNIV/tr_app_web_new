@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
-import { Mail, Lock, User, ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, User, ArrowLeft, Eye, EyeOff, MailCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
 import { SPRING_TIGHT } from '../components/ui/motion';
 import styles from '../styles/components/auth.module.css';
 
@@ -23,8 +24,23 @@ export default function AuthPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [confirmSent, setConfirmSent] = useState(false);   // kayıt sonrası onay maili gönderildi
+  const [needsConfirm, setNeedsConfirm] = useState(false); // girişte e-posta onaylanmamış
+  const [resending, setResending] = useState(false);
   const { signIn, signUp, signInWithGoogle, user } = useAuth();
   const navigate = useNavigate();
+
+  /** Onay e-postasını yeniden gönder */
+  const resendConfirmation = async () => {
+    if (!email) { setError('Lütfen e-posta adresinizi girin.'); return; }
+    setResending(true);
+    const { error: rErr } = await supabase.auth.resend({ type: 'signup', email });
+    setResending(false);
+    if (rErr) { setError('Yeniden gönderilemedi: ' + rErr.message); return; }
+    setConfirmSent(true);
+    setNeedsConfirm(false);
+    setError('');
+  };
 
   useEffect(() => {
     if (user) navigate('/dashboard', { replace: true });
@@ -34,24 +50,38 @@ export default function AuthPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setNeedsConfirm(false);
     setLoading(true);
     try {
       if (isRegister) {
-        await signUp(email, password, fullName);
-        navigate('/dashboard');
+        const { needsConfirmation } = await signUp(email, password, fullName);
+        if (needsConfirmation) {
+          // Oturum açılmadı — kullanıcı e-postasını onaylamalı
+          setConfirmSent(true);
+        } else {
+          navigate('/dashboard');
+        }
       } else {
         await signIn(email, password);
         navigate('/dashboard');
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Bir hata oluştu';
-      setError(msg);
+      const raw = err instanceof Error ? err.message : 'Bir hata oluştu';
+      // Supabase: e-posta onaylanmamışsa giriş reddedilir
+      if (/email not confirmed|not confirmed|email_not_confirmed/i.test(raw)) {
+        setNeedsConfirm(true);
+        setError('E-postanız henüz onaylanmamış. Gelen kutunuzdaki onay bağlantısına tıklayın.');
+      } else if (/invalid login credentials/i.test(raw)) {
+        setError('E-posta veya şifre hatalı.');
+      } else {
+        setError(raw);
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const toggle = () => { setIsRegister(!isRegister); setError(''); };
+  const toggle = () => { setIsRegister(!isRegister); setError(''); setConfirmSent(false); setNeedsConfirm(false); };
 
   return (
     <div className={styles.authPage}>
@@ -119,6 +149,49 @@ export default function AuthPage() {
               : 'Hesabınıza giriş yapın ve kaldığınız yerden devam edin.'}
           </p>
 
+          {isRegister && (
+            <p style={{ fontSize: '0.78rem', color: 'var(--color-text-tertiary)', margin: '-0.5rem 0 1.25rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Mail size={13} /> Kayıt sonrası e-posta adresinize bir onay bağlantısı göndereceğiz.
+            </p>
+          )}
+
+          {/* Kayıt sonrası: onay e-postası gönderildi bildirimi */}
+          <AnimatePresence>
+            {confirmSent && (
+              <motion.div
+                key="confirm-sent"
+                initial={{ opacity: 0, y: -8, height: 0 }}
+                animate={{ opacity: 1, y: 0, height: 'auto' }}
+                exit={{ opacity: 0, y: -8, height: 0 }}
+                transition={{ duration: 0.25 }}
+                style={{
+                  overflow: 'hidden', display: 'flex', gap: 12, alignItems: 'flex-start',
+                  background: 'var(--color-success-bg)', color: 'var(--color-success)',
+                  border: '1px solid var(--color-success)', borderRadius: 12,
+                  padding: '14px 16px', marginBottom: '1.25rem',
+                }}
+              >
+                <MailCheck size={20} style={{ flexShrink: 0, marginTop: 2 }} />
+                <div style={{ fontSize: '0.82rem', lineHeight: 1.5 }}>
+                  <strong>Onay e-postası gönderildi.</strong><br />
+                  <span style={{ color: 'var(--color-text-secondary)' }}>
+                    {email ? <><b>{email}</b> adresine</> : 'E-posta adresinize'} gönderdiğimiz bağlantıya tıklayıp
+                    hesabınızı etkinleştirin, ardından giriş yapın. E-postayı görmüyorsanız spam klasörünü kontrol edin.
+                  </span>
+                  <br />
+                  <button
+                    type="button"
+                    onClick={resendConfirmation}
+                    disabled={resending}
+                    style={{ marginTop: 8, background: 'none', border: 'none', padding: 0, color: 'var(--color-accent)', fontWeight: 700, fontSize: '0.8rem', cursor: resending ? 'wait' : 'pointer', font: 'inherit' }}
+                  >
+                    {resending ? 'Gönderiliyor…' : 'Tekrar gönder'}
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <AnimatePresence>
             {error && (
               <motion.div
@@ -131,6 +204,16 @@ export default function AuthPage() {
                 style={{ overflow: 'hidden' }}
               >
                 {error}
+                {needsConfirm && (
+                  <button
+                    type="button"
+                    onClick={resendConfirmation}
+                    disabled={resending}
+                    style={{ display: 'block', marginTop: 8, background: 'none', border: 'none', padding: 0, color: 'var(--color-accent)', fontWeight: 700, fontSize: '0.8rem', cursor: resending ? 'wait' : 'pointer', font: 'inherit' }}
+                  >
+                    {resending ? 'Gönderiliyor…' : 'Onay e-postasını tekrar gönder'}
+                  </button>
+                )}
               </motion.div>
             )}
           </AnimatePresence>

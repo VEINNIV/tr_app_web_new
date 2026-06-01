@@ -8,6 +8,7 @@ import { SPRING_TIGHT } from '../components/ui/motion';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { summarizeDocument } from '../lib/ai';
+import { getCreditCosts } from '../lib/creditConfig';
 import { STATUS_LABELS } from '../lib/constants';
 import { formatTrDate, getQualityScore } from '../lib/utils';
 import { useExportDoc } from '../hooks/useExportDoc';
@@ -26,7 +27,7 @@ interface DocumentWithTranslation extends Document {
 }
 
 export default function DocumentsPage() {
-  const { profile } = useAuth();
+  const { profile, refreshProfile } = useAuth();
   const reduced = useReducedMotion();
   const [documents, setDocuments] = useState<DocumentWithTranslation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -197,6 +198,25 @@ export default function DocumentsPage() {
   const openSummary = async (doc: DocumentWithTranslation) => {
     const text = doc.translation?.translated_text?.pages.join('\n\n');
     if (!text) { toast.error('Çeviri metni bulunamadı.'); return; }
+    // Operasyon jetonu — özet de bir AI çağrısıdır; kredi harcanmadan proxy çağrılamaz.
+    const cost = (await getCreditCosts()).chat;
+    const { data: opData, error: opErr } = await supabase.rpc('begin_ai_operation', {
+      p_action: 'chat',
+      p_amount: cost,
+      p_calls: 3,
+      p_reference: doc.id,
+    });
+    const operationId = (opData as Array<{ operation_id: string }> | null)?.[0]?.operation_id;
+    if (opErr || !operationId) {
+      const m = opErr?.message ?? '';
+      toast.error(
+        /Yetersiz/.test(m) ? `Yetersiz kredi — özet için ${cost} kredi gerekiyor.`
+          : /fazla istek/.test(m) ? 'Çok fazla istek — biraz bekleyin.'
+          : 'Özet başlatılamadı.',
+      );
+      return;
+    }
+    void refreshProfile?.();
     setSummaryDoc(doc);
     setSummaryText('');
     setSummaryLoading(true);
@@ -206,8 +226,12 @@ export default function DocumentsPage() {
         text,
         summaryAbortRef.current.signal,
         (_delta, full) => setSummaryText(full),
+        operationId,
       );
     } catch (e) {
+      // Erken hata/iptal → kredi iadesi (yalnızca hiç çağrı yapılmadıysa)
+      try { await supabase.rpc('refund_ai_operation', { p_op_id: operationId }); } catch { /* yut */ }
+      void refreshProfile?.();
       if (e instanceof Error && e.name !== 'AbortError') toast.error(e.message || 'Özet oluşturulamadı');
     } finally {
       setSummaryLoading(false);

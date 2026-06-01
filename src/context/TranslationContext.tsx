@@ -90,6 +90,16 @@ export function TranslationProvider({ children }: { children: ReactNode }) {
   const overlayRef = useRef<OverlayPage[] | null>(null);
   const imageReplacementsRef = useRef<Array<{ pageNum: number; xref: number; imageBase64: string }> | null>(null);
   const userIdRef = useRef<string | null>(null);
+  // Aktif operasyon jetonu — iptal/erken-hata durumunda kredi iadesi için
+  const opIdRef = useRef<string | null>(null);
+
+  /** Operasyon jetonunu iade etmeyi dener (yalnızca hiç AI çağrısı yapılmadıysa sunucu iade eder). */
+  const tryRefund = async () => {
+    const op = opIdRef.current;
+    opIdRef.current = null;
+    if (!op) return;
+    try { await supabase.rpc('refund_ai_operation', { p_op_id: op }); } catch { /* yut */ }
+  };
 
   // Sayfa kapatma uyarısı — foreground modunda iş devam ediyorsa
   useEffect(() => {
@@ -222,9 +232,10 @@ export function TranslationProvider({ children }: { children: ReactNode }) {
       const docId = docData.id;
       setJob(j => j && { ...j, docId });
 
-      // ── Adım 3: Dil tespiti (auto ise) ────────────────────────────────────
+      // ── Adım 3: Sayfa sayısı + dil örneği (AI gerektirmez) ────────────────
       let detectedLang = sourceLang;
       let pageCount = 0;
+      let langSample = '';
       try {
         const buf = await file.arrayBuffer();
         const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
@@ -232,20 +243,14 @@ export function TranslationProvider({ children }: { children: ReactNode }) {
         setJob(j => j && { ...j, totalPages: pageCount });
 
         if (sourceLang === 'auto') {
-          setJob(j => j && { ...j, progress: 15, phase: 'extracting', message: 'Dil tespit ediliyor…' });
-          let sample = '';
           for (let p = 1; p <= Math.min(2, pageCount); p++) {
             const page = await pdf.getPage(p);
             const tc = await page.getTextContent();
-            sample += tc.items.map((it: unknown) =>
+            langSample += tc.items.map((it: unknown) =>
               typeof it === 'object' && it && 'str' in it ? (it as { str: string }).str : ''
             ).join(' ') + ' ';
-            if (sample.length > 1200) break;
+            if (langSample.length > 1200) break;
           }
-          detectedLang = sample.trim().length > 20
-            ? await detectLanguage(sample.slice(0, 800))
-            : 'en';
-          setJob(j => j && { ...j, detail: `Dil: ${detectedLang.toUpperCase()}` });
         }
       } catch (e) {
         throw new Error('PDF okunamadı: ' + (e instanceof Error ? e.message : 'bilinmeyen hata'));
@@ -253,24 +258,39 @@ export function TranslationProvider({ children }: { children: ReactNode }) {
 
       await supabase.from('documents').update({ page_count: pageCount }).eq('id', docId);
 
-      // ── Kredi ön-kontrolü (işe başlamadan) ────────────────────────────────
-      // Pahalı AI çevirisi başlamadan önce yeterli kredi olduğunu doğrula.
-      // Aksi halde 0 kredili kullanıcı ücretsiz çeviri yapabiliyordu (gelir sızıntısı).
-      // Gerçek düşüm yine de sonda atomik consume_credits ile yapılır.
+      // ── Kredi: operasyon jetonu al (atomik düşüm + proxy çağrı hakkı) ──────
+      // Krediyi ŞİMDİ atomik düşeriz; sunucu kredi yoksa reddeder. Üretilen jeton,
+      // ai-proxy'nin bu çeviri için sınırlı sayıda çağrı yapmasına izin verir.
+      // Böylece kredi harcamadan AI kullanımı (proxy bypass) imkânsız olur.
       const perPage = (await getCreditCosts()).translationPerPage;
       const estimatedCost = Math.max(perPage, pageCount * perPage);
-      {
-        const { data: fresh } = await supabase
-          .from('profiles')
-          .select('credits_remaining')
-          .eq('id', userId)
-          .maybeSingle();
-        const available = Number(fresh?.credits_remaining ?? 0);
-        if (available < estimatedCost) {
-          throw new Error(
-            `Yetersiz kredi — bu çeviri ${estimatedCost} kredi gerektiriyor, ${available} krediniz var.`,
-          );
-        }
+      const callBudget = pageCount * 6 + 30; // chunk + görsel + retry payı (kredi zaten ödendi)
+      const { data: opData, error: opErr } = await supabase.rpc('begin_ai_operation', {
+        p_action: 'translation',
+        p_amount: estimatedCost,
+        p_calls: callBudget,
+        p_reference: docId,
+      });
+      const operationId = (opData as Array<{ operation_id: string }> | null)?.[0]?.operation_id;
+      if (opErr || !operationId) {
+        const m = opErr?.message ?? '';
+        throw new Error(
+          /Yetersiz/.test(m)
+            ? `Yetersiz kredi — bu çeviri ${estimatedCost} kredi gerektiriyor.`
+            : /fazla istek/.test(m)
+              ? 'Çok fazla istek — birkaç saniye bekleyip tekrar deneyin.'
+              : 'Çeviri başlatılamadı: ' + (m || 'bilinmeyen hata'),
+        );
+      }
+      opIdRef.current = operationId;
+
+      // Dil tespiti (auto ise) — artık operasyon jetonuyla
+      if (sourceLang === 'auto') {
+        setJob(j => j && { ...j, progress: 15, phase: 'extracting', message: 'Dil tespit ediliyor…' });
+        detectedLang = langSample.trim().length > 20
+          ? await detectLanguage(langSample.slice(0, 800), operationId)
+          : 'en';
+        setJob(j => j && { ...j, detail: `Dil: ${detectedLang.toUpperCase()}` });
       }
 
       // ── Adım 4: Çeviri pipeline'ı ─────────────────────────────────────────
@@ -280,6 +300,7 @@ export function TranslationProvider({ children }: { children: ReactNode }) {
         domain,
         glossary,
         translateImages,
+        operationId,
         signal,
         onProgress: (p) => {
           const pct = 15 + Math.round((p.current / Math.max(1, p.total)) * 75);
@@ -323,18 +344,11 @@ export function TranslationProvider({ children }: { children: ReactNode }) {
         credits_used: creditsCost,
       }).select('id').single();
       if (transErr) throw new Error('Çeviri kaydedilemedi: ' + transErr.message);
+      void trans;
       await supabase.from('documents').update({ status: 'completed', original_language: detectedLang }).eq('id', docId);
 
-      // Atomic kredi düşümü — server-side RPC
-      const { error: creditErr } = await supabase.rpc('consume_credits', {
-        p_action: 'translation',
-        p_amount: creditsCost,
-        p_reference: trans?.id ?? null,
-      });
-      if (creditErr) {
-        // Kredi düşürülemese bile çeviri tamam — sadece uyar
-        console.warn('[Credits] Kredi düşümü başarısız:', creditErr.message);
-      }
+      // Kredi zaten begin_ai_operation ile atomik düşüldü — burada tekrar düşülmez.
+      opIdRef.current = null; // başarı: iade yok
 
       // ── Tamamlandı ────────────────────────────────────────────────────────
       setJob(j => j && {
@@ -357,6 +371,8 @@ export function TranslationProvider({ children }: { children: ReactNode }) {
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Çeviri başarısız';
+      // Henüz hiç AI çağrısı yapılmadıysa krediyi iade et (iptal/erken hata)
+      await tryRefund();
       if (msg === 'İptal edildi') {
         setJob(j => j && { ...j, status: 'cancelled', message: msg });
         return;
