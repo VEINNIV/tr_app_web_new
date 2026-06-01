@@ -16,7 +16,8 @@
 import { supabase } from './supabase';
 
 // Aktif modelleri burada tutuyoruz — edge function whitelist'iyle aynı olmalı.
-const MODEL_FLASH = 'gemini-3.1-flash-lite-preview';
+// NOT: 'gemini-3.1-flash-lite-preview' 9 Temmuz 2026'da kapatılıyor → stabil sürüm kullanılıyor.
+const MODEL_FLASH = 'gemini-3.1-flash-lite';
 const MODEL_PRO   = 'gemini-3.1-pro-preview';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
@@ -1045,13 +1046,13 @@ export async function generateGlossarySuggestions(
   const userPrompt = `Kullanıcı profili:
 - Meslek: ${profLabel}
 - Çeviri amacı: ${ucLabel}
-- Hedef dil: Türkçe (kaynak dil genellikle İngilizce)
+- Hedef dil: ${langLabel} (kaynak dil genellikle İngilizce)
 
-Bu profile uygun, çeviride tutarlılık sağlayacak 15 İngilizce→Türkçe terim çifti öner.
+Bu profile uygun, çeviride tutarlılık sağlayacak 15 İngilizce→${langLabel} terim çifti öner.
 Yanıtını SADECE aşağıdaki JSON formatında ver, başka hiçbir şey ekleme:
 
 [
-  {"source": "term in English", "target": "Türkçe karşılık", "domain": "alan_kodu"},
+  {"source": "term in English", "target": "${langLabel} karşılık", "domain": "alan_kodu"},
   ...
 ]
 

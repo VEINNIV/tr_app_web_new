@@ -1,35 +1,80 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-// ── CORS ─────────────────────────────────────────────────────────────────────
-// In production set the ALLOWED_ORIGIN secret to your exact domain, e.g.
-//   supabase secrets set ALLOWED_ORIGIN=https://transwordly.com
-// Leave it unset (or set to '*') only during local dev.
-const allowedOrigin = Deno.env.get('ALLOWED_ORIGIN') ?? '*';
+/**
+ * ai-proxy — TransWordly güvenli AI proxy'si (v4)
+ *
+ * Frontend (src/lib/ai.ts) ile birebir uyumlu kontrat:
+ *   İstek gövdesi:
+ *     {
+ *       mode: 'generate' | 'stream',
+ *       model: string,                       // whitelist'te olmalı
+ *       contents: Array<{ role, parts }>,    // Gemini formatı (multimodal dahil)
+ *       systemInstruction?: { parts: [{ text }] },
+ *       generationConfig?: { temperature, maxOutputTokens }
+ *     }
+ *   Yanıt:
+ *     • generate → Gemini'nin ham JSON'u ({ candidates, usageMetadata })
+ *     • stream   → Gemini'nin SSE akışı (data: {...}\n\n) doğrudan proxy edilir
+ *
+ * API anahtarı yalnızca burada (Edge Function secrets) bulunur, istemciye gitmez.
+ */
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': allowedOrigin,
+// ── Konfig ─────────────────────────────────────────────────────────────────
+// Üretimde ALLOWED_ORIGIN secret'ını tam alan adınıza ayarlayın:
+//   supabase secrets set ALLOWED_ORIGIN=https://transwordly.com
+// Yerel geliştirmede '*' bırakılabilir.
+const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN') ?? '*';
+
+// Gemini API tabanı. Varsayılan Google Generative Language API.
+//   supabase secrets set AI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/models
+// Geriye uyumluluk: eski kurulumda AI_API_URL (tam ".../models/<model>:generateContent")
+// secret'ı varsa ondan tabanı (".../models") türetiriz.
+function resolveBaseUrl(): string {
+  const explicit = Deno.env.get('AI_BASE_URL');
+  if (explicit) return explicit.replace(/\/+$/, '');
+
+  const legacy = Deno.env.get('AI_API_URL');
+  if (legacy) {
+    const idx = legacy.indexOf('/models');
+    if (idx !== -1) return legacy.slice(0, idx + '/models'.length);
+  }
+  return 'https://generativelanguage.googleapis.com/v1beta/models';
+}
+const AI_BASE_URL = resolveBaseUrl();
+
+// İstemcinin gönderebileceği modeller — frontend'deki MODEL_FLASH/MODEL_PRO ile aynı olmalı.
+// Hem stabil hem preview adları kabul edilir (preview'ler 2026 ortasında kapanıyor).
+const MODEL_WHITELIST = new Set([
+  'gemini-3.1-flash-lite',
+  'gemini-3.1-flash-lite-preview',
+  'gemini-3.1-pro-preview',
+]);
+
+const corsHeaders: Record<string, string> = {
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Vary': 'Origin',
 };
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
+// ── Tipler ───────────────────────────────────────────────────────────────────
+interface AIPart {
+  text?: string;
+  inlineData?: { mimeType: string; data: string };
+}
+interface AIContent {
+  role: 'user' | 'model';
+  parts: AIPart[];
+}
 interface AIRequest {
-  prompt?: string;
-  systemInstruction?: string;
+  mode?: 'generate' | 'stream';
+  model?: string;
+  contents?: AIContent[];
+  systemInstruction?: { parts: Array<{ text: string }> };
+  generationConfig?: { temperature?: number; maxOutputTokens?: number };
 }
 
-interface GeminiResponse {
-  candidates?: Array<{
-    content?: { parts?: Array<{ text?: string }> };
-  }>;
-  error?: {
-    message?: string;
-  };
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
+// ── Yardımcılar ────────────────────────────────────────────────────────────
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -37,8 +82,7 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-// ── Handler ───────────────────────────────────────────────────────────────────
-
+// ── Handler ──────────────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
   // CORS pre-flight
   if (req.method === 'OPTIONS') {
@@ -49,17 +93,20 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'Method not allowed' }, 405);
   }
 
-  // ── JWT validation ────────────────────────────────────────────────────────
-  // Every request MUST carry a valid Supabase session token.
+  // ── JWT doğrulaması ─────────────────────────────────────────────────────
+  // Her istek geçerli bir Supabase oturum token'ı taşımalı.
   const authHeader = req.headers.get('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return jsonResponse({ error: 'Missing or malformed Authorization header' }, 401);
   }
 
-  const supabaseUrl  = Deno.env.get('SUPABASE_URL')!;
-  const supabaseKey  = Deno.env.get('SUPABASE_ANON_KEY')!;
-  const token        = authHeader.replace('Bearer ', '');
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY');
+  if (!supabaseUrl || !supabaseKey) {
+    return jsonResponse({ error: 'Server misconfigured: SUPABASE_URL/ANON_KEY missing' }, 500);
+  }
 
+  const token = authHeader.replace('Bearer ', '');
   const supabase = createClient(supabaseUrl, supabaseKey, {
     global: { headers: { Authorization: authHeader } },
   });
@@ -68,15 +115,14 @@ Deno.serve(async (req) => {
   if (authError || !user) {
     return jsonResponse({ error: 'Unauthorized — invalid or expired session' }, 401);
   }
-  // ── End JWT validation ─────────────────────────────────────────────────────
+  // ── JWT doğrulaması sonu ────────────────────────────────────────────────
 
   const apiKey = Deno.env.get('AI_API_KEY');
-  const apiUrl = Deno.env.get('AI_API_URL');
-
-  if (!apiKey || !apiUrl) {
-    return jsonResponse({ error: 'AI_API_KEY and AI_API_URL must be configured' }, 500);
+  if (!apiKey) {
+    return jsonResponse({ error: 'AI_API_KEY must be configured' }, 500);
   }
 
+  // ── Gövde parse + doğrulama ─────────────────────────────────────────────
   let payload: AIRequest;
   try {
     payload = await req.json();
@@ -84,38 +130,69 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'Invalid JSON body' }, 400);
   }
 
-  if (!payload.prompt || typeof payload.prompt !== 'string') {
-    return jsonResponse({ error: 'prompt is required' }, 400);
+  const mode = payload.mode === 'stream' ? 'stream' : 'generate';
+  const model = payload.model ?? '';
+  if (!MODEL_WHITELIST.has(model)) {
+    return jsonResponse({ error: `Model not allowed: ${model || '(none)'}` }, 400);
+  }
+  if (!Array.isArray(payload.contents) || payload.contents.length === 0) {
+    return jsonResponse({ error: 'contents is required' }, 400);
   }
 
-  const body: Record<string, unknown> = {
-    contents: [{ parts: [{ text: payload.prompt }] }],
-    generationConfig: { temperature: 0.3, maxOutputTokens: 8192 },
+  // ── Gemini istek gövdesi ────────────────────────────────────────────────
+  const geminiBody: Record<string, unknown> = {
+    contents: payload.contents,
+    generationConfig: {
+      temperature: payload.generationConfig?.temperature ?? 0.25,
+      maxOutputTokens: payload.generationConfig?.maxOutputTokens ?? 16384,
+    },
   };
-
   if (payload.systemInstruction) {
-    body.systemInstruction = { parts: [{ text: payload.systemInstruction }] };
+    geminiBody.systemInstruction = payload.systemInstruction;
   }
 
-  const aiResponse = await fetch(`${apiUrl}?key=${apiKey}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  const method = mode === 'stream' ? 'streamGenerateContent' : 'generateContent';
+  const sseSuffix = mode === 'stream' ? '&alt=sse' : '';
+  const upstreamUrl =
+    `${AI_BASE_URL}/${model}:${method}?key=${apiKey}${sseSuffix}`;
 
-  const data: GeminiResponse = await aiResponse.json().catch(() => ({}));
-
-  if (!aiResponse.ok || data.error) {
-    return jsonResponse(
-      { error: data.error?.message || `AI provider returned HTTP ${aiResponse.status}` },
-      aiResponse.ok ? 502 : aiResponse.status,
-    );
+  let upstream: Response;
+  try {
+    upstream = await fetch(upstreamUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(geminiBody),
+    });
+  } catch (e) {
+    return jsonResponse({ error: `AI provider unreachable: ${(e as Error).message}` }, 503);
   }
 
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) {
-    return jsonResponse({ error: 'AI provider returned an empty response' }, 502);
+  // ── Hata durumları ──────────────────────────────────────────────────────
+  if (!upstream.ok) {
+    const errData = await upstream.json().catch(() => null);
+    const msg = errData?.error?.message || `AI provider returned HTTP ${upstream.status}`;
+    // Rate limit ve geçici hataları olduğu gibi geçir ki istemci doğru mesaj göstersin.
+    const status = [429, 503].includes(upstream.status) ? upstream.status : 502;
+    return jsonResponse({ error: msg }, status);
   }
 
-  return jsonResponse({ text });
+  // ── Streaming: Gemini SSE akışını doğrudan proxy et ─────────────────────
+  if (mode === 'stream') {
+    return new Response(upstream.body, {
+      status: 200,
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
+    });
+  }
+
+  // ── Non-streaming: ham Gemini JSON'unu döndür ───────────────────────────
+  const data = await upstream.json().catch(() => null);
+  if (!data) {
+    return jsonResponse({ error: 'AI provider returned invalid JSON' }, 502);
+  }
+  return jsonResponse(data);
 });

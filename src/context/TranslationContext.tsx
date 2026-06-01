@@ -79,6 +79,7 @@ export function TranslationProvider({ children }: { children: ReactNode }) {
   const abortRef = useRef<AbortController | null>(null);
   const fileRef = useRef<File | null>(null);
   const overlayRef = useRef<OverlayPage[] | null>(null);
+  const userIdRef = useRef<string | null>(null);
 
   // Sayfa kapatma uyarısı — foreground modunda iş devam ediyorsa
   useEffect(() => {
@@ -127,7 +128,7 @@ export function TranslationProvider({ children }: { children: ReactNode }) {
         source = fileRef.current;
       } else if (job.docId) {
         // dosya artık bellekte yok → storage'dan çek
-        const { data: doc } = await supabase.from('documents').select('original_storage_path').eq('id', job.docId).eq('user_id', userId).single();
+        const { data: doc } = await supabase.from('documents').select('original_storage_path').eq('id', job.docId).eq('user_id', userIdRef.current ?? '').single();
         if (!doc?.original_storage_path) throw new Error('Orijinal PDF bulunamadı');
         const { data: signed } = await supabase.storage.from('originals').createSignedUrl(doc.original_storage_path, 600);
         if (!signed?.signedUrl) throw new Error('İndirme linki alınamadı');
@@ -162,6 +163,7 @@ export function TranslationProvider({ children }: { children: ReactNode }) {
     const id = crypto.randomUUID();
     fileRef.current = file;
     overlayRef.current = null;
+    userIdRef.current = userId;
 
     const initial: ActiveJob = {
       id,

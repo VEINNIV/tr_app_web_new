@@ -14,7 +14,15 @@
  *   VITE_PDF_SERVICE_URL=http://localhost:5050
  */
 
-const SERVICE_URL = (import.meta.env.VITE_PDF_SERVICE_URL as string | undefined)?.replace(/\/$/, '');
+const RAW_SERVICE_URL = (import.meta.env.VITE_PDF_SERVICE_URL as string | undefined)?.replace(/\/$/, '');
+
+// Üretim build'inde localhost servis URL'sini yok say. .env.local'deki dev değeri
+// (http://localhost:5050) yanlışlıkla prod bundle'ına gömülürse, kullanıcı tarayıcısında
+// her PDF işleminde başarısız fetch denemesi yapılmasın (PDF.js fallback'i zaten devrede).
+const SERVICE_URL =
+  import.meta.env.PROD && RAW_SERVICE_URL && /\/\/(localhost|127\.0\.0\.1)/.test(RAW_SERVICE_URL)
+    ? undefined
+    : RAW_SERVICE_URL;
 
 export function isPDFServiceAvailable(): boolean {
   return !!SERVICE_URL;
