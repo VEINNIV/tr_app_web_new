@@ -2,10 +2,9 @@ import { useState, useRef, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
 import { streamDocumentChat, type ChatTurn } from '../lib/ai';
+import { getCreditCosts } from '../lib/creditConfig';
 import type { Document } from '../types';
 import type { User } from '../types';
-
-const CHAT_COST = 0.5;
 
 export interface ChatMessage {
   id: string;
@@ -109,6 +108,7 @@ export function useChatSession({ profile, initDocId, refreshProfile }: UseChatSe
 
     // ── Kredi zorlaması (server-side, atomik) — "bedava sohbet" sızıntısını önler ──
     // Eski kod yalnızca bayat local krediye bakıp yetersizse mesajı yine de gönderiyordu.
+    const CHAT_COST = (await getCreditCosts()).chat;
     const { error: creditErr } = await supabase.rpc('consume_credits', {
       p_action: 'chat',
       p_amount: CHAT_COST,
@@ -116,7 +116,7 @@ export function useChatSession({ profile, initDocId, refreshProfile }: UseChatSe
     });
     if (creditErr) {
       if (/Yetersiz/.test(creditErr.message)) {
-        toast.error('Krediniz yetersiz. Sohbet için en az 0.5 kredi gerekiyor.');
+        toast.error(`Krediniz yetersiz. Sohbet için en az ${CHAT_COST} kredi gerekiyor.`);
         return; // mesaj gönderilmez, hiçbir şey yazılmaz
       }
       // Geçici/altyapı hatası → kullanıcının önünü kesme ama logla

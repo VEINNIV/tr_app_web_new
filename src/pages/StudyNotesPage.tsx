@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { generateStudyNotes } from '../lib/ai';
-import { STUDY_SUBJECTS, CREDIT_COSTS } from '../lib/constants';
+import { STUDY_SUBJECTS } from '../lib/constants';
+import { getCreditCosts, getCachedCreditCosts } from '../lib/creditConfig';
 import { formatTrDate, formatFileSize } from '../lib/utils';
 import { useExportDoc } from '../hooks/useExportDoc';
 import type { ExportFormat } from '../hooks/useExportDoc';
@@ -32,6 +33,9 @@ export default function StudyNotesPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [generatedNotes, setGeneratedNotes] = useState<string>('');
   const [streamingText, setStreamingText] = useState<string>('');
+  const [studyCost, setStudyCost] = useState<number>(getCachedCreditCosts().studyNotes);
+
+  useEffect(() => { getCreditCosts().then(c => setStudyCost(c.studyNotes)); }, []);
   const { exporting, downloadAs: exportDoc } = useExportDoc();
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -93,7 +97,7 @@ export default function StudyNotesPage() {
       return;
     }
 
-    const totalCost = files.length * CREDIT_COSTS.STUDY_NOTES_PER_SOURCE;
+    const totalCost = files.length * (await getCreditCosts()).studyNotes;
     if (profile.credits_remaining < totalCost) {
       toast.error(`Yetersiz kredi. Bu işlem ${totalCost} kredi gerektiriyor.`);
       return;
@@ -255,7 +259,7 @@ export default function StudyNotesPage() {
                 >
                   <Wand2 size={16} /> Notları Oluştur
                   <span style={{ fontSize: '0.75rem', opacity: 0.8, marginLeft: 4 }}>
-                    ({files.length * CREDIT_COSTS.STUDY_NOTES_PER_SOURCE} Kredi)
+                    ({files.length * studyCost} Kredi)
                   </span>
                 </button>
               </div>

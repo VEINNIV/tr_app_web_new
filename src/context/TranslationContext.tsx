@@ -25,6 +25,7 @@ import { supabase } from '../lib/supabase';
 import { detectLanguage } from '../lib/ai';
 import { notify, requestPermission } from '../lib/notifications';
 import { TARGET_LANGUAGE } from '../lib/constants';
+import { getCreditCosts } from '../lib/creditConfig';
 import { pdfjsLib } from '../lib/pdfWorker';
 import type { OverlayData, OverlayPage } from '../types';
 
@@ -252,6 +253,26 @@ export function TranslationProvider({ children }: { children: ReactNode }) {
 
       await supabase.from('documents').update({ page_count: pageCount }).eq('id', docId);
 
+      // ── Kredi ön-kontrolü (işe başlamadan) ────────────────────────────────
+      // Pahalı AI çevirisi başlamadan önce yeterli kredi olduğunu doğrula.
+      // Aksi halde 0 kredili kullanıcı ücretsiz çeviri yapabiliyordu (gelir sızıntısı).
+      // Gerçek düşüm yine de sonda atomik consume_credits ile yapılır.
+      const perPage = (await getCreditCosts()).translationPerPage;
+      const estimatedCost = Math.max(perPage, pageCount * perPage);
+      {
+        const { data: fresh } = await supabase
+          .from('profiles')
+          .select('credits_remaining')
+          .eq('id', userId)
+          .maybeSingle();
+        const available = Number(fresh?.credits_remaining ?? 0);
+        if (available < estimatedCost) {
+          throw new Error(
+            `Yetersiz kredi — bu çeviri ${estimatedCost} kredi gerektiriyor, ${available} krediniz var.`,
+          );
+        }
+      }
+
       // ── Adım 4: Çeviri pipeline'ı ─────────────────────────────────────────
       const { pages: overlayPages, imageReplacements: imgReps } = await translatePDF(file, {
         sourceLang: detectedLang,
@@ -291,7 +312,7 @@ export function TranslationProvider({ children }: { children: ReactNode }) {
         .map(p => [...p.blocks].sort((a, b) => a.y - b.y || a.x - b.x).map(b => b.translated).join('\n'))
         .join('\n\n---\n\n');
 
-      const creditsCost = Math.max(1, pageCount);
+      const creditsCost = estimatedCost;
       const { data: trans, error: transErr } = await supabase.from('translations').insert({
         document_id: docId,
         user_id: userId,

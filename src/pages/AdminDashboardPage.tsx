@@ -8,10 +8,11 @@ import { useEffect, useState } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
   Shield, Users, FileText, Languages, CreditCard,
-  Search, ChevronDown, Plus, Minus, BookOpen,
+  Search, ChevronDown, Plus, Minus, BookOpen, SlidersHorizontal, Save,
 } from 'lucide-react';
 import { SPRING_TIGHT } from '../components/ui/motion';
 import { supabase } from '../lib/supabase';
+import { invalidateCreditCosts } from '../lib/creditConfig';
 import toast from 'react-hot-toast';
 import type { User, Plan, UserRole } from '../types';
 import styles from '../styles/components/admin.module.css';
@@ -21,6 +22,13 @@ interface PlatformStats {
   totalDocuments: number;
   totalTranslations: number;
   totalStudySessions: number;
+}
+
+interface ConfigRow {
+  key: string;
+  value: number;
+  label: string | null;
+  category: string | null;
 }
 
 export default function AdminDashboardPage() {
@@ -33,6 +41,39 @@ export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
+
+  // Kredi sistemi ayarları (app_config)
+  const [config, setConfig] = useState<ConfigRow[]>([]);
+  const [edits, setEdits] = useState<Record<string, string>>({});
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase
+      .from('app_config')
+      .select('key, value, label, category')
+      .order('category', { ascending: true })
+      .order('key', { ascending: true })
+      .then(({ data }) => { if (data) setConfig(data as ConfigRow[]); });
+  }, []);
+
+  /** Bir ayarı admin RPC'siyle güvenli güncelle */
+  const saveConfig = async (key: string) => {
+    const raw = edits[key];
+    if (raw === undefined || raw.trim() === '') return;
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value < 0) {
+      toast.error('Geçersiz değer');
+      return;
+    }
+    setSavingKey(key);
+    const { error } = await supabase.rpc('update_app_config', { p_key: key, p_value: value });
+    setSavingKey(null);
+    if (error) { toast.error('Güncellenemedi: ' + error.message); return; }
+    setConfig(prev => prev.map(c => (c.key === key ? { ...c, value } : c)));
+    setEdits(prev => { const n = { ...prev }; delete n[key]; return n; });
+    invalidateCreditCosts(); // canlı maliyet cache'ini tazele
+    toast.success('Ayar güncellendi');
+  };
 
   // Aramada her tuş basışında DB'ye gitmesin diye 300ms debounce
   useEffect(() => {
@@ -175,6 +216,54 @@ export default function AdminDashboardPage() {
           </motion.div>
         ))}
       </div>
+
+      {/* ── Kredi Sistemi Ayarları ───────────────────────────── */}
+      {config.length > 0 && (
+        <div className={styles.section}>
+          <div className={styles.sectionHeader}>
+            <h2 className={styles.sectionTitle}><SlidersHorizontal size={18} /> Kredi Sistemi</h2>
+          </div>
+
+          {([
+            { cat: 'credit_cost', title: 'İşlem Maliyetleri (kredi)', hint: 'Kullanıcıların her işlemde harcadığı kredi miktarı.' },
+            { cat: 'plan_limit', title: 'Plan Aylık Kredi Limitleri', hint: 'Bir plana geçirildiğinde verilecek aylık kredi.' },
+          ] as const).map(group => {
+            const rows = config.filter(c => c.category === group.cat);
+            if (rows.length === 0) return null;
+            return (
+              <div key={group.cat} style={{ marginBottom: 24 }}>
+                <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: 4 }}>{group.title}</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-tertiary)', marginBottom: 12 }}>{group.hint}</div>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {rows.map(row => {
+                    const dirty = edits[row.key] !== undefined && Number(edits[row.key]) !== row.value;
+                    return (
+                      <div key={row.key} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 10, background: 'var(--color-bg-alt)', border: '1px solid var(--color-border)' }}>
+                        <span style={{ flex: 1, fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>{row.label ?? row.key}</span>
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.5"
+                          value={edits[row.key] ?? String(row.value)}
+                          onChange={e => setEdits(prev => ({ ...prev, [row.key]: e.target.value }))}
+                          style={{ width: 110, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', font: 'inherit', fontWeight: 600, textAlign: 'right' }}
+                        />
+                        <button
+                          onClick={() => saveConfig(row.key)}
+                          disabled={!dirty || savingKey === row.key}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, border: 'none', background: dirty ? 'var(--color-accent)' : 'var(--color-border)', color: dirty ? '#fff' : 'var(--color-text-tertiary)', cursor: dirty && savingKey !== row.key ? 'pointer' : 'not-allowed', font: 'inherit', fontWeight: 600, fontSize: '0.8125rem' }}
+                        >
+                          <Save size={14} /> {savingKey === row.key ? '...' : 'Kaydet'}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* ── Kullanıcı Listesi ────────────────────────────────── */}
       <div className={styles.section}>
