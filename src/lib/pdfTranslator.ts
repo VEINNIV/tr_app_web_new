@@ -16,18 +16,19 @@ import {
   type PDFProxy,
 } from './pdfRenderer';
 import { extractTextLines } from './pdfTextExtractor';
-import { translateTextBlocks } from './ai';
-import { extractPDFPages, type ServicePageData } from './pdfExtractorService';
+import { translateTextBlocks, detectImageText } from './ai';
+import { extractPDFPages, extractPDFImages, replaceImageText, type ServicePageData } from './pdfExtractorService';
 import type { OverlayPage, OverlayBlock } from '../types';
 
 const CONCURRENCY = 3;
 const MAX_ATTEMPTS = 3;
 
 export type TranslationPhase =
-  | 'loading'      // PDF açılıyor
-  | 'extracting'   // Sayfa metni çıkarılıyor
-  | 'translating'  // AI çeviri yapıyor
-  | 'finalizing'   // Yazma için hazırlanıyor
+  | 'loading'             // PDF açılıyor
+  | 'extracting'          // Sayfa metni çıkarılıyor
+  | 'translating'         // AI çeviri yapıyor
+  | 'translating-images'  // Görsel içi metin çevriliyor
+  | 'finalizing'          // Yazma için hazırlanıyor
   | 'completed';
 
 export interface TranslationProgress {
@@ -47,6 +48,8 @@ export interface TranslateOptions {
   domain?: string;
   /** Kullanıcı tanımlı terim sözlüğü: { "kaynak terim": "hedef terim" } */
   glossary?: Record<string, string>;
+  /** true ise görsel içi metinler de çevrilir (ek adım) */
+  translateImages?: boolean;
   onProgress?: (p: TranslationProgress) => void;
   signal?: AbortSignal;
 }
@@ -74,13 +77,14 @@ export interface TranslationResult {
   pdf: PDFProxy;
   sourceLang: string;
   targetLang: string;
+  imageReplacements?: Array<{ pageNum: number; xref: number; imageBase64: string }>;
 }
 
 export async function translatePDF(
   source: File | string,
   opts: TranslateOptions,
 ): Promise<TranslationResult> {
-  const { sourceLang, targetLang = 'tr', domain = 'general', glossary, onProgress, signal } = opts;
+  const { sourceLang, targetLang = 'tr', domain = 'general', glossary, translateImages, onProgress, signal } = opts;
 
   onProgress?.({ phase: 'loading', current: 0, total: 0, message: 'PDF açılıyor…' });
 
@@ -133,7 +137,17 @@ export async function translatePDF(
     emitProgress('translating', `Sayfa ${pageNum}: metin çıkarılıyor…`);
 
     // 1) Metin koordinatları
-    let lines: Array<{ text: string; x: number; y: number; w: number; h: number; fontSize: number; color?: [number, number, number] }>;
+    let lines: Array<{
+      text: string;
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      fontSize: number;
+      color?: [number, number, number];
+      bold?: boolean;
+      alignment?: number;
+    }>;
     let pageWidthPts: number;
     let pageHeightPts: number;
 
@@ -187,7 +201,9 @@ export async function translatePDF(
       fontSize: line.fontSize,
       original: line.text,
       translated: skipFlags[i] ? line.text : (translatedTexts[tIdx++] || line.text),
-      ...(line.color ? { color: line.color } : {}),
+      color: line.color,
+      bold: line.bold,
+      alignment: line.alignment,
     }));
 
     result[pageNum - 1] = { pageNum, pageWidthPts, pageHeightPts, blocks };
@@ -231,6 +247,98 @@ export async function translatePDF(
     Array.from({ length: Math.min(CONCURRENCY, total) }, () => worker()),
   );
 
+  // ── Görsel içi metin çevirisi (opsiyonel ek adım) ──────────────────────────
+  let imageReplacements: Array<{ pageNum: number; xref: number; imageBase64: string }> | undefined;
+
+  if (translateImages && source instanceof File) {
+    try {
+      emitProgress('translating-images', 'Görseller taranıyor…');
+
+      const imgData = await extractPDFImages(source);
+      if (imgData && imgData.totalImages > 0) {
+        const allImages = imgData.pages.flatMap(p =>
+          p.images.map(img => ({ ...img, pageNum: p.pageNum })),
+        );
+
+        imageReplacements = [];
+        let imgCompleted = 0;
+
+        for (const img of allImages) {
+          if (signal?.aborted) throw new Error('İptal edildi');
+
+          try {
+            emitProgress(
+              'translating-images',
+              `Görsel ${imgCompleted + 1}/${allImages.length}: metin tespit ediliyor…`,
+            );
+
+            // Görsel formatından MIME type belirle
+            const mimeMap: Record<string, string> = {
+              png: 'image/png', jpeg: 'image/jpeg', jpg: 'image/jpeg',
+              webp: 'image/webp', gif: 'image/gif', bmp: 'image/bmp',
+            };
+            const mimeType = mimeMap[img.format.toLowerCase()] || 'image/png';
+
+            // AI ile görseldeki metinleri tespit et ve çevir
+            const regions = await detectImageText(
+              img.dataBase64,
+              mimeType,
+              sourceLang,
+              targetLang,
+            );
+
+            if (regions.length > 0) {
+              emitProgress(
+                'translating-images',
+                `Görsel ${imgCompleted + 1}/${allImages.length}: ${regions.length} metin değiştiriliyor…`,
+              );
+
+              // Backend ile görseldeki metni değiştir
+              const replaced = await replaceImageText(
+                img.dataBase64,
+                img.format,
+                regions.map(r => ({
+                  x: r.x,
+                  y: r.y,
+                  w: r.w,
+                  h: r.h,
+                  fontSize: r.fontSize,
+                  original: r.original,
+                  translated: r.translated,
+                  textColor: r.textColor,
+                })),
+              );
+
+              if (replaced) {
+                imageReplacements.push({
+                  pageNum: img.pageNum,
+                  xref: img.xref,
+                  imageBase64: replaced.imageBase64,
+                });
+              }
+            }
+          } catch (imgErr) {
+            // Tek görsel başarısız olursa atla, devam et
+            console.warn(`Görsel çeviri atlandı (sayfa ${img.pageNum}, xref ${img.xref}):`, imgErr);
+          }
+
+          imgCompleted++;
+        }
+
+        // Hiçbir görsel başarılı değilse undefined bırak
+        if (imageReplacements.length === 0) {
+          imageReplacements = undefined;
+        }
+      }
+    } catch (e) {
+      const msg = (e as Error)?.message ?? '';
+      if (msg === 'İptal edildi') throw e;
+      // Görsel çeviri bütünüyle başarısız → sessizce devam et
+      console.warn('Görsel çeviri aşaması başarısız:', e);
+      imageReplacements = undefined;
+    }
+  }
+
   emitProgress('finalizing', 'Çeviri tamamlandı, kaydediliyor…');
 
   onProgress?.({
@@ -241,7 +349,7 @@ export async function translatePDF(
     pageStatuses: new Uint8Array(pageStatuses),
   });
 
-  return { pages: result, pdf, sourceLang, targetLang };
+  return { pages: result, pdf, sourceLang, targetLang, imageReplacements };
 }
 
 /** Overlay'den düz metin üretir (DOCX/TXT/markdown export için) */

@@ -926,6 +926,100 @@ async function detectVisualTextInPage(
 }
 
 /**
+ * Tek bir görseldeki metinleri tespit eder ve çevirir.
+ * detectVisualTextInPage'den farklı olarak, izole bir görseli analiz eder → daha yüksek doğruluk.
+ */
+export async function detectImageText(
+  imageBase64: string,
+  imageMimeType: string,
+  sourceLang: string,
+  targetLang = 'tr',
+): Promise<Array<{
+  x: number; y: number; w: number; h: number;
+  fontSize: number;
+  original: string;
+  translated: string;
+  textColor: [number, number, number];
+}>> {
+  const targetName = targetLang === 'tr' ? 'Türkçe' : targetLang;
+
+  const prompt =
+    `Analyze this image carefully. Find ALL text that appears in it — including axis labels, titles, legends, annotations, watermarks, captions, and any other readable text.\n\n` +
+    `For each text element found:\n` +
+    `1. Identify its exact bounding box as x, y, w, h ratios (0-1, relative to image dimensions, top-left origin)\n` +
+    `2. Identify the approximate font size in pixels\n` +
+    `3. Identify the text color as [r, g, b] (0-255)\n` +
+    `4. Translate it from ${sourceLang} to ${targetName}\n\n` +
+    `Return ONLY valid JSON — no markdown, no explanation:\n` +
+    `{"items":[{"x":0.1,"y":0.3,"w":0.2,"h":0.03,"fs":14,"original":"Sample","translated":"Örnek","color":[0,0,0]}]}\n\n` +
+    `If no text found, return: {"items":[]}`;
+
+  const result = await callGemini({
+    contents: [{
+      role: 'user',
+      parts: [
+        { inlineData: { mimeType: imageMimeType, data: imageBase64 } },
+        { text: prompt },
+      ],
+    }],
+    temperature: 0.05,
+    maxOutputTokens: 4096,
+    _useProModel: true,
+  });
+
+  // JSON'u yanıt içinden çıkar (markdown code block olsa bile)
+  const jsonMatch = result.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) return [];
+
+  let parsed: { items?: unknown[] };
+  try {
+    parsed = JSON.parse(jsonMatch[0]);
+  } catch {
+    return [];
+  }
+
+  const items: Array<{
+    x: number; y: number; w: number; h: number;
+    fontSize: number; original: string; translated: string;
+    textColor: [number, number, number];
+  }> = [];
+
+  for (const item of (parsed.items ?? [])) {
+    if (!item || typeof item !== 'object') continue;
+    const { x, y, w, h, fs, original, translated, color } = item as Record<string, unknown>;
+    if (
+      typeof x === 'number' && x >= 0 && x <= 1 &&
+      typeof y === 'number' && y >= 0 && y <= 1 &&
+      typeof w === 'number' && w > 0 && w <= 1 &&
+      original && translated
+    ) {
+      // Renk: [r,g,b] 0-255, varsayılan siyah
+      let textColor: [number, number, number] = [0, 0, 0];
+      if (Array.isArray(color) && color.length >= 3 &&
+          typeof color[0] === 'number' && typeof color[1] === 'number' && typeof color[2] === 'number') {
+        textColor = [
+          Math.max(0, Math.min(255, Math.round(color[0]))),
+          Math.max(0, Math.min(255, Math.round(color[1]))),
+          Math.max(0, Math.min(255, Math.round(color[2]))),
+        ];
+      }
+
+      items.push({
+        x,
+        y,
+        w: Math.min(w, 1 - x),
+        h: Math.max(typeof h === 'number' ? h : 0.02, 0.01),
+        fontSize: typeof fs === 'number' ? fs : 10,
+        original: String(original),
+        translated: String(translated),
+        textColor,
+      });
+    }
+  }
+  return items;
+}
+
+/**
  * Belgeyi özetle — kısa, madde madde Türkçe özet üretir.
  */
 export async function summarizeDocument(

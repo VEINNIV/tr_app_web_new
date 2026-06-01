@@ -39,6 +39,7 @@ export interface ServiceTextBlock {
   bold: boolean;
   /** Orijinal metin rengi [r, g, b] 0-1 aralığında */
   color?: [number, number, number];
+  alignment?: number;
 }
 
 export interface ServicePageData {
@@ -115,13 +116,19 @@ export async function writePDFWithTranslations(
     x: number; y: number; w: number; h: number;
     fontSize: number; translated: string; original: string;
     color?: [number, number, number];
+    bold?: boolean;
+    alignment?: number;
   }>>,
+  imageReplacements?: Array<{ pageNum: number; xref: number; imageBase64: string }>,
 ): Promise<Blob | null> {
   if (!SERVICE_URL) return null;
 
   const formData = new FormData();
   formData.append('file', file);
   formData.append('pages_json', JSON.stringify(pages));
+  if (imageReplacements && imageReplacements.length > 0) {
+    formData.append('image_replacements_json', JSON.stringify(imageReplacements));
+  }
 
   try {
     const res = await fetch(`${SERVICE_URL}/write-pdf`, {
@@ -151,6 +158,8 @@ export interface ServiceCapabilities {
   version?: string;
   unicodeFont?: boolean;
   redactionWrite?: boolean;
+  imageTranslation?: boolean;
+  paragraphGrouping?: boolean;
 }
 
 export async function getServiceCapabilities(): Promise<ServiceCapabilities> {
@@ -164,8 +173,117 @@ export async function getServiceCapabilities(): Promise<ServiceCapabilities> {
       version: data.version,
       unicodeFont: data.unicodeFont,
       redactionWrite: data.capabilities?.redactionWrite,
+      imageTranslation: data.capabilities?.imageTranslation,
+      paragraphGrouping: data.capabilities?.paragraphGrouping,
     };
   } catch {
     return { available: false };
+  }
+}
+
+/** PDF'deki gömülü görselleri PyMuPDF ile çıkarır */
+export async function extractPDFImages(file: File): Promise<{
+  pages: Array<{
+    pageNum: number;
+    images: Array<{
+      xref: number;
+      x: number; y: number; w: number; h: number;
+      widthPx: number; heightPx: number;
+      format: string;
+      dataBase64: string;
+    }>;
+  }>;
+  totalImages: number;
+} | null> {
+  if (!SERVICE_URL) return null;
+  const formData = new FormData();
+  formData.append('file', file);
+  try {
+    const res = await fetch(`${SERVICE_URL}/extract-images`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+/** Görseldeki metni Pillow ile değiştirir */
+export async function replaceImageText(
+  imageBase64: string,
+  imageFormat: string,
+  regions: Array<{
+    x: number; y: number; w: number; h: number;
+    fontSize: number;
+    original: string;
+    translated: string;
+    textColor?: [number, number, number];
+    bgColor?: [number, number, number] | null;
+  }>,
+): Promise<{ imageBase64: string; format: string } | null> {
+  if (!SERVICE_URL) return null;
+  const formData = new FormData();
+  formData.append('image_base64', imageBase64);
+  formData.append('image_format', imageFormat);
+  formData.append('regions_json', JSON.stringify(regions));
+  try {
+    const res = await fetch(`${SERVICE_URL}/replace-image-text`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+/** PDF'deki metin bloklarını paragraf olarak gruplar */
+export async function groupParagraphs(file: File): Promise<Array<{
+  pageNum: number;
+  paragraphs: Array<{
+    mergedText: string;
+    x: number; y: number; w: number; h: number;
+    fontSize: number;
+    bold: boolean;
+    color: [number, number, number] | null;
+    alignment: number;
+    blockIndices: number[];
+  }>;
+  originalBlockCount: number;
+}> | null> {
+  if (!SERVICE_URL) return null;
+  const formData = new FormData();
+  formData.append('file', file);
+  try {
+    const res = await fetch(`${SERVICE_URL}/group-paragraphs`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.pages;
+  } catch {
+    return null;
+  }
+}
+
+/** PDF'de çevrilebilir görseller olup olmadığını kontrol eder */
+export async function checkForTranslatableImages(file: File): Promise<boolean> {
+  if (!SERVICE_URL) return false;
+  const formData = new FormData();
+  formData.append('file', file);
+  try {
+    const res = await fetch(`${SERVICE_URL}/extract`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    return data.hasTranslatableImages === true;
+  } catch {
+    return false;
   }
 }

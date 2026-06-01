@@ -77,6 +77,8 @@ export interface OverlayBlock {
   visual?: boolean;          // true ise: görsel/grafik içinden tespit edilmiş
   /** Orijinal metin rengi [r, g, b] 0-1 aralığında. Yoksa siyah kullanılır. */
   color?: [number, number, number];
+  bold?: boolean;
+  alignment?: number;
 }
 
 export interface OverlayPage {
@@ -175,3 +177,37 @@ export type TranslationStep = 'upload' | 'config' | 'progress' | 'result';
 
 // Toast notification type
 export type ToastType = 'success' | 'error' | 'info' | 'warning';
+
+/** Görsel metin değiştirme bilgisi */
+export interface ImageTextRegion {
+  x: number;  // 0-1
+  y: number;
+  w: number;
+  h: number;
+  fontSize: number;
+  original: string;
+  translated: string;
+  textColor?: [number, number, number];
+  bgColor?: [number, number, number] | null;
+}
+
+/** PDF'den çıkarılmış görsel bilgisi */
+export interface ExtractedImage {
+  xref: number;
+  pageNum: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  widthPx: number;
+  heightPx: number;
+  format: string;
+  dataBase64: string;
+}
+
+/** Görsel değiştirme bilgisi (write-pdf için) */
+export interface ImageReplacement {
+  pageNum: number;
+  xref: number;
+  imageBase64: string;
+}

@@ -39,6 +39,7 @@ async function getUnicodeBoldFont(): Promise<ArrayBuffer> {
 export interface WriteOptions {
   originalPDF: File | ArrayBuffer | Uint8Array;
   pages: OverlayPage[];
+  imageReplacements?: Array<{ pageNum: number; xref: number; imageBase64: string }>;
   onProgress?: (current: number, total: number) => void;
   signal?: AbortSignal;
   /** Kullanıcı backend'i bilerek atla isterse true */
@@ -198,7 +199,7 @@ async function sampleBackgroundColors(
  * Ana giriş noktası: backend-first, fallback lokal.
  */
 export async function buildTranslatedPDF(opts: WriteOptions): Promise<Uint8Array> {
-  const { originalPDF, pages, onProgress, signal, preferLocal } = opts;
+  const { originalPDF, pages, imageReplacements, onProgress, signal, preferLocal } = opts;
 
   // Byte'a çevir (her iki yol da gerek)
   let bytes: Uint8Array;
@@ -224,10 +225,12 @@ export async function buildTranslatedPDF(opts: WriteOptions): Promise<Uint8Array
           translated: b.translated,
           original: b.original,
           color: b.color,
+          bold: b.bold,
+          alignment: b.alignment,
         })));
 
         onProgress?.(0, pages.length);
-        const blob = await writePDFWithTranslations(file, blocksByPage);
+        const blob = await writePDFWithTranslations(file, blocksByPage, imageReplacements);
         if (blob) {
           onProgress?.(pages.length, pages.length);
           const buf = await blob.arrayBuffer();

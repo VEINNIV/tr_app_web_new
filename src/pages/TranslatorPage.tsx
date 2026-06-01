@@ -6,6 +6,7 @@
  *  - Kullanıcı 'Bu sayfada kal' veya 'Arka plana al' seçeneklerinden birini seçer
  *  - Sayfa-bazında canlı ilerleme (tile grid'i + faz göstergeleri + log)
  *  - Bitince: indir (PDF), dokümanlarım, yeni çeviri
+ *  - Görsel çeviri: PDF'de çevrilebilir görseller varsa kullanıcıya sorar
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -13,7 +14,7 @@ import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
   Upload, FileText, X, Check, AlertCircle, Download, MessageSquare,
   ArrowRight, Globe, Info, Search, MonitorPlay, BellRing, AlertTriangle,
-  Loader, Pause, Layers,
+  Loader, Pause, Layers, ImageIcon,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { SPRING_TIGHT } from '../components/ui/motion';
@@ -21,7 +22,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTranslationJob, type ActiveJob } from '../context/TranslationContext';
 import { SUPPORTED_LANGUAGES, TARGET_LANGUAGE } from '../lib/constants';
 import { permissionState, requestPermission, notificationsSupported } from '../lib/notifications';
-import { getServiceCapabilities, type ServiceCapabilities } from '../lib/pdfExtractorService';
+import { getServiceCapabilities, checkForTranslatableImages, type ServiceCapabilities } from '../lib/pdfExtractorService';
 import { supabase } from '../lib/supabase';
 import styles from '../styles/components/translator.module.css';
 
@@ -42,6 +43,9 @@ export default function TranslatorPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activity, setActivity] = useState<Array<{ ts: number; text: string }>>([]);
   const lastMsgRef = useRef<string>('');
+  const [translateImages, setTranslateImages] = useState(false);
+  const [hasImages, setHasImages] = useState(false);
+  const [checkingImages, setCheckingImages] = useState(false);
   const [caps, setCaps] = useState<ServiceCapabilities>({ available: false });
 
   // Backend yetenek tespiti — bir kez kontrol
@@ -91,12 +95,30 @@ export default function TranslatorPage() {
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault(); e.stopPropagation(); setDragActive(false);
     const f = e.dataTransfer.files?.[0];
-    if (f && f.type === 'application/pdf') setFile(f);
+    if (f && f.type === 'application/pdf') handleFileSet(f);
     else if (f) toast.error('Sadece PDF kabul edilir.');
   };
   const onSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
-    if (f) setFile(f);
+    if (f) handleFileSet(f);
+  };
+
+  // Dosya seçildiğinde görselleri kontrol et
+  const handleFileSet = (f: File) => {
+    setFile(f);
+    setHasImages(false);
+    setTranslateImages(false);
+    // Backend varsa, PDF'de çevrilebilir görsel olup olmadığını kontrol et
+    if (caps.available) {
+      setCheckingImages(true);
+      checkForTranslatableImages(f)
+        .then(has => {
+          setHasImages(has);
+          if (has) setTranslateImages(true); // varsayılan: çevir
+        })
+        .catch(() => setHasImages(false))
+        .finally(() => setCheckingImages(false));
+    }
   };
 
   const formatSize = (b: number) => {
@@ -133,6 +155,7 @@ export default function TranslatorPage() {
       userId: profile.id,
       credits: profile.credits_remaining,
       mode: chosenMode,
+      translateImages: translateImages && hasImages,
     });
   };
 
@@ -142,6 +165,8 @@ export default function TranslatorPage() {
     setDomain('general');
     setChosenMode('foreground');
     setActivity([]);
+    setHasImages(false);
+    setTranslateImages(false);
     dismiss();
   };
 
@@ -325,6 +350,37 @@ export default function TranslatorPage() {
                     </button>
                   </div>
 
+                  {/* Görsel çeviri seçeneği — görseller varsa göster */}
+                  {(hasImages || checkingImages) && (
+                    <div style={{ marginTop: 'var(--space-5)' }}>
+                      <div className={styles.configLabel}>
+                        <ImageIcon size={16} /> Görsel Çevirisi
+                      </div>
+                      {checkingImages ? (
+                        <div className={styles.demoNotice} style={{ background: 'var(--color-bg-alt)' }}>
+                          <Loader size={14} style={{ animation: 'spin 0.9s linear infinite' }} />
+                          <span>Görseller kontrol ediliyor…</span>
+                        </div>
+                      ) : hasImages ? (
+                        <button
+                          type="button"
+                          className={`${styles.modeCard} ${translateImages ? styles.modeCardActive : ''}`}
+                          onClick={() => setTranslateImages(prev => !prev)}
+                          style={{ width: '100%', cursor: 'pointer' }}
+                        >
+                          <span className={styles.modeCardTitle}>
+                            <ImageIcon size={14} />
+                            {translateImages ? 'Görsellerdeki metinler çevrilecek ✓' : 'Görsellerdeki metinleri de çevir'}
+                          </span>
+                          <span className={styles.modeCardDesc}>
+                            PDF içindeki grafik, diyagram ve şekillerde bulunan metinler de hedef dile çevrilir.
+                            {translateImages ? ' (Aktif — kapatmak için tıklayın)' : ' (Tıklayarak etkinleştirin)'}
+                          </span>
+                        </button>
+                      ) : null}
+                    </div>
+                  )}
+
                   {chosenMode === 'foreground' && (
                     <div className={styles.warning}>
                       <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
@@ -500,10 +556,11 @@ function ProgressView({
     { key: 'uploading', label: 'Yükleme', match: ['uploading'] },
     { key: 'extracting', label: 'Metin çıkarma', match: ['extracting', 'loading'] },
     { key: 'translating', label: 'AI çevirisi', match: ['translating'] },
+    { key: 'translating-images', label: 'Görsel çevirisi', match: ['translating-images'] },
     { key: 'saving', label: 'Kaydetme', match: ['saving', 'finalizing'] },
   ] as const;
 
-  const order = ['uploading', 'loading', 'extracting', 'translating', 'finalizing', 'saving', 'completed'];
+  const order = ['uploading', 'loading', 'extracting', 'translating', 'translating-images', 'finalizing', 'saving', 'completed'];
   const currentIdx = order.indexOf(job.phase);
 
   return (

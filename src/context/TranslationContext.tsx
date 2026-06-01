@@ -10,6 +10,10 @@
  *   - toast.success çağrılır
  *   - tarayıcı bildirimi gönderilir (sayfa gizliyse)
  *   - localStorage'a son sonuç yazılır (sekme kapatılırsa kayıp olmasın)
+ *
+ * Görsel çeviri desteği:
+ *   - translateImages flag'i true ise PDF içindeki görsellerdeki metinler de çevrilir
+ *   - imageReplacements overlay ile birlikte saklanır ve PDF indirmede kullanılır
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import toast from 'react-hot-toast';
@@ -43,6 +47,7 @@ export interface ActiveJob {
   completedPages: number;
   docId?: string;
   overlay?: OverlayData;
+  imageReplacements?: Array<{ pageNum: number; xref: number; imageBase64: string }>;
   errorMessage?: string;
   startedAt: number;
   completedAt?: number;
@@ -56,6 +61,7 @@ interface StartParams {
   mode: JobMode;
   domain?: string;
   glossary?: Record<string, string>;
+  translateImages?: boolean;
 }
 
 interface Ctx {
@@ -81,6 +87,7 @@ export function TranslationProvider({ children }: { children: ReactNode }) {
   const abortRef = useRef<AbortController | null>(null);
   const fileRef = useRef<File | null>(null);
   const overlayRef = useRef<OverlayPage[] | null>(null);
+  const imageReplacementsRef = useRef<Array<{ pageNum: number; xref: number; imageBase64: string }> | null>(null);
   const userIdRef = useRef<string | null>(null);
 
   // Sayfa kapatma uyarısı — foreground modunda iş devam ediyorsa
@@ -145,6 +152,7 @@ export function TranslationProvider({ children }: { children: ReactNode }) {
       const bytes = await buildTranslatedPDF({
         originalPDF: source,
         pages: overlayRef.current,
+        imageReplacements: imageReplacementsRef.current ?? undefined,
       });
       const safe = job.fileName.replace(/\.pdf$/i, '').replace(/[^\w\d-_]+/g, '_');
       downloadBytes(bytes, `${safe}_TR.pdf`);
@@ -155,7 +163,7 @@ export function TranslationProvider({ children }: { children: ReactNode }) {
     }
   }, [job]);
 
-  const start = useCallback(async ({ file, sourceLang, userId, credits: _credits, mode, domain = 'general', glossary }: StartParams) => {
+  const start = useCallback(async ({ file, sourceLang, userId, credits: _credits, mode, domain = 'general', glossary, translateImages = false }: StartParams) => {
     if (job?.status === 'running') {
       toast.error('Zaten bir çeviri çalışıyor. Önce mevcutu bitirin veya iptal edin.');
       return;
@@ -167,6 +175,7 @@ export function TranslationProvider({ children }: { children: ReactNode }) {
     const id = crypto.randomUUID();
     fileRef.current = file;
     overlayRef.current = null;
+    imageReplacementsRef.current = null;
     userIdRef.current = userId;
 
     const initial: ActiveJob = {
@@ -244,11 +253,12 @@ export function TranslationProvider({ children }: { children: ReactNode }) {
       await supabase.from('documents').update({ page_count: pageCount }).eq('id', docId);
 
       // ── Adım 4: Çeviri pipeline'ı ─────────────────────────────────────────
-      const { pages: overlayPages } = await translatePDF(file, {
+      const { pages: overlayPages, imageReplacements: imgReps } = await translatePDF(file, {
         sourceLang: detectedLang,
         targetLang: TARGET_LANGUAGE.code,
         domain,
         glossary,
+        translateImages,
         signal,
         onProgress: (p) => {
           const pct = 15 + Math.round((p.current / Math.max(1, p.total)) * 75);
@@ -266,6 +276,7 @@ export function TranslationProvider({ children }: { children: ReactNode }) {
       });
 
       overlayRef.current = overlayPages;
+      imageReplacementsRef.current = imgReps ?? null;
 
       // ── Adım 5: Supabase'e kaydet ─────────────────────────────────────────
       setJob(j => j && { ...j, progress: 92, phase: 'saving', message: 'Çeviri kaydediliyor…' });
