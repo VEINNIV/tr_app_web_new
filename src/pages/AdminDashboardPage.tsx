@@ -263,6 +263,7 @@ export default function AdminDashboardPage() {
 
           {/* Düzenlenebilir ayar grupları */}
           {([
+            { cat: 'discount', title: 'Plan İndirimleri', hint: 'Anasayfada fiyat kartlarında gösterilecek indirim oranları (%). 0 = indirim yok, üzerini çizmez. Örn: 20 → ₺49\'dan ₺39\'a.', step: '1' },
             { cat: 'credit_cost', title: 'İşlem Maliyetleri (kredi)', hint: 'Kullanıcıların her işlemde harcadığı kredi miktarı.', step: '0.5' },
             { cat: 'plan_limit', title: 'Plan Aylık Kredi Limitleri', hint: 'Bir plana geçirildiğinde verilecek aylık kredi.', step: '1' },
             { cat: 'pricing', title: 'Maliyet Parametreleri', hint: 'Gemini token fiyatları, kur ve kredi başına gelir — hesaplayıcı bunları kullanır.', step: '0.01' },

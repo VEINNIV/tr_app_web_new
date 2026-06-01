@@ -129,10 +129,10 @@ export default function Navbar() {
                   x: logoHovered ? 0 : -8,
                 }}
                 transition={{
-                  maxWidth: { duration: 0.5, ease: [0.22, 1, 0.36, 1] },
-                  x: { duration: 0.5, ease: [0.22, 1, 0.36, 1] },
+                  maxWidth: { duration: 0.9, ease: [0.22, 1, 0.36, 1] },
+                  x: { duration: 0.9, ease: [0.22, 1, 0.36, 1] },
                   // Açılırken metin yavaşça belirir, kapanırken aceleye gelmeden solar
-                  opacity: { duration: logoHovered ? 0.45 : 0.3, ease: 'easeInOut', delay: logoHovered ? 0.08 : 0 },
+                  opacity: { duration: logoHovered ? 0.75 : 0.5, ease: 'easeInOut', delay: logoHovered ? 0.1 : 0 },
                 }}
               >
                 Trans

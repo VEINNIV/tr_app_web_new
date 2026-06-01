@@ -1534,6 +1534,32 @@
   font-family: var(--font-m);
 }
 
+/* İndirim badge */
+.discountBadge {
+  position:      absolute;
+  top:           -12px;
+  right:         16px;
+  padding:       4px 10px;
+  background:    #ef4444;
+  color:         #fff;
+  font-size:     10px;
+  font-weight:   700;
+  border-radius: 100px;
+  white-space:   nowrap;
+  font-family:   var(--font-b);
+  letter-spacing: 0.04em;
+}
+
+/* Üstü çizili orijinal fiyat */
+.pricingOriginal {
+  font-size:      1rem;
+  font-weight:    400;
+  color:          var(--text4);
+  text-decoration: line-through;
+  margin-right:   6px;
+  font-family:    var(--font-b);
+}
+
 .pricingFeatureList {
   list-style: none;
   padding:    0;

@@ -8,6 +8,7 @@ import {
   Image as ImageIcon, Send, Download,
 } from 'lucide-react';
 import { PRICING_PLANS } from '../lib/constants';
+import { supabase } from '../lib/supabase';
 import { Magnetic } from '../components/ui/motion';
 import styles from '../styles/components/landing.module.css';
 
@@ -168,6 +169,24 @@ export default function LandingPage() {
     reduced ? trTexts : trTexts,
     reduced ? 0 : 28,
   );
+
+  /* ── Plan indirimleri (app_config'den) ── */
+  const [discounts, setDiscounts] = useState<Record<string, number>>({});
+  useEffect(() => {
+    supabase
+      .from('app_config')
+      .select('key, value')
+      .eq('category', 'discount')
+      .then(({ data }) => {
+        if (!data) return;
+        const d: Record<string, number> = {};
+        for (const row of data) {
+          const planId = row.key.replace('discount.', '');
+          d[planId] = Number(row.value);
+        }
+        setDiscounts(d);
+      });
+  }, []);
 
   /* ── Live demo state ── */
   const [livePhase, setLivePhase] = useState<LivePhase>('idle');
@@ -993,7 +1012,12 @@ export default function LandingPage() {
         </motion.div>
 
         <div className={styles.pricingGrid}>
-          {PRICING_PLANS.map((plan, i) => (
+          {PRICING_PLANS.map((plan, i) => {
+            const discountPct = plan.price > 0 ? (discounts[plan.id] ?? 0) : 0;
+            const discountedPrice = discountPct > 0
+              ? Math.round(plan.price * (1 - discountPct / 100))
+              : null;
+            return (
             <motion.div
               key={plan.id}
               className={`${styles.pricingCard} ${plan.popular ? styles.pricingCardPopular : ''}`}
@@ -1010,10 +1034,23 @@ export default function LandingPage() {
                   <Zap size={9} /> En Çok Tercih
                 </div>
               )}
+              {discountPct > 0 && (
+                <div className={styles.discountBadge}>-%{discountPct}</div>
+              )}
               <div className={styles.pricingName}>{plan.name}</div>
               <div className={styles.pricingPrice}>
-                {plan.priceLabel}
-                {plan.price > 0 && <span className={styles.pricingPer}>/ay</span>}
+                {discountedPrice !== null ? (
+                  <>
+                    <span className={styles.pricingOriginal}>₺{plan.price}</span>
+                    ₺{discountedPrice}
+                    <span className={styles.pricingPer}>/ay</span>
+                  </>
+                ) : (
+                  <>
+                    {plan.priceLabel}
+                    {plan.price > 0 && <span className={styles.pricingPer}>/ay</span>}
+                  </>
+                )}
               </div>
               {plan.credits > 0 && (
                 <div className={styles.pricingCredits}>{plan.credits} kredi/ay</div>
@@ -1030,7 +1067,8 @@ export default function LandingPage() {
                 {plan.price === 0 ? 'Ücretsiz Başla' : plan.price === -1 ? 'İletişime Geçin' : 'Plan Seç'}
               </Link>
             </motion.div>
-          ))}
+          );
+          })}
         </div>
       </section>
 
