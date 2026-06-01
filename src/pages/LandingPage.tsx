@@ -1,5 +1,5 @@
-import { useRef, useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence as AP, useReducedMotion } from 'framer-motion';
 import {
   Languages, FileText, Brain, ArrowRight, Check,
@@ -162,6 +162,7 @@ const PHASE_INFO: Record<LivePhase, { label: string; sub: string; pct: [number, 
 /* ════════════════════════════════════════════════════════════ */
 export default function LandingPage() {
   const reduced = useReducedMotion();
+  const navigate = useNavigate();
 
   /* ── Hero typewriter ── */
   const trTexts = HERO_DEMOS.map(d => d.tr);
@@ -170,23 +171,52 @@ export default function LandingPage() {
     reduced ? 0 : 28,
   );
 
-  /* ── Plan indirimleri (app_config'den) ── */
-  const [discounts, setDiscounts] = useState<Record<string, number>>({});
+  /* ── Tüm app_config (fiyatlar, limitler, indirimler) ── */
+  const [pricingCfg, setPricingCfg] = useState<Record<string, number>>({});
+  const [isStudent, setIsStudent] = useState(false);
   useEffect(() => {
     supabase
       .from('app_config')
       .select('key, value')
-      .eq('category', 'discount')
       .then(({ data }) => {
         if (!data) return;
-        const d: Record<string, number> = {};
-        for (const row of data) {
-          const planId = row.key.replace('discount.', '');
-          d[planId] = Number(row.value);
-        }
-        setDiscounts(d);
+        const m: Record<string, number> = {};
+        for (const row of data) m[row.key] = Number(row.value);
+        setPricingCfg(m);
       });
   }, []);
+
+  /* ── Dinamik plan verisi (app_config override'ı) ── */
+  const effectivePlans = useMemo(() => {
+    return PRICING_PLANS.map(plan => {
+      const credits    = plan.credits > 0  ? (pricingCfg[`plan_limit.${plan.id}`]  ?? plan.credits) : plan.credits;
+      const basePrice  = plan.price  > 0  ? (pricingCfg[`plan_price.${plan.id}`]  ?? plan.price)   : plan.price;
+      const discountPct = plan.price > 0  ? (pricingCfg[`discount.${plan.id}`]    ?? 0)             : 0;
+      const studentOff  = pricingCfg['discount.student_amount'] ?? 0;
+
+      // Yüzde indirim uygula (ör. discount.pro = 20 → %20)
+      const afterPctDiscount = discountPct > 0
+        ? Math.round(basePrice * (1 - discountPct / 100))
+        : basePrice;
+
+      // Öğrenci indirimi üstüne ek
+      const studentPrice = isStudent && plan.price > 0 && studentOff > 0
+        ? Math.max(0, afterPctDiscount - studentOff)
+        : afterPctDiscount;
+
+      return {
+        ...plan,
+        credits,
+        basePrice,
+        discountPct,
+        studentOff,
+        afterPctDiscount,
+        studentPrice,
+        showOriginal: discountPct > 0 || (isStudent && plan.price > 0 && studentOff > 0),
+        displayedPrice: isStudent && plan.price > 0 ? studentPrice : afterPctDiscount,
+      };
+    });
+  }, [pricingCfg, isStudent]);
 
   /* ── Live demo state ── */
   const [livePhase, setLivePhase] = useState<LivePhase>('idle');
@@ -1011,13 +1041,31 @@ export default function LandingPage() {
           ))}
         </motion.div>
 
+        {/* Öğrenci / Genel Toggle */}
+        {(pricingCfg['discount.student_amount'] ?? 0) > 0 && (
+          <div className={styles.studentToggleWrap}>
+            <button
+              className={`${styles.studentToggleBtn} ${!isStudent ? styles.studentToggleBtnActive : ''}`}
+              onClick={() => setIsStudent(false)}
+            >
+              Genel
+            </button>
+            <button
+              className={`${styles.studentToggleBtn} ${isStudent ? styles.studentToggleBtnActive : ''}`}
+              onClick={() => setIsStudent(true)}
+            >
+              🎓 Öğrenciyim
+              {(pricingCfg['discount.student_amount'] ?? 0) > 0 && (
+                <span className={styles.studentSaveBadge}>
+                  -{pricingCfg['discount.student_amount']}₺
+                </span>
+              )}
+            </button>
+          </div>
+        )}
+
         <div className={styles.pricingGrid}>
-          {PRICING_PLANS.map((plan, i) => {
-            const discountPct = plan.price > 0 ? (discounts[plan.id] ?? 0) : 0;
-            const discountedPrice = discountPct > 0
-              ? Math.round(plan.price * (1 - discountPct / 100))
-              : null;
-            return (
+          {effectivePlans.map((plan, i) => (
             <motion.div
               key={plan.id}
               className={`${styles.pricingCard} ${plan.popular ? styles.pricingCardPopular : ''}`}
@@ -1034,22 +1082,23 @@ export default function LandingPage() {
                   <Zap size={9} /> En Çok Tercih
                 </div>
               )}
-              {discountPct > 0 && (
-                <div className={styles.discountBadge}>-%{discountPct}</div>
+              {plan.discountPct > 0 && (
+                <div className={styles.discountBadge}>-%{plan.discountPct}</div>
               )}
               <div className={styles.pricingName}>{plan.name}</div>
               <div className={styles.pricingPrice}>
-                {discountedPrice !== null ? (
+                {plan.price > 0 ? (
                   <>
-                    <span className={styles.pricingOriginal}>₺{plan.price}</span>
-                    ₺{discountedPrice}
+                    {plan.showOriginal && (
+                      <span className={styles.pricingOriginal}>₺{plan.afterPctDiscount}</span>
+                    )}
+                    ₺{plan.displayedPrice}
                     <span className={styles.pricingPer}>/ay</span>
                   </>
+                ) : plan.price === 0 ? (
+                  <span>Ücretsiz</span>
                 ) : (
-                  <>
-                    {plan.priceLabel}
-                    {plan.price > 0 && <span className={styles.pricingPer}>/ay</span>}
-                  </>
+                  <span style={{ fontSize: '1.4rem' }}>İletişime Geçin</span>
                 )}
               </div>
               {plan.credits > 0 && (
@@ -1060,15 +1109,18 @@ export default function LandingPage() {
                   <li key={fi}><Check size={13} />{f}</li>
                 ))}
               </ul>
-              <Link
-                to="/auth?mode=register"
+              <button
                 className={`${styles.pricingCta} ${plan.popular ? styles.pricingCtaPrimary : ''}`}
+                onClick={() => {
+                  if (plan.price === 0) navigate('/auth?mode=register');
+                  else if (plan.price === -1) navigate('/auth?mode=register');
+                  else navigate(`/checkout?plan=${plan.id}${isStudent ? '&student=1' : ''}`);
+                }}
               >
                 {plan.price === 0 ? 'Ücretsiz Başla' : plan.price === -1 ? 'İletişime Geçin' : 'Plan Seç'}
-              </Link>
+              </button>
             </motion.div>
-          );
-          })}
+          ))}
         </div>
       </section>
 

@@ -263,9 +263,10 @@ export default function AdminDashboardPage() {
 
           {/* Düzenlenebilir ayar grupları */}
           {([
-            { cat: 'discount', title: 'Plan İndirimleri', hint: 'Anasayfada fiyat kartlarında gösterilecek indirim oranları (%). 0 = indirim yok, üzerini çizmez. Örn: 20 → ₺49\'dan ₺39\'a.', step: '1' },
+            { cat: 'plan_price', title: 'Plan Fiyatları (₺/ay)', hint: 'Anasayfada görünen ücretli plan aylık fiyatları. Değiştirince anasayfa otomatik güncellenir.', step: '1' },
+            { cat: 'discount', title: 'Plan İndirimleri', hint: 'Anasayfada fiyat kartlarında gösterilecek indirim oranları (%). 0 = indirim yok. "discount.student_amount" = öğrenci toggle indirimi (₺).', step: '1' },
             { cat: 'credit_cost', title: 'İşlem Maliyetleri (kredi)', hint: 'Kullanıcıların her işlemde harcadığı kredi miktarı.', step: '0.5' },
-            { cat: 'plan_limit', title: 'Plan Aylık Kredi Limitleri', hint: 'Bir plana geçirildiğinde verilecek aylık kredi.', step: '1' },
+            { cat: 'plan_limit', title: 'Plan Aylık Kredi Limitleri', hint: 'Bir plana geçirildiğinde verilecek aylık kredi. Anasayfaya da yansır.', step: '1' },
             { cat: 'pricing', title: 'Maliyet Parametreleri', hint: 'Gemini token fiyatları, kur ve kredi başına gelir — hesaplayıcı bunları kullanır.', step: '0.01' },
           ] as const).map(group => {
             const rows = config.filter(c => c.category === group.cat);

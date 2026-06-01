@@ -22,6 +22,7 @@ const ChatPage           = lazy(() => import('./pages/ChatPage'));
 const SettingsPage       = lazy(() => import('./pages/SettingsPage'));
 const StudyNotesPage     = lazy(() => import('./pages/StudyNotesPage'));
 const AdminDashboardPage  = lazy(() => import('./pages/AdminDashboardPage'));
+const CheckoutPage        = lazy(() => import('./pages/CheckoutPage'));
 const GlossaryPage        = lazy(() => import('./pages/GlossaryPage'));
 const SharedDocumentPage  = lazy(() => import('./pages/SharedDocumentPage'));
 const NotFoundPage        = lazy(() => import('./pages/NotFoundPage'));
@@ -92,6 +93,7 @@ function AppLayout() {
               <Route path="/admin" element={<AdminRoute><PageTransition><AdminDashboardPage /></PageTransition></AdminRoute>} />
               <Route path="/glossary" element={<ProtectedRoute><PageTransition><GlossaryPage /></PageTransition></ProtectedRoute>} />
               <Route path="/shared/:token" element={<PageTransition><SharedDocumentPage /></PageTransition>} />
+              <Route path="/checkout" element={<PageTransition><CheckoutPage /></PageTransition>} />
               <Route path="/pricing" element={<PageTransition><LandingPage /></PageTransition>} />
               <Route path="*" element={<PageTransition><NotFoundPage /></PageTransition>} />
             </Routes>
