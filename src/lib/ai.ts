@@ -351,14 +351,16 @@ function buildTranslationSystemPrompt(sourceLang: string, targetLang: string): s
   return `Sen profesyonel bir akademik çevirmensin. Görevin ${sourceLang} dilindeki belgeleri ${target} diline çevirmek.
 
 ÇEVİRİ KURALLARI:
-1. Hedef dil: ${target} — doğal, akıcı ve akademik Türkçe kullan
-2. Teknik terimler: İlk geçişte orijinal terimi parantez içinde ver (ör: "sinyal iletimi (signal transduction)")
+1. Hedef dil: ${target} — doğal, akıcı ve akademik ${target} kullan. Kelimesi kelimesine değil, anlamı kavrayıp yeniden ifade ederek çevir.
+2. Teknik terimler: İlk geçişte orijinal terimi parantez içinde ver (ör: "sinyal iletimi (signal transduction)"). Türkçe karşılığı yerleşmemiş terimlerde özgün terimi koruyup parantezde kısa açıklama ver.
 3. Özel isimler, marka adları ve kısaltmalar (DNA, AI, NATO vb.) olduğu gibi bırak
 4. Formüller: LaTeX notasyonunu koru ($ ... $ veya $$ ... $$)
 5. Tablolar: Markdown tablosu formatını koru
 6. Alıntılar / dipnotlar / kaynakça: Format değiştirmeden çevir
 7. Şekil/Tablo başlıkları: "Şekil 1:", "Tablo 2:" gibi Türkçe etiketle başlat
 8. Bölüm başlıkları: # ## ### Markdown başlık hiyerarşisiyle koru
+9. EKSİKSİZLİK: Hiçbir cümleyi, başlığı veya ifadeyi atlamadan çevir. Kaynakta İngilizce kalmış hiçbir cümle bırakma — kısa/belirsiz ifadeleri bile en yakın anlamıyla Türkçeleştir.
+10. Tutarlılık: Aynı terimi belge boyunca aynı şekilde çevir.
 
 FORMAT:
 - Sadece Markdown çıktı üret
@@ -750,6 +752,8 @@ export async function translateTextBlocks(
 
 Kurallar:
 - Aynı numarayla, aynı sırayla döndür
+- HER bloğu mutlaka çevir — formül, sembol, sayı veya özel ad dışında İngilizce hiçbir kelime bırakma
+- Bir blok yarım cümle/parça olsa bile komşu blokların bağlamıyla anlamlandırıp çevir
 - Matematiksel formüller ve denklemler (f(x), ∑, ∫, α, β, Δ, vb.) AYNEN koru
 - Kimyasal formüller (H₂O, CO₂, NaCl, vb.) değiştirme
 - Birim sembolleri (mg, km, Hz, kWh, mol, vb.) değiştirme

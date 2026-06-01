@@ -25,11 +25,20 @@ import { SPRING_TIGHT } from '../components/ui/motion';
 
 // ─── Sabit hızlı promptlar ───────────────────────────────────────────────────
 
-const QUICK_PROMPTS = [
+// Belge seçiliyken — belge üzerine promptlar
+const DOC_PROMPTS = [
   { icon: AlignLeft,  label: 'Özetle',        text: 'Bu belgeyi 5–7 madde halinde özetle.' },
   { icon: List,       label: 'Ana kavramlar',  text: 'Bu belgenin temel kavramlarını ve önemli noktalarını listele. Her madde için kısa açıklama ekle.' },
   { icon: HelpCircle, label: 'Sınav soruları', text: 'Bu belgeden 5 sınav sorusu hazırla (3 çoktan seçmeli, 2 açık uçlu) ve cevap anahtarını yaz.' },
   { icon: BookOpen,   label: 'Sade anlat',     text: 'Bu belgenin en karmaşık kısmını lise öğrencisine anlatır gibi sade bir Türkçeyle açıkla.' },
+];
+
+// Genel asistan modu — belge yokken anlamlı öğrenme promptları
+const GENERAL_PROMPTS = [
+  { icon: BookOpen,   label: 'Konu anlat',     text: 'Bir konuyu adım adım, örneklerle öğret. Önce hangi konuyu öğrenmek istediğimi sor.' },
+  { icon: List,       label: 'Çalışma planı',  text: 'Bir sınava hazırlanmak için haftalık çalışma planı oluştur. Önce hangi ders/konu ve kaç günüm olduğunu sor.' },
+  { icon: HelpCircle, label: 'Soru çöz',       text: 'Soracağım soruları adım adım, mantığını açıklayarak çöz.' },
+  { icon: AlignLeft,  label: 'Metni özetle',   text: 'Yapıştıracağım metni ya da ekleyeceğim dosyayı sade ve maddeli biçimde özetle.' },
 ];
 
 // ─── Yardımcılar ─────────────────────────────────────────────────────────────
@@ -55,7 +64,7 @@ function CopyButton({ text }: { text: string }) {
 // ─── Ana Bileşen ─────────────────────────────────────────────────────────────
 
 export default function ChatPage() {
-  const { profile } = useAuth();
+  const { profile, refreshProfile } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const reduced = useReducedMotion();
@@ -67,7 +76,7 @@ export default function ChatPage() {
     documents, selectedDocId, setSelectedDocId,
     pendingFiles, setPendingFiles, abortRef,
     sendMessage, clearChat,
-  } = useChatSession({ profile, initDocId });
+  } = useChatSession({ profile, initDocId, refreshProfile });
 
   // UI-only state
   const [showDocPicker, setShowDocPicker] = useState(false);
@@ -302,7 +311,7 @@ export default function ChatPage() {
               </p>
 
               <div className={styles.quickGrid}>
-                {QUICK_PROMPTS.map(qp => {
+                {(selectedDoc ? DOC_PROMPTS : GENERAL_PROMPTS).map(qp => {
                   const Icon = qp.icon;
                   return (
                     <motion.button

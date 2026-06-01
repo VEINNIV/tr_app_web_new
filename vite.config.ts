@@ -6,7 +6,12 @@ const CHUNKS: Record<string, string[]> = {
   'vendor-motion': ['framer-motion'],
   'vendor-pdf': ['pdfjs-dist'],
   'vendor-doc': ['docx', 'file-saver'],
-  'vendor-markdown': ['react-markdown', 'remark-gfm'],
+  'vendor-markdown': ['react-markdown', 'remark-gfm', 'remark-math', 'rehype-katex'],
+  // KaTeX (~270KB) ve PDF üretim kütüphaneleri ayrı chunk'lara — devasa tek chunk'ı böler,
+  // ayrı cache'lenir ve yalnızca ihtiyaç duyan lazy route'larda yüklenir.
+  'vendor-katex': ['katex'],
+  'vendor-pdfgen': ['jspdf', 'pdf-lib', '@pdf-lib/fontkit'],
+  'vendor-zip': ['jszip'],
   'vendor-supabase': ['@supabase/supabase-js'],
 }
 

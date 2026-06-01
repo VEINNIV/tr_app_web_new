@@ -1,8 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
+import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
 import { streamDocumentChat, type ChatTurn } from '../lib/ai';
 import type { Document } from '../types';
 import type { User } from '../types';
+
+const CHAT_COST = 0.5;
 
 export interface ChatMessage {
   id: string;
@@ -16,9 +19,10 @@ export interface ChatMessage {
 interface UseChatSessionOpts {
   profile: User | null;
   initDocId: string;
+  refreshProfile?: () => void | Promise<void>;
 }
 
-export function useChatSession({ profile, initDocId }: UseChatSessionOpts) {
+export function useChatSession({ profile, initDocId, refreshProfile }: UseChatSessionOpts) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -103,6 +107,23 @@ export function useChatSession({ profile, initDocId }: UseChatSessionOpts) {
       ...(pageFile ? [pageFile.name] : []),
     ];
 
+    // ── Kredi zorlaması (server-side, atomik) — "bedava sohbet" sızıntısını önler ──
+    // Eski kod yalnızca bayat local krediye bakıp yetersizse mesajı yine de gönderiyordu.
+    const { error: creditErr } = await supabase.rpc('consume_credits', {
+      p_action: 'chat',
+      p_amount: CHAT_COST,
+      p_reference: selectedDocId || null,
+    });
+    if (creditErr) {
+      if (/Yetersiz/.test(creditErr.message)) {
+        toast.error('Krediniz yetersiz. Sohbet için en az 0.5 kredi gerekiyor.');
+        return; // mesaj gönderilmez, hiçbir şey yazılmaz
+      }
+      // Geçici/altyapı hatası → kullanıcının önünü kesme ama logla
+      console.warn('[Chat] kredi düşümü hatası:', creditErr.message);
+    }
+    void refreshProfile?.(); // local kredi sayacını güncel tut
+
     const userMsg: ChatMessage = {
       id: Date.now().toString(),
       role: 'user',
@@ -121,16 +142,8 @@ export function useChatSession({ profile, initDocId }: UseChatSessionOpts) {
     void supabase.from('chat_messages').insert({
       user_id: profile.id,
       ...(selectedDocId ? { document_id: selectedDocId } : {}),
-      role: 'user', content: text, credits_used: 0.5,
+      role: 'user', content: text, credits_used: CHAT_COST,
     });
-
-    if (profile.credits_remaining >= 0.5) {
-      void supabase.rpc('consume_credits', {
-        p_action: 'chat',
-        p_amount: 0.5,
-        p_reference: selectedDocId ?? null,
-      });
-    }
 
     abortRef.current?.abort();
     abortRef.current = new AbortController();
@@ -166,7 +179,15 @@ export function useChatSession({ profile, initDocId }: UseChatSessionOpts) {
     }
   };
 
-  const clearChat = () => { if (!loading) setMessages([]); };
+  /** Sohbeti gerçekten sıfırlar — ekranı VE kapsamdaki DB geçmişini siler. */
+  const clearChat = async () => {
+    if (loading || !profile) return;
+    setMessages([]);
+    const q = supabase.from('chat_messages').delete().eq('user_id', profile.id);
+    const scoped = selectedDocId ? q.eq('document_id', selectedDocId) : q.is('document_id', null);
+    const { error } = await scoped;
+    if (error) toast.error('Geçmiş silinemedi.');
+  };
 
   return {
     messages, setMessages,

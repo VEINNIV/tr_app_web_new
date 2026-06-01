@@ -14,7 +14,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import toast from 'react-hot-toast';
 import { translatePDF, type TranslationProgress } from '../lib/pdfTranslator';
-import { buildTranslatedPDF, downloadBytes } from '../lib/pdfWriter';
+// NOT: pdfWriter (→ pdf-lib, ~1.2MB) yalnızca PDF indirilirken dinamik import edilir.
+// Top-level import edilseydi bu provider tüm uygulamada eager yüklendiği için
+// her ilk açılışta 1.2MB inerdi.
 import { supabase } from '../lib/supabase';
 import { detectLanguage } from '../lib/ai';
 import { notify, requestPermission } from '../lib/notifications';
@@ -123,6 +125,8 @@ export function TranslationProvider({ children }: { children: ReactNode }) {
     }
     const t = toast.loading('PDF hazırlanıyor…');
     try {
+      // pdf-lib'i yalnızca burada (indirme anında) yükle — ilk açılış bundle'ını şişirme
+      const { buildTranslatedPDF, downloadBytes } = await import('../lib/pdfWriter');
       let source: File | ArrayBuffer;
       if (fileRef.current) {
         source = fileRef.current;

@@ -17,7 +17,8 @@ import {
 } from 'lucide-react';
 import { loadPDFFromURL, renderPageToDataURL, type PDFProxy } from '../lib/pdfRenderer';
 import { translatePDF } from '../lib/pdfTranslator';
-import { buildTranslatedPDF, downloadBytes } from '../lib/pdfWriter';
+// pdfWriter (→ pdf-lib ~1.2MB) dinamik import edilir — bu görüntüleyiciyi içeren
+// sayfalar (Belgeler listesi, Chat) açılırken değil, yalnızca çeviri kurulurken/indirilirken yüklenir.
 import TranslationEditor from './TranslationEditor';
 import type { OverlayData } from '../types';
 import styles from '../styles/components/overlayViewer.module.css';
@@ -93,6 +94,7 @@ export default function PDFOverlayViewer({
 
     (async () => {
       try {
+        const { buildTranslatedPDF } = await import('../lib/pdfWriter');
         const res = await fetch(pdfUrl);
         const arrayBuffer = await res.arrayBuffer();
         const bytes = await buildTranslatedPDF({
@@ -220,6 +222,7 @@ export default function PDFOverlayViewer({
   const handleExport = async () => {
     if (!localOverlay) return;
     const safeName = documentName.replace(/\.pdf$/i, '').replace(/[^\w\d-_]+/g, '_');
+    const { buildTranslatedPDF, downloadBytes } = await import('../lib/pdfWriter');
     if (translatedBytes) {
       downloadBytes(translatedBytes, `${safeName}_TR.pdf`);
       return;

@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
-import { FileText, MessageSquare, Trash2, FolderOpen, Eye, X, Languages, DownloadCloud, FileType, FileCode, Layers, Loader, BookOpen, Share2, Archive, CheckSquare, Square } from 'lucide-react';
+import { FileText, MessageSquare, Trash2, FolderOpen, Eye, X, Languages, DownloadCloud, FileType, FileCode, Layers, Loader, BookOpen, Share2, Archive, CheckSquare, Square, Lock } from 'lucide-react';
 import toast from 'react-hot-toast';
 import JSZip from 'jszip';
 import { SPRING_TIGHT } from '../components/ui/motion';
@@ -37,6 +37,11 @@ export default function DocumentsPage() {
   const [sharing, setSharing] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [zipping, setZipping] = useState(false);
+
+  // Paylaşım modalı (şifre opsiyonu)
+  const [shareModalDoc, setShareModalDoc] = useState<DocumentWithTranslation | null>(null);
+  const [shareUsePassword, setShareUsePassword] = useState(false);
+  const [shareCode, setShareCode] = useState('');
 
   const toggleSelect = (id: string) =>
     setSelected(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
@@ -105,8 +110,14 @@ export default function DocumentsPage() {
     if (selectedDoc?.id === id) setSelectedDoc(null);
   };
 
-  /** Belgeyi paylaş — token + 1 yıllık signed URL oluştur, linki kopyala */
-  const handleShare = async (doc: DocumentWithTranslation) => {
+  /** 4 haneli erişim kodunu token'a bağlı SHA-256 hash'ine çevirir (edge function ile aynı şema) */
+  const hashShareCode = async (token: string, code: string): Promise<string> => {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${token}:${code.toUpperCase()}`));
+    return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+  };
+
+  /** Paylaşım linkini oluştur — opsiyonel 4 haneli şifre ile */
+  const createShareLink = async (doc: DocumentWithTranslation, code?: string) => {
     if (!doc.translation?.id || !doc.original_storage_path) {
       toast.error('Paylaşım için tamamlanmış bir çeviri gerekli.');
       return;
@@ -118,19 +129,47 @@ export default function DocumentsPage() {
         .createSignedUrl(doc.original_storage_path, 31536000);
       if (signErr || !signedData?.signedUrl) throw new Error('PDF URL oluşturulamadı');
       const token = crypto.randomUUID();
+      const share_password_hash = code ? await hashShareCode(token, code) : null;
       const { error: updateErr } = await supabase
         .from('translations')
-        .update({ share_token: token, shared_pdf_url: signedData.signedUrl })
+        .update({ share_token: token, shared_pdf_url: signedData.signedUrl, share_password_hash })
         .eq('id', doc.translation.id);
       if (updateErr) throw new Error('Paylaşım kaydedilemedi: ' + updateErr.message);
       const shareUrl = `${window.location.origin}/shared/${token}`;
       await navigator.clipboard.writeText(shareUrl).catch(() => {});
-      toast.success('Paylaşım linki kopyalandı! (1 yıl geçerli)', { duration: 6000 });
+      setShareModalDoc(null);
+      toast.success(
+        code
+          ? `Şifreli link kopyalandı! Kod: ${code.toUpperCase()} (1 yıl geçerli)`
+          : 'Paylaşım linki kopyalandı! (1 yıl geçerli)',
+        { duration: 7000 },
+      );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Paylaşım oluşturulamadı');
     } finally {
       setSharing(prev => { const s = new Set(prev); s.delete(doc.id); return s; });
     }
+  };
+
+  /** Paylaşım modalını aç */
+  const openShareModal = (doc: DocumentWithTranslation) => {
+    if (!doc.translation?.id || !doc.original_storage_path) {
+      toast.error('Paylaşım için tamamlanmış bir çeviri gerekli.');
+      return;
+    }
+    setShareUsePassword(false);
+    setShareCode('');
+    setShareModalDoc(doc);
+  };
+
+  /** Rastgele 4 haneli kod üret (harf + rakam, karışabilecek karakterler hariç) */
+  const randomCode = () => {
+    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // 0/O, 1/I/L hariç
+    let out = '';
+    const arr = new Uint32Array(4);
+    crypto.getRandomValues(arr);
+    for (let i = 0; i < 4; i++) out += chars[arr[i] % chars.length];
+    setShareCode(out);
   };
 
   /** PDF Overlay Viewer'ı aç — Supabase Storage'dan imzalı URL al */
@@ -410,7 +449,7 @@ export default function DocumentsPage() {
                     {doc.status === 'completed' && doc.translation?.id && (
                       <motion.button
                         className={`${styles.btnSummary} ${styles.btnIconOnly}`}
-                        onClick={() => handleShare(doc)}
+                        onClick={() => openShareModal(doc)}
                         disabled={sharing.has(doc.id)}
                         whileHover={reduced ? undefined : { y: -1 }}
                         whileTap={reduced ? undefined : { scale: 0.95 }}
@@ -635,6 +674,120 @@ export default function DocumentsPage() {
                 {summaryLoading && summaryText && (
                   <span style={{ display: 'inline-block', width: 2, height: 14, background: 'var(--color-text-secondary)', marginLeft: 3, verticalAlign: 'middle', borderRadius: 1, animation: 'pulse 1s ease-in-out infinite' }} />
                 )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Paylaşım modalı — opsiyonel 4 haneli şifre */}
+      <AnimatePresence>
+        {shareModalDoc && (
+          <motion.div
+            className={styles.modalOverlay}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            onClick={() => setShareModalDoc(null)}
+          >
+            <motion.div
+              className={styles.modal}
+              initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+              onClick={e => e.stopPropagation()}
+              style={{ maxWidth: 440 }}
+            >
+              <div className={styles.modalHeader}>
+                <div>
+                  <h2 className={styles.modalTitle}>Belgeyi Paylaş</h2>
+                  <p className={styles.modalSub}>Bağlantıyı alan herkes görüntüleyip indirebilir</p>
+                </div>
+                <button className={styles.modalClose} onClick={() => setShareModalDoc(null)}>
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className={styles.modalBody} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                {/* Şifre koruması toggle */}
+                <button
+                  onClick={() => { setShareUsePassword(v => !v); if (!shareUsePassword && !shareCode) randomCode(); }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', borderRadius: 14,
+                    border: `1.5px solid ${shareUsePassword ? 'var(--color-accent)' : 'var(--color-border)'}`,
+                    background: shareUsePassword ? 'rgba(0,87,255,0.05)' : 'var(--color-surface)',
+                    cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s',
+                  }}
+                >
+                  <div style={{
+                    width: 38, height: 38, borderRadius: 10, flexShrink: 0, display: 'grid', placeItems: 'center',
+                    background: shareUsePassword ? 'var(--color-accent)' : 'var(--color-bg)',
+                    color: shareUsePassword ? '#fff' : 'var(--color-text-tertiary)', transition: 'all 0.15s',
+                  }}>
+                    <Lock size={18} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--color-text-primary)' }}>Şifre ile koru</div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--color-text-tertiary)' }}>4 haneli kod olmadan açılamaz</div>
+                  </div>
+                  <div style={{
+                    width: 42, height: 24, borderRadius: 999, padding: 3, flexShrink: 0,
+                    background: shareUsePassword ? 'var(--color-accent)' : 'var(--color-border)', transition: 'background 0.2s',
+                    display: 'flex', justifyContent: shareUsePassword ? 'flex-end' : 'flex-start',
+                  }}>
+                    <motion.div layout style={{ width: 18, height: 18, borderRadius: '50%', background: '#fff' }} />
+                  </div>
+                </button>
+
+                {/* Kod girişi */}
+                <AnimatePresence>
+                  {shareUsePassword && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+                      style={{ overflow: 'hidden' }}
+                    >
+                      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                        <input
+                          value={shareCode}
+                          onChange={e => setShareCode(e.target.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 4))}
+                          placeholder="ABCD"
+                          maxLength={4}
+                          style={{
+                            flex: 1, padding: '12px 16px', fontSize: '1.4rem', fontWeight: 700, letterSpacing: '0.4em',
+                            textAlign: 'center', textTransform: 'uppercase', color: 'var(--color-text-primary)',
+                            background: 'var(--color-surface)', border: '1.5px solid var(--color-border)',
+                            borderRadius: 12, outline: 'none', fontFamily: 'monospace',
+                          }}
+                        />
+                        <button
+                          onClick={randomCode}
+                          style={{
+                            padding: '12px 16px', fontSize: '0.82rem', fontWeight: 600, whiteSpace: 'nowrap',
+                            color: 'var(--color-accent)', background: 'rgba(0,87,255,0.08)',
+                            border: 'none', borderRadius: 12, cursor: 'pointer',
+                          }}
+                        >
+                          Rastgele
+                        </button>
+                      </div>
+                      <p style={{ margin: '10px 2px 0', fontSize: '0.75rem', color: 'var(--color-text-tertiary)', lineHeight: 1.5 }}>
+                        Bu kodu çeviriyi göndereceğin kişiyle paylaş. 5 hatalı denemeden sonra erişim kapanır. Kodu sonradan göremezsin, not al.
+                      </p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <button
+                  onClick={() => createShareLink(shareModalDoc, shareUsePassword ? shareCode : undefined)}
+                  disabled={sharing.has(shareModalDoc.id) || (shareUsePassword && shareCode.length !== 4)}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '13px',
+                    borderRadius: 12, border: 'none', fontSize: '0.9rem', fontWeight: 700, color: '#fff',
+                    background: (shareUsePassword && shareCode.length !== 4) ? 'var(--color-text-tertiary)' : 'var(--color-accent)',
+                    cursor: (shareUsePassword && shareCode.length !== 4) ? 'not-allowed' : 'pointer',
+                    opacity: sharing.has(shareModalDoc.id) ? 0.7 : 1, transition: 'all 0.15s',
+                  }}
+                >
+                  {sharing.has(shareModalDoc.id)
+                    ? <><Loader size={15} style={{ animation: 'spin 0.8s linear infinite' }} /> Oluşturuluyor…</>
+                    : <><Share2 size={15} /> Linki oluştur ve kopyala</>}
+                </button>
               </div>
             </motion.div>
           </motion.div>
