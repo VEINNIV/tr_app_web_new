@@ -23,7 +23,6 @@ export const PRICING_PLANS: PricingPlan[] = [
   {
     id: 'free', name: 'Ücretsiz', price: 0, priceLabel: 'Ücretsiz', credits: 10,
     features: [
-      '10 kredi/ay (≈2 PDF çeviri)',
       'Otomatik dil tespiti',
       '10 MB dosya limiti',
       'PDF · Word · TXT export',
@@ -31,9 +30,8 @@ export const PRICING_PLANS: PricingPlan[] = [
     ],
   },
   {
-    id: 'starter', name: 'Öğrenci', price: 49, priceLabel: '₺49/ay', credits: 120,
+    id: 'starter', name: 'Öğrenci', price: 49, priceLabel: '₺49/ay', credits: 110,
     features: [
-      '120 kredi/ay (≈24 PDF çeviri)',
       'Otomatik dil tespiti',
       '50 MB dosya limiti',
       'PDF · Word · TXT export',
@@ -45,7 +43,6 @@ export const PRICING_PLANS: PricingPlan[] = [
   {
     id: 'pro', name: 'Profesyonel', price: 149, priceLabel: '₺149/ay', credits: 600, popular: true,
     features: [
-      '600 kredi/ay (≈120 PDF çeviri)',
       'Otomatik dil tespiti',
       '100 MB dosya limiti',
       'PDF · Word · TXT export',
@@ -88,6 +85,18 @@ export const CREDIT_COSTS = {
   STUDY_NOTES_PER_SOURCE: 0.5,
   GLOSSARY_SUGGEST: 0.5,
 };
+
+/**
+ * Kredi sayısından kabaca kaç PDF (sayfa) çevrilebileceğini hesaplar.
+ * Tek kaynak: sayfa başı kredi maliyeti (app_config → credit_cost.translation_per_page).
+ * Anasayfa, checkout vb. "≈X PDF" gösterimleri buradan türetilir; sabit kodlanmaz.
+ */
+export const pdfPerCredits = (credits: number, perPage: number): number =>
+  perPage > 0 ? Math.max(1, Math.round(credits / perPage)) : credits;
+
+/** Sayı biçimlemesi: 1 → "1", 0.5 → "0,5" (TR). Kredi maliyetlerini göstermek için. */
+export const fmtCredit = (n: number): string =>
+  Number.isInteger(n) ? String(n) : n.toLocaleString('tr-TR', { maximumFractionDigits: 2 });
 
 export const APP_NAME = 'TransWordly';
 export const APP_TAGLINE = 'Gelişmiş AI ile Belge Çevirisi';

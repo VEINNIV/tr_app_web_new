@@ -15,10 +15,11 @@
 
 import { supabase } from './supabase';
 
-// Aktif modelleri burada tutuyoruz — edge function whitelist'iyle aynı olmalı.
-// NOT: 'gemini-3.1-flash-lite-preview' 9 Temmuz 2026'da kapatılıyor → stabil sürüm kullanılıyor.
+// Aktif modeller — edge function whitelist'iyle aynı olmalı.
+// NOT: Maliyet nedeniyle Pro modeli KULLANILMIYOR; tüm işlemler Flash-Lite üzerinden gider.
+// MODEL_PRO bilerek Flash-Lite'a eşitlendi → eski `_useProModel` çağrıları da Flash kullanır (güvenlik ağı).
 const MODEL_FLASH = 'gemini-3.1-flash-lite';
-const MODEL_PRO   = 'gemini-3.1-pro-preview';
+const MODEL_PRO   = MODEL_FLASH;
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
@@ -504,7 +505,7 @@ export async function translatePDFByPages(
       systemInstruction: systemPrompt,
       temperature: 0.15,
       maxOutputTokens: 8192,
-      _useProModel: true,
+      _useProModel: false,
     });
 
     results[index] = result;
@@ -899,7 +900,7 @@ async function detectVisualTextInPage(
     }],
     temperature: 0.05,
     maxOutputTokens: 2048,
-    _useProModel: true,
+    _useProModel: false,
   });
 
   // JSON'u yanıt içinden çıkar (markdown code block olsa bile)
@@ -977,7 +978,7 @@ export async function detectImageText(
     }],
     temperature: 0.05,
     maxOutputTokens: 4096,
-    _useProModel: true,
+    _useProModel: false,
     operationId,
   });
 

@@ -533,14 +533,32 @@ function CostCalculator({ cfg, targetMargin, setTargetMargin, onApply, savingKey
   const usdTry = cfg['pricing.usd_try'] || 0;
   const flashIn = cfg['pricing.flash_input_usd_per_1m'] || 0;
   const flashOut = cfg['pricing.flash_output_usd_per_1m'] || 0;
-  const creditRevenue = cfg['pricing.credit_revenue_try'] || 0;
+  const setRevenue = cfg['pricing.credit_revenue_try'] || 0;
 
-  /** Verilen token sayısı için Gemini maliyeti (₺) — girdi/çıktı 50/50 varsayımı, Flash modeli. */
-  const geminiCostTry = (tokens: number) => {
-    const inT = tokens / 2, outT = tokens / 2;
-    const usd = (inT / 1e6) * flashIn + (outT / 1e6) * flashOut;
-    return usd * usdTry;
+  // Girdi/çıktı dağılımı: çıktı (çevrilen metin) genelde daha uzundur ve çıktı token'ı
+  // ~6× daha pahalıdır → bu oran maliyeti büyük ölçüde belirler. Varsayım: %45 girdi / %55 çıktı.
+  const IN_SHARE = 0.45;
+
+  /** Token sayısı için girdi/çıktı maliyetini ayrı ayrı (₺) hesaplar — Flash-Lite. */
+  const splitCost = (tokens: number) => {
+    const inT = Math.round(tokens * IN_SHARE);
+    const outT = Math.max(0, tokens - inT);
+    const costIn = (inT / 1e6) * flashIn * usdTry;
+    const costOut = (outT / 1e6) * flashOut * usdTry;
+    return { inT, outT, costIn, costOut, cost: costIn + costOut };
   };
+
+  // Gerçek plan başına ₺/kredi. Marjı EN DÜŞÜK gelirli ücretli plana göre hesaplarız
+  // (kâr garantisi — en kötü durumda bile zarar etmeyelim). Plan yoksa elle girilen değere düşeriz.
+  const planRev = (id: string) => {
+    const price = cfg[`plan_price.${id}`] || 0;
+    const credits = cfg[`plan_limit.${id}`] || 0;
+    return credits > 0 ? price / credits : 0;
+  };
+  const starterRev = planRev('starter');
+  const proRev = planRev('pro');
+  const paidRevs = [starterRev, proRev].filter(r => r > 0);
+  const revPerCredit = paidRevs.length ? Math.min(...paidRevs) : setRevenue;
 
   const ops = [
     { key: 'credit_cost.translation_per_page', label: 'Çeviri (sayfa başına)', tokens: cfg['pricing.avg_tokens_per_page'] || 0, icon: <Languages size={14} /> },
@@ -550,6 +568,7 @@ function CostCalculator({ cfg, targetMargin, setTargetMargin, onApply, savingKey
   ];
 
   const fmt = (n: number) => n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+  const fmtT = (n: number) => n.toLocaleString('tr-TR');
   const tm = Math.min(95, Math.max(0, targetMargin)) / 100;
 
   return (
@@ -566,30 +585,42 @@ function CostCalculator({ cfg, targetMargin, setTargetMargin, onApply, savingKey
         </div>
       </div>
       <div className={styles.sectionBody}>
-        {(usdTry === 0 || creditRevenue === 0) && (
+        {(usdTry === 0 || revPerCredit === 0) && (
           <p style={{ fontSize: '0.78rem', color: '#b45309', marginBottom: 12 }}>
-            Doğru hesap için aşağıdaki "Maliyet Parametreleri" bölümünden USD/TRY kuru ve kredi başına geliri girin.
+            Doğru hesap için "Maliyet Parametreleri"nden USD/TRY kurunu ve "Plan Fiyatları / Kredi Limitleri"ni girin.
           </p>
         )}
+
+        {/* Hesap mantığı — girdi/çıktı ve gelir varsayımları */}
+        <div style={{ fontSize: '0.75rem', lineHeight: 1.7, color: 'var(--color-text-secondary)', background: 'var(--color-bg)', border: '1px solid var(--color-border)', borderRadius: 10, padding: '11px 13px', marginBottom: 14 }}>
+          <strong style={{ color: 'var(--color-text-primary)' }}>Hesap nasıl yapılıyor?</strong><br />
+          • Model: <strong>Gemini 3.1 Flash-Lite</strong> — girdi ${fmt(flashIn)}/1M tok, çıktı ${fmt(flashOut)}/1M tok · kur ₺{fmtT(usdTry)}/$<br />
+          • Girdi/çıktı dağılımı ≈ <strong>%{Math.round(IN_SHARE * 100)} girdi / %{Math.round((1 - IN_SHARE) * 100)} çıktı</strong> varsayılır (çıktı token'ı ~{flashIn > 0 ? Math.round(flashOut / flashIn) : 6}× daha pahalı).<br />
+          • Kâr marjı <strong>en düşük gelirli ücretli plana göre</strong> (en kötü durum): <strong>₺{fmt(revPerCredit)}/kredi</strong>
+          {paidRevs.length > 0 && <> — Öğrenci ₺{fmt(starterRev)}/kr · Pro ₺{fmt(proRev)}/kr</>}.<br />
+          • Gerçek token sayıları çeviri sonrası ölçülmeli; yoğun sayfalarda maliyet artabilir.
+        </div>
         <div className={styles.calcGrid}>
           {ops.map(op => {
             const creditCost = cfg[op.key] || 0;
-            const cost = geminiCostTry(op.tokens);
-            const revenue = creditCost * creditRevenue;
-            const margin = revenue - cost;
-            const marginPct = revenue > 0 ? (margin / revenue) * 100 : (cost > 0 ? -100 : 0);
+            const s = splitCost(op.tokens);
+            const cost = s.cost;
+            const revenue = creditCost * revPerCredit;
+            const marginPct = revenue > 0 ? (1 - cost / revenue) * 100 : (cost > 0 ? -100 : 0);
             const cls = marginPct >= 60 ? styles.marginGood : marginPct >= 25 ? styles.marginWarn : styles.marginBad;
-            // Önerilen kredi: maliyeti hedef marjla karşılayacak kredi (0.5'e yuvarla)
-            const recommended = creditRevenue > 0
-              ? Math.max(0.5, Math.ceil((cost / (creditRevenue * (1 - tm))) * 2) / 2)
+            // Önerilen kredi: hedef marjı EN DÜŞÜK gelirli planda bile tutturacak kredi (0.5'e yukarı yuvarla)
+            const recommended = revPerCredit > 0
+              ? Math.max(0.5, Math.ceil((cost / (revPerCredit * (1 - tm))) * 2) / 2)
               : creditCost;
             const needsApply = Math.abs(recommended - creditCost) > 0.001;
             return (
               <div key={op.key} className={styles.calcCard}>
                 <div className={styles.calcCardTitle}>{op.icon} {op.label}</div>
-                <div className={styles.calcRow}><span>Ort. token</span><strong>{op.tokens.toLocaleString('tr-TR')}</strong></div>
-                <div className={styles.calcRow}><span>Gemini maliyeti</span><strong>₺{fmt(cost)}</strong></div>
-                <div className={styles.calcRow}><span>Senin fiyatın ({creditCost} kr)</span><strong>₺{fmt(revenue)}</strong></div>
+                <div className={styles.calcRow}><span>Ort. token</span><strong>{fmtT(op.tokens)}</strong></div>
+                <div className={styles.calcRow}><span>↳ Girdi ~{fmtT(s.inT)} tok</span><strong>₺{fmt(s.costIn)}</strong></div>
+                <div className={styles.calcRow}><span>↳ Çıktı ~{fmtT(s.outT)} tok</span><strong>₺{fmt(s.costOut)}</strong></div>
+                <div className={styles.calcRow}><span>Toplam Gemini maliyeti</span><strong>₺{fmt(cost)}</strong></div>
+                <div className={styles.calcRow}><span>Gelir ({creditCost} kr · ₺{fmt(revPerCredit)}/kr)</span><strong>₺{fmt(revenue)}</strong></div>
                 <div className={styles.calcRow}>
                   <span>Kâr marjı</span>
                   <span className={`${styles.marginBadge} ${cls}`}>%{Math.round(marginPct)}</span>

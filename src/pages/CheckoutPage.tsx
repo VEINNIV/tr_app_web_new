@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/auth';
-import { PRICING_PLANS } from '../lib/constants';
+import { PRICING_PLANS, CREDIT_COSTS, pdfPerCredits } from '../lib/constants';
 import styles from '../styles/components/checkout.module.css';
 
 /* ── Yardımcı ── */
@@ -44,6 +44,8 @@ export default function CheckoutPage() {
     });
   }, []);
 
+  const planCredits    = cfg[`plan_limit.${planId}`]  ?? staticPlan.credits;
+  const perPage        = cfg['credit_cost.translation_per_page'] ?? CREDIT_COSTS.TRANSLATION_PER_PAGE;
   const basePrice      = cfg[`plan_price.${planId}`]  ?? staticPlan.price;
   const discountPct    = cfg[`discount.${planId}`]     ?? 0;
   const studentOff     = cfg['discount.student_amount']?? 0;
@@ -139,6 +141,9 @@ export default function CheckoutPage() {
 
           {/* Özellikler */}
           <ul className={styles.featureList}>
+            {planCredits > 0 && (
+              <li><Check size={13} />{planCredits} kredi/ay · ≈{pdfPerCredits(planCredits, perPage)} PDF çeviri</li>
+            )}
             {staticPlan.features.map((f, i) => (
               <li key={i}><Check size={13} />{f}</li>
             ))}

@@ -7,7 +7,7 @@ import {
   Globe, FileCode, Loader, RotateCcw, Layers, Sparkles,
   Image as ImageIcon, Send, Download,
 } from 'lucide-react';
-import { PRICING_PLANS } from '../lib/constants';
+import { PRICING_PLANS, CREDIT_COSTS, pdfPerCredits, fmtCredit } from '../lib/constants';
 import { supabase } from '../lib/supabase';
 import { Magnetic } from '../components/ui/motion';
 import styles from '../styles/components/landing.module.css';
@@ -217,6 +217,13 @@ export default function LandingPage() {
       };
     });
   }, [pricingCfg, isStudent]);
+
+  /* ── Dinamik kredi maliyetleri (tek kaynak: app_config → credit_cost.*) ── */
+  const credit = useMemo(() => ({
+    perPage: pricingCfg['credit_cost.translation_per_page'] ?? CREDIT_COSTS.TRANSLATION_PER_PAGE,
+    study:   pricingCfg['credit_cost.study_notes']          ?? CREDIT_COSTS.STUDY_NOTES_PER_SOURCE,
+    chat:    pricingCfg['credit_cost.chat']                 ?? CREDIT_COSTS.CHAT_PER_QUESTION,
+  }), [pricingCfg]);
 
   /* ── Live demo state ── */
   const [livePhase, setLivePhase] = useState<LivePhase>('idle');
@@ -1031,9 +1038,9 @@ export default function LandingPage() {
           transition={{ duration: 0.4 }}
         >
           {[
-            { icon: <Languages size={13} />, text: '1 sayfa çeviri = 1 kredi' },
-            { icon: <BookOpen size={13} />, text: '1 ders notu kaynağı = 1 kredi' },
-            { icon: <MessageSquare size={13} />, text: 'AI soru = 0.5 kredi' },
+            { icon: <Languages size={13} />, text: `1 sayfa çeviri = ${fmtCredit(credit.perPage)} kredi` },
+            { icon: <BookOpen size={13} />, text: `1 ders notu kaynağı = ${fmtCredit(credit.study)} kredi` },
+            { icon: <MessageSquare size={13} />, text: `AI soru = ${fmtCredit(credit.chat)} kredi` },
           ].map((item, i) => (
             <div key={i} className={styles.creditPill}>
               {item.icon}<span>{item.text}</span>
@@ -1102,7 +1109,9 @@ export default function LandingPage() {
                 )}
               </div>
               {plan.credits > 0 && (
-                <div className={styles.pricingCredits}>{plan.credits} kredi/ay</div>
+                <div className={styles.pricingCredits}>
+                  {plan.credits} kredi/ay · ≈{pdfPerCredits(plan.credits, credit.perPage)} PDF çeviri
+                </div>
               )}
               <ul className={styles.pricingFeatureList}>
                 {plan.features.map((f, fi) => (
