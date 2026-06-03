@@ -43,12 +43,24 @@ try:
 except ImportError:
     pass
 
-app = FastAPI(title="TransLingua PDF Service", version="3.0.0")
+app = FastAPI(title="TransLingua PDF Service", version="3.1.0")
+
+# ── Yapılandırma (ortam değişkenleri) ──────────────────────────────────────────
+# ALLOWED_ORIGINS: virgülle ayrılmış origin listesi; "*" = hepsi (yalnızca dev).
+#   Üretimde uygulama origin'inizi verin: ALLOWED_ORIGINS=https://transwordly.com
+# MAX_UPLOAD_MB: yüklenebilir maksimum dosya boyutu (MB).
+_allowed_raw = os.environ.get("ALLOWED_ORIGINS", "*").strip()
+ALLOWED_ORIGINS = (
+    ["*"] if _allowed_raw == "*" or not _allowed_raw
+    else [o.strip() for o in _allowed_raw.split(",") if o.strip()]
+)
+MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "30"))
+MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -134,8 +146,29 @@ class ImageExtractResponse(BaseModel):
 
 # ── Yardımcı ──────────────────────────────────────────────────────────────────
 
+async def read_upload(file: UploadFile) -> bytes:
+    """Yüklemeyi okur; boş veya boyut sınırını aşan dosyaları reddeder."""
+    data = await read_upload(file)
+    if not data:
+        raise HTTPException(400, "Boş dosya yüklendi.")
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, f"Dosya çok büyük (en fazla {MAX_UPLOAD_MB} MB).")
+    return data
+
+
 def open_pdf(data: bytes) -> fitz.Document:
-    return fitz.open(stream=data, filetype="pdf")
+    """PDF'i açar; bozuk/şifreli/PDF-olmayan girdilerde 400 döndürür (500 stack-trace yerine)."""
+    try:
+        doc = fitz.open(stream=data, filetype="pdf")
+    except Exception as e:
+        raise HTTPException(400, f"PDF açılamadı veya geçersiz dosya: {e}")
+    if doc.needs_pass:
+        doc.close()
+        raise HTTPException(400, "Şifre korumalı PDF'ler desteklenmiyor.")
+    if doc.page_count == 0:
+        doc.close()
+        raise HTTPException(400, "PDF hiç sayfa içermiyor.")
+    return doc
 
 
 # Türkçe karakter destekli Unicode font (PDF'e gömülür)
@@ -225,6 +258,70 @@ def sample_background_color(page: fitz.Page, rect: fitz.Rect) -> Optional[tuple]
         return None
 
 
+def sample_bg_from_pixmap(pix, sx: float, sy: float, rect: fitz.Rect) -> Optional[tuple]:
+    """
+    Sayfanın TEK SEFER render edilmiş pixmap'inden bir bloğun arka plan rengini
+    örnekler. Her blok için ayrı `page.get_pixmap(clip=...)` çağırmaktan çok daha
+    hızlıdır — yüzlerce bloklu sayfalarda /write-pdf süresini ciddi düşürür.
+    sx, sy: pixmap_piksel / pdf_point ölçek faktörleri.
+
+    ÖNEMLİ: Renk, metin kutusunun KENARINDAN değil, kutunun hemen DIŞINDAKİ
+    temiz marjdan örneklenir. Kutu kenarları harf tepe/tabanlarının antialias
+    (gri) piksellerini içerir; bunlardan örneklemek dolguyu griye boyuyordu
+    (koyu-gri bant hatası). Dış halka, hücre metinden büyük olduğu için gerçek
+    hücre/arka plan rengini verir — zebra-şeritli tablolar dahil.
+    """
+    if pix is None:
+        return None
+    try:
+        px0 = int(rect.x0 * sx)
+        py0 = int(rect.y0 * sy)
+        px1 = int(rect.x1 * sx)
+        py1 = int(rect.y1 * sy)
+        if px1 - px0 < 1 or py1 - py0 < 1:
+            return None
+
+        # Metnin antialias pikselinden kaçmak için 2-3px DIŞARI çıkıp örnekle.
+        margin = max(2, int(round(2 * sx)))
+        samples: list[tuple] = []
+
+        # Üst ve alt — kutunun dışındaki yatay şeritler
+        for dy in (margin, margin + 1):
+            ya = py0 - dy
+            yb = py1 + dy
+            for x in range(max(0, px0), min(pix.width, px1 + 1)):
+                if 0 <= ya < pix.height:
+                    samples.append(pix.pixel(x, ya))
+                if 0 <= yb < pix.height:
+                    samples.append(pix.pixel(x, yb))
+        # Sol ve sağ — kutunun dışındaki dikey şeritler
+        for dx in (margin, margin + 1):
+            xa = px0 - dx
+            xb = px1 + dx
+            for y in range(max(0, py0), min(pix.height, py1 + 1)):
+                if 0 <= xa < pix.width:
+                    samples.append(pix.pixel(xa, y))
+                if 0 <= xb < pix.width:
+                    samples.append(pix.pixel(xb, y))
+
+        if not samples:
+            return None
+
+        most_common = Counter(samples).most_common(1)[0][0]
+        r, g, b = most_common[0], most_common[1], most_common[2]
+
+        # Parlaklık koruması: seçilen renk koyu (metin benzeri) ise dolgu yapma.
+        # Komşu satır metni nadiren mod'u ele geçirebilir; bu durumda griye/koyu
+        # bir banda boyamaktansa hiç doldurmamak (orijinali korumak) daha güvenli.
+        luminance = 0.299 * r + 0.587 * g + 0.114 * b
+        if luminance < 110:
+            return None
+
+        return (r / 255.0, g / 255.0, b / 255.0)
+    except Exception:
+        return None
+
+
 def _extract_blocks_from_text_dict(
     text_dict: dict,
     pw: float,
@@ -303,7 +400,7 @@ def _page_has_images(page: fitz.Page) -> bool:
 @app.post("/extract", response_model=ExtractResponse)
 async def extract_pdf(file: UploadFile = File(...)):
     """PDF'den tüm metin bloklarını koordinat + font + hizalama bilgisiyle döndürür."""
-    data = await file.read()
+    data = await read_upload(file)
     doc = open_pdf(data)
     pages: list[PageData] = []
     any_translatable_images = False
@@ -415,7 +512,7 @@ async def render_page(
     scale: float = Form(1.5),
 ):
     """Belirtilen sayfayı JPEG base64 data URL olarak döndürür."""
-    data = await file.read()
+    data = await read_upload(file)
     doc = open_pdf(data)
 
     if page_num < 1 or page_num > doc.page_count:
@@ -440,7 +537,8 @@ async def render_page(
 async def write_pdf(
     file: UploadFile = File(...),
     pages_json: str = Form(...),
-    images_json: Optional[str] = Form(None),
+    image_replacements_json: Optional[str] = Form(None),
+    images_json: Optional[str] = Form(None),  # geriye dönük uyumluluk (eski alan adı)
 ):
     """
     Profesyonel çeviri yazımı:
@@ -456,19 +554,21 @@ async def write_pdf(
 
     Sonuç: Adobe Acrobat Redact + Edit Text kalitesinde çıktı.
     """
-    data = await file.read()
+    data = await read_upload(file)
     try:
         pages_data: list[list[dict]] = json.loads(pages_json)
     except json.JSONDecodeError as e:
         raise HTTPException(400, f"Geçersiz JSON: {e}")
 
-    # Opsiyonel görüntü değiştirme verisi
+    # Opsiyonel görüntü değiştirme verisi.
+    # Frontend `image_replacements_json` gönderir; eski `images_json` da kabul edilir.
+    raw_images = image_replacements_json or images_json
     image_replacements: list[dict] = []
-    if images_json:
+    if raw_images:
         try:
-            image_replacements = json.loads(images_json)
+            image_replacements = json.loads(raw_images)
         except json.JSONDecodeError as e:
-            raise HTTPException(400, f"Geçersiz images_json: {e}")
+            raise HTTPException(400, f"Geçersiz image_replacements_json: {e}")
 
     doc = open_pdf(data)
 
@@ -484,6 +584,17 @@ async def write_pdf(
         pw, ph = page.rect.width, page.rect.height
 
         # ── 1. Faz: Arka plan renklerini REDACTION ÖNCESİ örnekle ──────────
+        # Sayfayı bir kez render et; tüm bloklar bu tek pixmap'ten örneklenir
+        # (eskiden her blok için ayrı get_pixmap → büyük sayfalarda çok yavaştı).
+        page_pix = None
+        sx = sy = 1.0
+        try:
+            page_pix = page.get_pixmap(dpi=72, alpha=False)
+            sx = page_pix.width / pw if pw > 0 else 1.0
+            sy = page_pix.height / ph if ph > 0 else 1.0
+        except Exception as e:
+            print(f"  [WARN] Sayfa pixmap render hatası p{page_idx + 1}: {e}")
+
         rects_with_info: list[tuple[fitz.Rect, dict, Optional[tuple]]] = []
         for blk in page_blocks:
             x = float(blk.get("x", 0)) * pw
@@ -501,8 +612,8 @@ async def write_pdf(
                 min(ph, y + h + 0.5),
             )
 
-            # Arka plan rengini redaction öncesi örnekle
-            bg_color = sample_background_color(page, rect)
+            # Arka plan rengini (tek-seferlik pixmap'ten) redaction öncesi örnekle
+            bg_color = sample_bg_from_pixmap(page_pix, sx, sy, rect)
 
             rects_with_info.append((rect, blk, bg_color))
 
@@ -633,7 +744,7 @@ async def ocr_extract(
     language: Tesseract dil kodu — tur (Türkçe), eng (İngilizce), vb.
     min_chars_per_page: Bu kadar karakterden azsa sayfa OCR'a gönderilir.
     """
-    data = await file.read()
+    data = await read_upload(file)
     doc = open_pdf(data)
     pages: list[PageData] = []
     any_translatable_images = False
@@ -700,7 +811,7 @@ async def group_paragraphs(file: UploadFile = File(...)):
       c) Aynı bold durumu
       d) Yatay örtüşme > %30
     """
-    data = await file.read()
+    data = await read_upload(file)
     doc = open_pdf(data)
     pages: list[ParagraphPage] = []
 
@@ -816,7 +927,7 @@ async def extract_images(file: UploadFile = File(...)):
       - 40x40 pikselden küçük görseller atlanır
       - Dekoratif görseller atlanır (en-boy oranı > 10:1)
     """
-    data = await file.read()
+    data = await read_upload(file)
     doc = open_pdf(data)
     pages: list[ImagePage] = []
     total_images = 0

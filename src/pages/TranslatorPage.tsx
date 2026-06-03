@@ -8,13 +8,13 @@
  *  - Bitince: indir (PDF), dokümanlarım, yeni çeviri
  *  - Görsel çeviri: PDF'de çevrilebilir görseller varsa kullanıcıya sorar
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
   Upload, FileText, X, Check, AlertCircle, Download, MessageSquare,
   ArrowRight, Globe, Info, Search, MonitorPlay, BellRing, AlertTriangle,
-  Loader, Pause, Layers, ImageIcon,
+  Loader, Pause, Layers, ImageIcon, Eye,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { SPRING_TIGHT } from '../components/ui/motion';
@@ -25,6 +25,9 @@ import { permissionState, requestPermission, notificationsSupported } from '../l
 import { getServiceCapabilities, checkForTranslatableImages, type ServiceCapabilities } from '../lib/pdfExtractorService';
 import { supabase } from '../lib/supabase';
 import styles from '../styles/components/translator.module.css';
+
+// pdf-lib (~1.2MB) + pdf.js render zinciri yalnızca önizleme açılınca yüklensin.
+const PDFOverlayViewer = lazy(() => import('../components/PDFOverlayViewer'));
 
 type Step = 'upload' | 'mode' | 'progress' | 'result';
 
@@ -47,6 +50,12 @@ export default function TranslatorPage() {
   const [hasImages, setHasImages] = useState(false);
   const [checkingImages, setCheckingImages] = useState(false);
   const [caps, setCaps] = useState<ServiceCapabilities>({ available: false });
+  const [showPreview, setShowPreview] = useState(false);
+
+  // Tamamlanan çevirinin in-app önizlemesi için kaynak PDF'in object URL'i.
+  // Yalnızca dosya bellekteyken (bu oturumda çevrildiyse) üretilir.
+  const previewUrl = useMemo(() => (file ? URL.createObjectURL(file) : null), [file]);
+  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
 
   // Backend yetenek tespiti — bir kez kontrol
   useEffect(() => {
@@ -167,6 +176,7 @@ export default function TranslatorPage() {
     setActivity([]);
     setHasImages(false);
     setTranslateImages(false);
+    setShowPreview(false);
     dismiss();
   };
 
@@ -512,8 +522,17 @@ export default function TranslatorPage() {
                 </motion.button>
                 {job.status === 'completed' && (
                   <>
+                    {previewUrl && job.overlay && (
+                      <motion.button
+                        className={`${styles.resultBtn} ${styles.resultBtnPrimary}`}
+                        onClick={() => setShowPreview(true)}
+                        variants={{ hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0 } }}
+                      >
+                        <Eye size={16} /> Önizle
+                      </motion.button>
+                    )}
                     <motion.button
-                      className={`${styles.resultBtn} ${styles.resultBtnPrimary}`}
+                      className={styles.resultBtn}
                       onClick={downloadResult}
                       variants={{ hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0 } }}
                     >
@@ -536,6 +555,19 @@ export default function TranslatorPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* In-app önizleme — tamamlanan çevirinin tam ekran görüntüleyicisi */}
+      {showPreview && previewUrl && job?.overlay && (
+        <Suspense fallback={null}>
+          <PDFOverlayViewer
+            pdfUrl={previewUrl}
+            documentName={file?.name ?? 'Çeviri'}
+            sourceLang={job.overlay.sourceLang}
+            overlayData={job.overlay}
+            onClose={() => setShowPreview(false)}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

@@ -744,7 +744,16 @@ export async function translateTextBlocks(
 
   const targetName = targetLang === 'tr' ? 'Türkçe' : targetLang;
   const domainHint = DOMAIN_HINTS[domain] ?? '';
-  const numbered = blocks.map((b, i) => `${i + 1}. ${b}`).join('\n');
+
+  // ── ANAHTARLI-JSON protokolü ───────────────────────────────────────────────
+  // Bloklar {"0":"...","1":"..."} biçiminde gönderilir; model AYNI anahtarlarla
+  // bir JSON nesnesi döndürür. Bu, "numaralı liste"ye göre çok daha sağlamdır:
+  //  • Model sırayı/numarayı KAYDIRAMAZ (eşleme anahtarla yapılır).
+  //  • Tekrarlı değerler ("Vanguard" iki hücrede) ayrı anahtar olduğu için
+  //    birleştirilmez/atlanmaz.
+  //  • Kısa tablo hücrelerinde yanlış hücreye yazma sorunu ortadan kalkar.
+  const inputObj: Record<string, string> = {};
+  blocks.forEach((b, i) => { inputObj[String(i)] = b; });
 
   const glossarySection =
     glossary && Object.keys(glossary).length > 0
@@ -752,52 +761,65 @@ export async function translateTextBlocks(
       : '';
 
   const prompt = [
-    `${blocks.length} metin bloğunu ${targetName} diline çevir.`,
+    `Aşağıda anahtar→metin eşlemesi içeren bir JSON nesnesi var. Her metni ${targetName} diline çevir.`,
     domainHint,
     glossarySection,
-    `Çeviri yaklaşımı:
-- Her bloğun anlamını ve bağlamını önce anla, sonra çevir — kelime kelime çevirme
-- İfadenin gerçek kastını ${targetName}'ye doğal biçimde aktar
-- Soru cümleleri soru olarak kalmalı (ör: "What does X mean?" → "X ne anlama gelir?", "What is it to Y?" → "Y ne demektir?")
-- Başlıklar başlık olarak, eylemler eylem olarak aktarılmalı
-- Deyimler ve deyimsel kullanımlar varsa eşdeğer ${targetName} ifadesiyle karşılık ver
-
-Kurallar:
-- Aynı numarayla, aynı sırayla döndür
-- HER bloğu mutlaka çevir — formül, sembol, sayı veya özel ad dışında İngilizce hiçbir kelime bırakma
-- Bir blok yarım cümle/parça olsa bile komşu blokların bağlamıyla anlamlandırıp çevir
-- Matematiksel formüller ve denklemler (f(x), ∑, ∫, α, β, Δ, vb.) AYNEN koru
-- Kimyasal formüller (H₂O, CO₂, NaCl, vb.) değiştirme
-- Birim sembolleri (mg, km, Hz, kWh, mol, vb.) değiştirme
-- URL'ler, DOI'ler, ISBN/ISSN numaraları değiştirme
-- Yazar adları, kurum ve dergi isimleri değiştirme
-- Sadece numaralı liste döndür, ek açıklama ekleme`,
+    `Çıktı KURALLARI (kesin):
+- SADECE geçerli bir JSON nesnesi döndür. Markdown, açıklama, kod bloğu YOK.
+- Girişteki TÜM anahtarları AYNEN koru; anahtar ekleme/çıkarma/sıra değiştirme YOK.
+- Her anahtarın değeri, o metnin ${targetName} çevirisi olsun.
+- Anlamı koru, doğal çevir (kelime kelime değil). Tek kelimelik/etiket metinler de çevrilmeli.
+- Özel adlar/marka/kurum (ör. "Vanguard", "S&P 500"), sayılar, tarihler, formüller,
+  birimler (mg, Hz), URL/DOI olduğu gibi kalsın.
+- Bir metin zaten ${targetName} ise veya çevrilemezse aynen geri ver.`,
     '',
-    numbered,
+    JSON.stringify(inputObj),
   ].filter(Boolean).join('\n');
 
   const result = await callGemini({
-    contents: [{
-      role: 'user',
-      parts: [{ text: prompt }],
-    }],
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
     temperature: 0.05,
     maxOutputTokens: 8192,
     operationId,
   });
 
-  // Numaralı çıktıyı parse et
-  const out = new Array(blocks.length).fill('');
-  for (const line of result.split('\n')) {
-    const m = line.match(/^(\d+)\.\s*(.+)/);
-    if (m) {
-      const idx = parseInt(m[1]) - 1;
-      if (idx >= 0 && idx < blocks.length) out[idx] = m[2].trim();
+  // JSON nesnesini yanıttan çıkar (kod bloğu/önek olsa bile)
+  const jsonMatch = result.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    try {
+      const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
+      const out = blocks.map((orig, i) => {
+        const v = parsed[String(i)];
+        const s = typeof v === 'string' ? v.trim() : '';
+        return s || orig;   // anahtar eksik/boşsa orijinali koru
+      });
+      return out;
+    } catch {
+      // JSON parse başarısız → aşağıdaki numaralı-liste fallback'ine düş
     }
   }
 
-  // Çevirisi alınamayan blokları orijinal metinle doldur
-  return out.map((t, i) => t || blocks[i]);
+  // ── Fallback: model JSON döndürmediyse numaralı-liste denemesi ──────────────
+  // (Eski protokolün dayanıklı parse'ı; nadiren tetiklenir.)
+  const out = new Array(blocks.length).fill('');
+  let curIdx = -1;
+  for (const raw of result.split('\n')) {
+    const m = raw.match(/^\s*(\d+)[.)]\s?(.*)$/);
+    if (m) {
+      const n = parseInt(m[1], 10) - 1;
+      const inRange = n >= 0 && n < blocks.length;
+      const isNext = n === curIdx + 1;
+      if (inRange && (isNext || (out[n] === '' && n > curIdx))) {
+        curIdx = n;
+        out[curIdx] = m[2].trim();
+        continue;
+      }
+    }
+    if (curIdx >= 0 && raw.trim()) {
+      out[curIdx] = (out[curIdx] + ' ' + raw.trim()).trim();
+    }
+  }
+  return out.map((t, i) => (t && t.trim()) || blocks[i]);
 }
 
 // ─── 7b) Sayfa görüntüsü + metin blokları → tüm çeviri (text + visual) ─────

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -12,7 +12,9 @@ import toast from 'react-hot-toast';
 import {
   BookOpen, Upload, File as FileIcon, X, Check,
   Image as ImageIcon, Copy, RefreshCw, FileText, FileType, FileCode, Wand2,
+  History, Clock, Eye, Loader, Trash2, Plus, FolderOpen,
 } from 'lucide-react';
+import type { StudySession } from '../types';
 import styles from '../styles/components/studynotes.module.css';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -27,6 +29,7 @@ interface UploadedFile {
 
 export default function StudyNotesPage() {
   const { profile, refreshProfile } = useAuth();
+  const [view, setView] = useState<'create' | 'history'>('create');
   const [step, setStep] = useState<Step>('upload');
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [subject, setSubject] = useState(STUDY_SUBJECTS[0]);
@@ -35,8 +38,55 @@ export default function StudyNotesPage() {
   const [streamingText, setStreamingText] = useState<string>('');
   const [studyCost, setStudyCost] = useState<number>(getCachedCreditCosts().studyNotes);
 
+  // Geçmiş ders notları (study_sessions)
+  const [history, setHistory] = useState<StudySession[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [viewingSession, setViewingSession] = useState<StudySession | null>(null);
+  // Aktif oturum kimliği — hata durumunda 'error' işaretlemek için
+  const sessionIdRef = useRef<string | null>(null);
+
   useEffect(() => { getCreditCosts().then(c => setStudyCost(c.studyNotes)); }, []);
   const { exporting, downloadAs: exportDoc } = useExportDoc();
+
+  const fetchHistory = useCallback(async () => {
+    if (!profile) return;
+    setHistoryLoading(true);
+    const { data } = await supabase
+      .from('study_sessions')
+      .select('*')
+      .eq('user_id', profile.id)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    setHistory((data as StudySession[] | null) ?? []);
+    setHistoryLoading(false);
+  }, [profile]);
+
+  // İlk yüklemede geçmişi getir
+  useEffect(() => { void fetchHistory(); }, [fetchHistory]);
+
+  const handleDeleteSession = async (id: string) => {
+    const { error } = await supabase.from('study_sessions').delete().eq('id', id);
+    if (error) { toast.error('Silinemedi'); return; }
+    setHistory(prev => prev.filter(s => s.id !== id));
+    if (viewingSession?.id === id) setViewingSession(null);
+    toast.success('Not silindi');
+  };
+
+  /** Markdown notu istenen formatta indirir (hem aktif sonuç hem geçmiş için). */
+  const downloadNotes = (
+    format: ExportFormat,
+    markdown: string,
+    subjectLabel: string,
+    dateStr: string,
+  ) => {
+    if (!markdown) return;
+    exportDoc(format, {
+      markdown,
+      filename: `${subjectLabel}_Notlari_${dateStr.slice(0, 10)}`.replace(/[^\w\d-_]+/g, '_'),
+      title: `${subjectLabel} Notları`,
+      subtitle: `${subjectLabel} • ${formatTrDate(dateStr)}`,
+    });
+  };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -128,8 +178,9 @@ export default function StudyNotesPage() {
         return;
       }
 
-      // 2. Session kaydı oluştur
-      const { data: session } = await supabase.from('study_sessions').insert({
+      // 2. Session kaydı oluştur — hata yutulmaz; kayıt başarısız olursa
+      //    not üretilse bile sonradan görüntülenemez, kullanıcıyı uyar.
+      const { data: session, error: sessionErr } = await supabase.from('study_sessions').insert({
         user_id: profile.id,
         title: `${subject} Notları - ${formatTrDate()}`,
         subject: subject,
@@ -137,6 +188,11 @@ export default function StudyNotesPage() {
         status: 'processing',
         credits_used: totalCost,
       }).select().single();
+      if (sessionErr || !session) {
+        console.error('study_sessions insert başarısız:', sessionErr);
+        throw new Error('Ders notu oturumu oluşturulamadı: ' + (sessionErr?.message ?? 'bilinmeyen hata'));
+      }
+      sessionIdRef.current = session.id;
 
       // 4. AI'a dosyaları DOĞRUDAN gönder — multimodal
       const rawFiles = files.map(f => f.file);
@@ -148,38 +204,44 @@ export default function StudyNotesPage() {
         operationId,
       );
 
-      // 5. Sonucu kaydet
-      if (session) {
-        await supabase.from('study_sessions').update({
-          generated_notes: notes,
-          status: 'completed',
-        }).eq('id', session.id);
+      // 5. Sonucu kaydet — kayıt hatası da yutulmaz
+      const { error: updateErr } = await supabase.from('study_sessions').update({
+        generated_notes: notes,
+        status: 'completed',
+      }).eq('id', session.id);
+      if (updateErr) {
+        console.error('study_sessions update başarısız:', updateErr);
+        toast.error('Not oluşturuldu ama kaydedilemedi — geçmişte görünmeyebilir.');
       }
 
+      sessionIdRef.current = null; // başarı: hata işaretleme yok
       setGeneratedNotes(notes);
       setStep('result');
       await refreshProfile();
+      void fetchHistory(); // geçmiş listesini tazele
       toast.success('Ders notu başarıyla oluşturuldu!');
     } catch (error) {
       console.error(error);
+      // Oturum açıldıysa 'error' olarak işaretle ('processing'te asılı kalmasın)
+      if (sessionIdRef.current) {
+        try {
+          await supabase.from('study_sessions').update({ status: 'error' }).eq('id', sessionIdRef.current);
+        } catch { /* yut */ }
+        sessionIdRef.current = null;
+      }
       // Henüz hiç AI çağrısı yapılmadıysa krediyi iade et
       if (operationId) {
         try { await supabase.rpc('refund_ai_operation', { p_op_id: operationId }); } catch { /* yut */ }
         await refreshProfile();
       }
-      toast.error('Notlar oluşturulurken bir hata oluştu.');
+      const msg = error instanceof Error ? error.message : 'Notlar oluşturulurken bir hata oluştu.';
+      toast.error(msg);
       setStep('upload');
     }
   };
 
   const downloadAs = (format: ExportFormat) => {
-    if (!generatedNotes) return;
-    exportDoc(format, {
-      markdown: generatedNotes,
-      filename: `${subject}_Notlari_${new Date().toISOString().slice(0, 10)}`,
-      title: `${subject} Notları`,
-      subtitle: `${subject} • ${formatTrDate()}`,
-    });
+    downloadNotes(format, generatedNotes, subject, new Date().toISOString());
   };
 
   const handleCopy = () => {
@@ -193,6 +255,16 @@ export default function StudyNotesPage() {
     setStep('upload');
   };
 
+  const tabStyle = (active: boolean): React.CSSProperties => ({
+    display: 'inline-flex', alignItems: 'center', gap: 6,
+    padding: '9px 16px', borderRadius: 'var(--radius-md)', cursor: 'pointer',
+    font: 'inherit', fontSize: '0.875rem', fontWeight: 600,
+    border: `1px solid ${active ? 'transparent' : 'var(--color-border)'}`,
+    background: active ? '#8b5cf6' : 'var(--color-surface)',
+    color: active ? '#fff' : 'var(--color-text-secondary)',
+    transition: 'all 0.15s',
+  });
+
   return (
     <div className={styles.page}>
       <div className={styles.header}>
@@ -203,6 +275,17 @@ export default function StudyNotesPage() {
         </div>
       </div>
 
+      {/* Sekme: Yeni Not / Geçmiş Notlarım */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 'var(--space-5)' }}>
+        <button onClick={() => setView('create')} style={tabStyle(view === 'create')}>
+          <Plus size={16} /> Yeni Not
+        </button>
+        <button onClick={() => { setView('history'); void fetchHistory(); }} style={tabStyle(view === 'history')}>
+          <History size={16} /> Geçmiş Notlarım{history.length > 0 ? ` (${history.length})` : ''}
+        </button>
+      </div>
+
+      {view === 'create' && (
       <div className={styles.wizard}>
         <AnimatePresence mode="wait">
 
@@ -363,6 +446,118 @@ export default function StudyNotesPage() {
 
         </AnimatePresence>
       </div>
+      )}
+
+      {/* ── GEÇMİŞ NOTLARIM ── */}
+      {view === 'history' && (
+        <div className={styles.wizard}>
+          {historyLoading && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '48px 0', color: 'var(--color-text-tertiary)' }}>
+              <Loader size={20} style={{ animation: 'spin 0.8s linear infinite' }} /> Yükleniyor…
+            </div>
+          )}
+
+          {!historyLoading && history.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--color-text-tertiary)' }}>
+              <FolderOpen size={48} style={{ opacity: 0.4, marginBottom: 12 }} />
+              <p style={{ fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4 }}>Henüz ders notu yok</p>
+              <p style={{ fontSize: '0.875rem' }}>İlk notunuzu oluşturmak için “Yeni Not” sekmesine geçin.</p>
+            </div>
+          )}
+
+          {!historyLoading && history.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {history.map(s => (
+                <div
+                  key={s.id}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px',
+                    background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+                    borderRadius: 'var(--radius-lg)',
+                  }}
+                >
+                  <div style={{ width: 40, height: 40, flexShrink: 0, borderRadius: 10, display: 'grid', placeItems: 'center', background: 'rgba(139,92,246,0.12)', color: '#8b5cf6' }}>
+                    <BookOpen size={20} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--color-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {s.title}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.78rem', color: 'var(--color-text-tertiary)', marginTop: 2 }}>
+                      <Clock size={12} /> {formatTrDate(s.created_at)}
+                      <span>•</span>{s.source_count} kaynak
+                      {s.status === 'processing' && <span style={{ color: 'var(--color-warning, #d97706)' }}>• işleniyor</span>}
+                      {s.status === 'error' && <span style={{ color: 'var(--color-error, #dc2626)' }}>• hata</span>}
+                    </div>
+                  </div>
+                  {s.status === 'completed' && s.generated_notes ? (
+                    <>
+                      <button className={styles.actionBtn} onClick={() => setViewingSession(s)}>
+                        <Eye size={14} /> Görüntüle
+                      </button>
+                      <button className={styles.actionBtn} disabled={!!exporting} title="PDF indir"
+                        onClick={() => downloadNotes('pdf', s.generated_notes!, s.subject ?? 'Ders', s.created_at)}>
+                        <FileText size={14} /> PDF
+                      </button>
+                      <button className={styles.actionBtn} disabled={!!exporting} title="Word indir"
+                        onClick={() => downloadNotes('docx', s.generated_notes!, s.subject ?? 'Ders', s.created_at)}>
+                        <FileType size={14} /> Word
+                      </button>
+                    </>
+                  ) : (
+                    <span style={{ fontSize: '0.8rem', color: 'var(--color-text-tertiary)' }}>—</span>
+                  )}
+                  <button className={styles.actionBtn} title="Sil" onClick={() => handleDeleteSession(s.id)} style={{ color: 'var(--color-error, #dc2626)' }}>
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── GEÇMİŞ NOT GÖRÜNTÜLEME MODALI ── */}
+      <AnimatePresence>
+        {viewingSession && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            onClick={() => setViewingSession(null)}
+            style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+              onClick={e => e.stopPropagation()}
+              style={{ background: 'var(--color-bg)', borderRadius: 'var(--radius-xl, 18px)', maxWidth: 760, width: '100%', maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid var(--color-border)' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px', borderBottom: '1px solid var(--color-border)' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--color-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{viewingSession.title}</h2>
+                  <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--color-text-tertiary)' }}>{viewingSession.subject} • {formatTrDate(viewingSession.created_at)}</p>
+                </div>
+                <button className={styles.actionBtn} disabled={!!exporting}
+                  onClick={() => downloadNotes('pdf', viewingSession.generated_notes ?? '', viewingSession.subject ?? 'Ders', viewingSession.created_at)}>
+                  <FileText size={14} /> PDF
+                </button>
+                <button className={styles.actionBtn} disabled={!!exporting}
+                  onClick={() => downloadNotes('docx', viewingSession.generated_notes ?? '', viewingSession.subject ?? 'Ders', viewingSession.created_at)}>
+                  <FileType size={14} /> Word
+                </button>
+                <button className={styles.actionBtn} disabled={!!exporting}
+                  onClick={() => downloadNotes('txt', viewingSession.generated_notes ?? '', viewingSession.subject ?? 'Ders', viewingSession.created_at)}>
+                  <FileCode size={14} /> TXT
+                </button>
+                <button className={styles.actionBtn} onClick={() => setViewingSession(null)}><X size={16} /></button>
+              </div>
+              <div className={`${styles.markdownContent} markdown-body`} style={{ flex: 1, overflowY: 'auto', padding: 'var(--space-5)' }}>
+                <ReactMarkdown remarkPlugins={[remarkGfm as any]}>
+                  {viewingSession.generated_notes ?? ''}
+                </ReactMarkdown>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

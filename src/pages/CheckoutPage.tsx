@@ -66,32 +66,44 @@ export default function CheckoutPage() {
     if (user?.email)        setEmail(user.email);
   }, [profile, user]);
 
+  const [payError, setPayError] = useState<string | null>(null);
+
+  // PayTR ok/fail dönüşü: ?status=success|fail
+  const payStatus = params.get('status');
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!agree) return;
+    if (!user) { setPayError('Ödeme için giriş yapmalısınız.'); return; }
+    setPayError(null);
     setSubmitting(true);
 
-    /**
-     * TODO: Burada PayTR veya iyzico ödeme başlatma isteği atılacak.
-     *
-     * PayTR örneği:
-     *   const res = await fetch('/api/paytr/init', {
-     *     method: 'POST',
-     *     body: JSON.stringify({ planId, price: finalPrice, email, name, phone }),
-     *   });
-     *   const { token } = await res.json();
-     *   window.location.href = `https://www.paytr.com/odeme/guvenli/${token}`;
-     *
-     * iyzico örneği:
-     *   const res = await fetch('/api/iyzico/init', { ... });
-     *   const { checkoutFormContent } = await res.json();
-     *   // iyzico form HTML'ini sayfaya enjekte et
-     */
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      const supaUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+      if (!token || !supaUrl) throw new Error('Oturum bulunamadı, tekrar giriş yapın.');
 
-    // Şimdilik simülasyon
-    await new Promise(r => setTimeout(r, 1200));
-    setSubmitting(false);
-    alert('Ödeme altyapısı henüz entegre edilmedi. Bu ekran hazır — PayTR veya iyzico eklenecek.');
+      const res = await fetch(`${supaUrl}/functions/v1/paytr-init`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+          ...(anonKey ? { apikey: anonKey } : {}),
+        },
+        body: JSON.stringify({ plan: planId, student: isStudent, name, phone }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.iframeUrl) {
+        throw new Error(data?.error ?? 'Ödeme başlatılamadı.');
+      }
+      // PayTR güvenli ödeme sayfasına yönlendir
+      window.location.href = data.iframeUrl as string;
+    } catch (err) {
+      setPayError(err instanceof Error ? err.message : 'Ödeme başlatılamadı.');
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -173,6 +185,23 @@ export default function CheckoutPage() {
           transition={{ duration: 0.5, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
         >
           <h1 className={styles.formTitle}>Ödeme Bilgileri</h1>
+
+          {payStatus === 'success' && (
+            <div className={styles.loginHint} style={{ borderColor: '#10b981', color: '#10b981' }}>
+              <Check size={14} /> Ödemeniz alındı. Krediniz birkaç saniye içinde hesabınıza yansır.
+            </div>
+          )}
+          {payStatus === 'fail' && (
+            <div className={styles.loginHint} style={{ borderColor: '#ef4444', color: '#ef4444' }}>
+              <AlertCircle size={14} /> Ödeme tamamlanamadı veya iptal edildi. Tekrar deneyebilirsiniz.
+            </div>
+          )}
+          {payError && (
+            <div className={styles.loginHint} style={{ borderColor: '#ef4444', color: '#ef4444' }}>
+              <AlertCircle size={14} /> {payError}
+            </div>
+          )}
+
           {!user && (
             <div className={styles.loginHint}>
               <AlertCircle size={14} />
