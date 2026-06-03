@@ -110,6 +110,14 @@ export async function renderPageWithService(
  * PyMuPDF font-scaling ile orijinal bounding box'a tam sığdırır.
  * Başarısız olursa null döner (caller jsPDF overlay yöntemini kullanır).
  */
+/**
+ * render_mode:
+ *   'auto'   — arka plan karmaşıklığına göre otomatik seç (varsayılan)
+ *   'vector' — her zaman fill=None redaction (hızlı, vektör kalitesi)
+ *   'raster' — her zaman OpenCV inpaint (en temiz görsel, yavaş)
+ */
+export type RenderMode = 'auto' | 'vector' | 'raster';
+
 export async function writePDFWithTranslations(
   file: File,
   pages: Array<Array<{
@@ -120,12 +128,14 @@ export async function writePDFWithTranslations(
     alignment?: number;
   }>>,
   imageReplacements?: Array<{ pageNum: number; xref: number; imageBase64: string }>,
+  renderMode: RenderMode = 'auto',
 ): Promise<Blob | null> {
   if (!SERVICE_URL) return null;
 
   const formData = new FormData();
   formData.append('file', file);
   formData.append('pages_json', JSON.stringify(pages));
+  formData.append('render_mode', renderMode);
   if (imageReplacements && imageReplacements.length > 0) {
     formData.append('image_replacements_json', JSON.stringify(imageReplacements));
   }
@@ -157,9 +167,17 @@ export interface ServiceCapabilities {
   available: boolean;
   version?: string;
   unicodeFont?: boolean;
+  /** Yöntem A: fill=None redaction (v4+) */
+  vectorWrite?: boolean;
+  /** Yöntem B: OpenCV TELEA inpaint (v4+) */
+  inpaintWrite?: boolean;
+  /** Otomatik mod: karmaşıklığa göre A/B seçimi (v4+) */
+  autoMode?: boolean;
+  /** Eski alan adı — geriye dönük uyumluluk */
   redactionWrite?: boolean;
   imageTranslation?: boolean;
   paragraphGrouping?: boolean;
+  opencv?: boolean;
 }
 
 export async function getServiceCapabilities(): Promise<ServiceCapabilities> {
@@ -172,7 +190,12 @@ export async function getServiceCapabilities(): Promise<ServiceCapabilities> {
       available: true,
       version: data.version,
       unicodeFont: data.unicodeFont,
-      redactionWrite: data.capabilities?.redactionWrite,
+      opencv: data.opencv,
+      vectorWrite: data.capabilities?.vectorWrite,
+      inpaintWrite: data.capabilities?.inpaintWrite,
+      autoMode: data.capabilities?.autoMode,
+      // Geriye dönük uyumluluk
+      redactionWrite: data.capabilities?.vectorWrite ?? data.capabilities?.redactionWrite,
       imageTranslation: data.capabilities?.imageTranslation,
       paragraphGrouping: data.capabilities?.paragraphGrouping,
     };

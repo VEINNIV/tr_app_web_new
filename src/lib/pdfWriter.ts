@@ -14,6 +14,7 @@
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import { writePDFWithTranslations, checkServiceHealth } from './pdfExtractorService';
+import type { RenderMode } from './pdfExtractorService';
 import type { OverlayPage } from '../types';
 
 let cachedFontBytes: ArrayBuffer | null = null;
@@ -44,6 +45,13 @@ export interface WriteOptions {
   signal?: AbortSignal;
   /** Kullanıcı backend'i bilerek atla isterse true */
   preferLocal?: boolean;
+  /**
+   * PDF çeviri render modu:
+   *   'auto'   — arka plan karmaşıklığına göre otomatik seç (varsayılan)
+   *   'vector' — her zaman fill=None redaction (hızlı, vektör)
+   *   'raster' — her zaman OpenCV inpaint (en temiz, yavaş)
+   */
+  renderMode?: RenderMode;
 }
 
 const BLACK = rgb(0.06, 0.06, 0.10);
@@ -199,7 +207,7 @@ async function sampleBackgroundColors(
  * Ana giriş noktası: backend-first, fallback lokal.
  */
 export async function buildTranslatedPDF(opts: WriteOptions): Promise<Uint8Array> {
-  const { originalPDF, pages, imageReplacements, onProgress, signal, preferLocal } = opts;
+  const { originalPDF, pages, imageReplacements, onProgress, signal, preferLocal, renderMode = 'auto' } = opts;
 
   // Byte'a çevir (her iki yol da gerek)
   let bytes: Uint8Array;
@@ -213,7 +221,7 @@ export async function buildTranslatedPDF(opts: WriteOptions): Promise<Uint8Array
     bytes = originalPDF;
   }
 
-  // ── 1) Backend redaction (tercih edilen) ──────────────────────────────────
+  // ── 1) Backend hibrit redaction (tercih edilen) ───────────────────────────────────
   if (!preferLocal) {
     const healthy = await checkServiceHealth();
     if (healthy) {
@@ -230,14 +238,14 @@ export async function buildTranslatedPDF(opts: WriteOptions): Promise<Uint8Array
         })));
 
         onProgress?.(0, pages.length);
-        const blob = await writePDFWithTranslations(file, blocksByPage, imageReplacements);
+        const blob = await writePDFWithTranslations(file, blocksByPage, imageReplacements, renderMode);
         if (blob) {
           onProgress?.(pages.length, pages.length);
           const buf = await blob.arrayBuffer();
           return new Uint8Array(buf);
         }
       } catch (e) {
-        console.warn('Backend redaction başarısız, lokal fallback:', e);
+        console.warn('Backend hibrit redaction başarısız, lokal fallback:', e);
       }
     }
   }

@@ -13,10 +13,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChevronLeft, ChevronRight, X, Eye, EyeOff, Loader,
   ZoomIn, ZoomOut, Download, Sparkles, AlertCircle, CheckCircle2,
-  Columns2, SquareStack, Pencil,
+  Columns2, SquareStack, Pencil, Zap, Sparkles as Stars,
 } from 'lucide-react';
 import { loadPDFFromURL, renderPageToDataURL, type PDFProxy } from '../lib/pdfRenderer';
 import { translatePDF } from '../lib/pdfTranslator';
+import type { RenderMode } from '../lib/pdfExtractorService';
 // pdfWriter (→ pdf-lib ~1.2MB) dinamik import edilir — bu görüntüleyiciyi içeren
 // sayfalar (Belgeler listesi, Chat) açılırken değil, yalnızca çeviri kurulurken/indirilirken yüklenir.
 import TranslationEditor from './TranslationEditor';
@@ -66,6 +67,8 @@ export default function PDFOverlayViewer({
   const [exporting, setExporting] = useState(false);
   const [sideBySide, setSideBySide] = useState(false);
   const [showEditor, setShowEditor] = useState(false);
+  /** Render kalite modu: 'auto' = otomatik, 'vector' = hızlı, 'raster' = en temiz */
+  const [renderMode, setRenderMode] = useState<RenderMode>('auto');
 
   const abortRef = useRef<AbortController | null>(null);
   const translatedBlobRef = useRef<string | null>(null);
@@ -100,6 +103,7 @@ export default function PDFOverlayViewer({
         const bytes = await buildTranslatedPDF({
           originalPDF: arrayBuffer,
           pages: localOverlay.pages,
+          renderMode,
         });
         if (cancelled) return;
         setTranslatedBytes(bytes);
@@ -231,7 +235,7 @@ export default function PDFOverlayViewer({
     try {
       const res = await fetch(pdfUrl);
       const arrayBuffer = await res.arrayBuffer();
-      const bytes = await buildTranslatedPDF({ originalPDF: arrayBuffer, pages: localOverlay.pages });
+    const bytes = await buildTranslatedPDF({ originalPDF: arrayBuffer, pages: localOverlay.pages, renderMode });
       downloadBytes(bytes, `${safeName}_TR.pdf`);
     } catch (e: any) {
       alert('İndirme hatası: ' + (e.message || 'Bilinmeyen hata'));
@@ -320,6 +324,24 @@ export default function PDFOverlayViewer({
                 {exporting
                   ? <><Loader size={13} className={styles.spin} /> İndiriliyor…</>
                   : <><Download size={14} /> <span>PDF İndir</span></>
+                }
+              </button>
+            )}
+
+            {/* Kalite modu toggle */}
+            {localOverlay && (
+              <button
+                className={`${styles.toolBtn} ${renderMode === 'raster' ? styles.toolBtnActive : ''}`}
+                onClick={() => setRenderMode(m => m === 'raster' ? 'auto' : 'raster')}
+                title={renderMode === 'raster'
+                  ? 'Şu an: Maks Temizlik (OpenCV inpaint) — tıkla: Otomatik'
+                  : 'Şu an: Otomatik — tıkla: Maks Temizlik (OpenCV inpaint)'
+                }
+                style={{ gap: 5 }}
+              >
+                {renderMode === 'raster'
+                  ? <><Stars size={13} /> <span style={{ fontSize: 11 }}>Maks Temizlik</span></>
+                  : <><Zap size={13} /> <span style={{ fontSize: 11 }}>Otomatik</span></>
                 }
               </button>
             )}
