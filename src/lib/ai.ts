@@ -67,10 +67,38 @@ interface AIResponseRaw {
   usageMetadata?: { totalTokenCount?: number };
 }
 
-function checkFinishReason(reason?: string) {
+/**
+ * finishReason değerlendirmesi.
+ *  • SAFETY / RECITATION → içerik engellendi, kullanılabilir metin YOK → fırlat.
+ *  • MAX_TOKENS → yanıt kesildi AMA elde metin varsa kullanılabilir; bu durumda
+ *    `hasContent=true` ile çağrılır ve fırlatılmaz (kısmi yanıt korunur).
+ *    Metin yoksa (model tüm bütçeyi "düşünme"de harcadı) anlamlı hata ver.
+ */
+function checkFinishReason(reason?: string, hasContent = false) {
   if (reason === 'SAFETY') throw new Error('İçerik güvenlik filtresi tarafından engellendi. Farklı bir ifade deneyin.');
   if (reason === 'RECITATION') throw new Error('İçerik alıntı kısıtlamasına takıldı. Lütfen sorguyu değiştirin.');
-  if (reason === 'MAX_TOKENS') throw new Error('Yanıt çok uzun kesildi. Soruyu daha kısa parçalara bölün.');
+  if (reason === 'MAX_TOKENS' && !hasContent) {
+    throw new Error('Model çıktı üretmeden token sınırına ulaştı. Lütfen tekrar deneyin veya kaynağı küçültün.');
+  }
+}
+
+/**
+ * Gemini 3.x "düşünme" (thinking) seviyesi.
+ * 'minimal' → düşünme neredeyse kapalı: en hızlı + en ucuz yanıt, çıktı token
+ * bütçesi metne ayrılır. Çeviri/sohbet/not gibi doğrudan görevler için idealdir
+ * (Google önerisi). Düşünme açık kalırsa hem gecikme artar hem de çıktı bütçesi
+ * tükenip MAX_TOKENS ile boş yanıt dönebilir.
+ */
+export type ThinkingLevel = 'minimal' | 'low' | 'medium' | 'high';
+
+function buildGenerationConfig(
+  temperature: number,
+  maxOutputTokens: number,
+  thinkingLevel?: ThinkingLevel,
+): Record<string, unknown> {
+  const cfg: Record<string, unknown> = { temperature, maxOutputTokens };
+  if (thinkingLevel) cfg.thinkingConfig = { thinkingLevel };
+  return cfg;
 }
 
 export function isAIAvailable(): boolean {
@@ -83,6 +111,8 @@ interface CallOpts {
   systemInstruction?: string;
   temperature?: number;
   maxOutputTokens?: number;
+  /** Gemini 3.x düşünme seviyesi (varsayılan: minimal — hız + maliyet için). */
+  thinkingLevel?: ThinkingLevel;
   /** begin_ai_operation ile alınan operasyon jetonu — proxy kredi/limit zorlaması için zorunlu. */
   operationId?: string;
 }
@@ -92,6 +122,7 @@ async function callGemini({
   systemInstruction,
   temperature = 0.25,
   maxOutputTokens = 16384,
+  thinkingLevel = 'minimal',
   operationId,
   _useProModel = false,
 }: CallOpts & { _useProModel?: boolean }): Promise<string> {
@@ -101,7 +132,7 @@ async function callGemini({
     mode: 'generate',
     model: _useProModel ? MODEL_PRO : MODEL_FLASH,
     contents,
-    generationConfig: { temperature, maxOutputTokens },
+    generationConfig: buildGenerationConfig(temperature, maxOutputTokens, thinkingLevel),
     ...(operationId ? { operationId } : {}),
   };
   if (systemInstruction) {
@@ -127,8 +158,9 @@ async function callGemini({
   if (data.error) throw new Error(`AI hatası: ${data.error.message || 'Bilinmeyen hata'}`);
 
   const candidate = data.candidates?.[0];
-  checkFinishReason(candidate?.finishReason);
   const text = candidate?.content?.parts?.map(p => p.text ?? '').join('') ?? '';
+  // Önce metni al; MAX_TOKENS olsa bile metin varsa kullanılabilir (kısmi yanıt korunur).
+  checkFinishReason(candidate?.finishReason, !!text);
   if (!text) throw new Error('Model yanıt üretemedi. Lütfen soruyu farklı bir şekilde deneyin.');
   return text;
 }
@@ -158,10 +190,11 @@ export async function streamGemini(
     mode: 'stream',
     model: opts._useProModel ? MODEL_PRO : MODEL_FLASH,
     contents: opts.contents,
-    generationConfig: {
-      temperature: opts.temperature ?? 0.25,
-      maxOutputTokens: opts.maxOutputTokens ?? 16384,
-    },
+    generationConfig: buildGenerationConfig(
+      opts.temperature ?? 0.25,
+      opts.maxOutputTokens ?? 16384,
+      opts.thinkingLevel ?? 'minimal',
+    ),
     ...(opts.operationId ? { operationId: opts.operationId } : {}),
   };
   if (opts.systemInstruction) {
@@ -210,9 +243,10 @@ export async function streamGemini(
           full += piece;
           opts.onChunk?.(piece, full);
         }
-        // Son chunk'ta finishReason kontrolü
+        // Son chunk'ta finishReason kontrolü — MAX_TOKENS olsa bile elde metin
+        // varsa fırlatma (kısmi yanıt korunur), yalnızca SAFETY/RECITATION'da kes.
         if (candidate?.finishReason && candidate.finishReason !== 'STOP') {
-          checkFinishReason(candidate.finishReason);
+          checkFinishReason(candidate.finishReason, !!full);
         }
       } catch (e) {
         if ((e as Error)?.message?.includes('filtresi') || (e as Error)?.message?.includes('kısıtlama') || (e as Error)?.message?.includes('uzun')) throw e;
@@ -564,6 +598,7 @@ export async function processFilesMultimodal(
   systemInstruction?: string,
   onChunk?: (delta: string, full: string) => void,
   operationId?: string,
+  maxOutputTokens = 16384,
 ): Promise<string> {
   const inlineParts: AIPart[] = [];
   for (const f of files) {
@@ -574,9 +609,9 @@ export async function processFilesMultimodal(
     parts: [...inlineParts, { text: prompt }],
   }];
   if (onChunk) {
-    return streamGemini({ contents, systemInstruction, onChunk, maxOutputTokens: 16384, operationId });
+    return streamGemini({ contents, systemInstruction, onChunk, maxOutputTokens, operationId });
   }
-  return callGemini({ contents, systemInstruction, maxOutputTokens: 16384, operationId });
+  return callGemini({ contents, systemInstruction, maxOutputTokens, operationId });
 }
 
 // ─── 5) AI Sohbet (multi-turn, streaming) ───────────────────────────────────
@@ -1085,18 +1120,45 @@ export async function summarizeDocument(
   return callGemini({ contents, systemInstruction: systemPrompt, maxOutputTokens: 2048, operationId });
 }
 
-// ─── 6) Ders Notu Üretimi (multimodal, öğrenci odaklı) ──────────────────────
-export async function generateStudyNotes(
-  files: File[],
-  subject?: string,
-  _title?: string,
-  onChunk?: (delta: string, full: string) => void,
-  operationId?: string,
-): Promise<string> {
+// ─── 6) Ders Notu Üretimi (multimodal + metin kaynak birleştirme) ────────────
+
+export type StudyNoteLang = 'tr' | 'en';
+
+export interface StudyNoteTextSource {
+  /** Kaynağın görünen adı (belge adı vb.) — modele başlık olarak verilir. */
+  label: string;
+  /** Kaynağın düz metni (çeviri metni veya çıkarılmış orijinal metin). */
+  text: string;
+}
+
+export interface GenerateStudyNotesOptions {
+  /** Yüklenen görsel/PDF dosyaları (multimodal okuma). */
+  files?: File[];
+  /** Mevcut belge/çevirilerden gelen metin kaynakları (birleştirilir). */
+  textSources?: StudyNoteTextSource[];
+  subject?: string;
+  /** Çıktı dili — Türkçe (varsayılan) veya İngilizce. */
+  language?: StudyNoteLang;
+  onChunk?: (delta: string, full: string) => void;
+  operationId?: string;
+}
+
+/** Ders notu üretimi. Hem yüklenen dosyalardan hem mevcut metin kaynaklarından
+ *  (ör. çevrilmiş belgeler) birleşik not çıkarır. Çıktı dili seçilebilir. */
+export async function generateStudyNotes(opts: GenerateStudyNotesOptions): Promise<string> {
+  const { files = [], textSources = [], subject, language = 'tr', onChunk, operationId } = opts;
+  const langName = language === 'en' ? 'İngilizce (English)' : 'Türkçe';
   const subjectLine = subject ? `Ders/Konu: **${subject}**` : '';
+
+  // Metin kaynaklarını tek bağlam halinde birleştir (kaynak başlıklarıyla).
+  const mergedText = textSources
+    .filter(s => s.text && s.text.trim())
+    .map((s, i) => `### Kaynak ${i + 1}: ${s.label}\n${s.text.slice(0, 60_000)}`)
+    .join('\n\n---\n\n');
 
   const systemPrompt =
     `Sen deneyimli bir eğitim asistanısın ve üniversite/lise öğrencileri için ders notu hazırlıyorsun.
+ÇIKTI DİLİ: ${langName} — TÜM notu bu dilde yaz.
 ${subjectLine}
 
 MATERYALİ ANLAMA:
@@ -1138,14 +1200,55 @@ Her soru için:
 (3-5 soru — kolay, orta, zor karışık)
 
 ---
-Türkçe yaz. Öğrencinin anlayacağı sadelikte ama akademik doğrulukta ol.`;
+${langName} yaz. Birden fazla kaynak varsa bilgileri TEK bütünleşik nota harmanla (kaynakları tek tek tekrarlama). Öğrencinin anlayacağı sadelikte ama akademik doğrulukta ol.`;
 
-  const prompt =
-    `${files.length} kaynaktan ders notu hazırla. ` +
-    `Görsellerdeki TÜM yazıları, formülleri ve şemaları oku ve not haline getir. ` +
-    `Konuyu anlamayı kolaylaştıracak şekilde yapılandır.`;
+  const sourceCount = files.length + textSources.filter(s => s.text?.trim()).length;
+  const promptLines = [
+    `${sourceCount} kaynaktan birleşik bir ders notu hazırla.`,
+    files.length ? `Yüklenen görsel/PDF'lerdeki TÜM yazıları, formülleri ve şemaları oku.` : '',
+    mergedText ? `Aşağıdaki metin kaynaklarını da nota dahil et:\n\n${mergedText}` : '',
+    `Konuyu anlamayı kolaylaştıracak şekilde yapılandır. Çıktı tek bir Markdown not olsun.`,
+  ].filter(Boolean);
+  const prompt = promptLines.join('\n\n');
 
-  return processFilesMultimodal(files, prompt, systemPrompt, onChunk, operationId);
+  // Metin yoğun olabileceği için çıktı bütçesini yükselt.
+  const maxOut = 32768;
+
+  // Dosya yoksa (sadece metin kaynak) düz metin çağrısı; varsa multimodal.
+  if (files.length === 0) {
+    const contents: AIMessage[] = [{ role: 'user', parts: [{ text: prompt }] }];
+    if (onChunk) {
+      return streamGemini({ contents, systemInstruction: systemPrompt, onChunk, maxOutputTokens: maxOut, operationId });
+    }
+    return callGemini({ contents, systemInstruction: systemPrompt, maxOutputTokens: maxOut, operationId });
+  }
+  return processFilesMultimodal(files, prompt, systemPrompt, onChunk, operationId, maxOut);
+}
+
+/**
+ * Üretilmiş bir ders notunu (Markdown) hedef dile çevirir — TR↔EN.
+ * Bilingual indirme için kullanılır. Markdown yapısı, LaTeX formülleri ve
+ * tablolar korunur. Akış (stream) destekler.
+ */
+export async function translateStudyNotes(
+  markdown: string,
+  targetLang: StudyNoteLang,
+  onChunk?: (delta: string, full: string) => void,
+  operationId?: string,
+): Promise<string> {
+  const targetName = targetLang === 'en' ? 'İngilizce (English)' : 'Türkçe';
+  const systemPrompt =
+    `Sen akademik bir çevirmensin. Verilen ders notunu ${targetName} diline çevir.
+KURALLAR:
+- Markdown yapısını AYNEN koru (başlıklar #, listeler, tablolar, > alıntılar).
+- LaTeX formüllerini ($...$, $$...$$) ve sembolleri DEĞİŞTİRME.
+- Kod, değişken adları, özel adlar ve sayılar olduğu gibi kalsın.
+- Sadece çevrilmiş Markdown'ı döndür; açıklama ekleme.`;
+  const contents: AIMessage[] = [{ role: 'user', parts: [{ text: markdown }] }];
+  if (onChunk) {
+    return streamGemini({ contents, systemInstruction: systemPrompt, onChunk, maxOutputTokens: 32768, temperature: 0.1, operationId });
+  }
+  return callGemini({ contents, systemInstruction: systemPrompt, maxOutputTokens: 32768, temperature: 0.1, operationId });
 }
 
 // ─── 7) Profil tabanlı otomatik sözlük üretimi ───────────────────────────────

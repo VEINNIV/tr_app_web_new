@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
 import { streamDocumentChat, type ChatTurn } from '../lib/ai';
@@ -15,6 +15,13 @@ export interface ChatMessage {
   pending?: boolean;
 }
 
+/** Bir sohbet "kapsamı" — genel asistan (docId null) veya belirli bir belge. */
+export interface Conversation {
+  docId: string | null;
+  lastAt: string;
+  preview: string;
+}
+
 interface UseChatSessionOpts {
   profile: User | null;
   initDocId: string;
@@ -29,7 +36,13 @@ export function useChatSession({ profile, initDocId, refreshProfile }: UseChatSe
   const [selectedDocId, setSelectedDocId] = useState(initDocId);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [docContext, setDocContext] = useState<string | null>(null);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
   const abortRef = useRef<AbortController | null>(null);
+
+  // Streaming throttle — her SSE token'da setState yerine en fazla kare başına
+  // bir güncelleme yap (render jank'ini önler → "yavaş" hissini giderir).
+  const rafRef = useRef<number | null>(null);
+  const pendingFullRef = useRef<string>('');
 
   // Load completed documents for doc picker
   useEffect(() => {
@@ -43,8 +56,34 @@ export function useChatSession({ profile, initDocId, refreshProfile }: UseChatSe
       .then(({ data }) => { if (data) setDocuments(data as Document[]); });
   }, [profile]);
 
-  // Load chat history when doc or user changes
+  // ── Geçmiş sohbet kapsamlarını yükle ("eski chatler") ──────────────────────
   const profileId = profile?.id;
+  const loadConversations = useCallback(async () => {
+    if (!profileId) return;
+    const { data } = await supabase
+      .from('chat_messages')
+      .select('document_id, content, created_at')
+      .eq('user_id', profileId)
+      .order('created_at', { ascending: false })
+      .limit(400);
+    if (!data) return;
+    const map = new Map<string, Conversation>();
+    for (const m of data as Array<{ document_id: string | null; content: string | null; created_at: string }>) {
+      const key = m.document_id ?? '__general__';
+      if (!map.has(key)) {
+        map.set(key, {
+          docId: m.document_id ?? null,
+          lastAt: m.created_at,
+          preview: (m.content || '').replace(/\s+/g, ' ').slice(0, 80),
+        });
+      }
+    }
+    setConversations(Array.from(map.values()));
+  }, [profileId]);
+
+  useEffect(() => { void loadConversations(); }, [loadConversations]);
+
+  // Load chat history when doc or user changes
   useEffect(() => {
     if (!profileId) return;
     setMessages([]);
@@ -91,6 +130,16 @@ export function useChatSession({ profile, initDocId, refreshProfile }: UseChatSe
       });
   }, [selectedDocId]);
 
+  // Streaming güncellemesini kareye hizala
+  const flushStreaming = useCallback((asstId: string) => {
+    if (rafRef.current != null) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      const full = pendingFullRef.current;
+      setMessages(prev => prev.map(m => m.id === asstId ? { ...m, content: full } : m));
+    });
+  }, []);
+
   const sendMessage = async (opts?: { overrideText?: string; pageFile?: File }) => {
     const text = (opts?.overrideText ?? input).trim();
     const pageFile = opts?.pageFile ?? null;
@@ -107,13 +156,11 @@ export function useChatSession({ profile, initDocId, refreshProfile }: UseChatSe
     ];
 
     // ── Kredi zorlaması (server-side, atomik) — "bedava sohbet" sızıntısını önler ──
-    // begin_ai_operation krediyi atomik düşer VE ai-proxy'nin bu mesaj için çağrı
-    // yapmasına izin veren bir jeton üretir. Jeton olmadan proxy çağrılamaz.
     const CHAT_COST = (await getCreditCosts()).chat;
     const { data: opData, error: creditErr } = await supabase.rpc('begin_ai_operation', {
       p_action: 'chat',
       p_amount: CHAT_COST,
-      p_calls: 5, // stream + non-stream fallback + retry payı
+      p_calls: 5,
       p_reference: selectedDocId || null,
     });
     const operationId = (opData as Array<{ operation_id: string }> | null)?.[0]?.operation_id;
@@ -126,9 +173,9 @@ export function useChatSession({ profile, initDocId, refreshProfile }: UseChatSe
       } else {
         toast.error('Mesaj gönderilemedi, tekrar deneyin.');
       }
-      return; // mesaj gönderilmez
+      return;
     }
-    void refreshProfile?.(); // local kredi sayacını güncel tut
+    void refreshProfile?.();
 
     const userMsg: ChatMessage = {
       id: Date.now().toString(),
@@ -163,18 +210,22 @@ export function useChatSession({ profile, initDocId, refreshProfile }: UseChatSe
         filesToSend,
         (_delta, full) => {
           final = full;
-          setMessages(prev => prev.map(m => m.id === asstId ? { ...m, content: full } : m));
+          pendingFullRef.current = full;
+          flushStreaming(asstId);
         },
         abortRef.current.signal,
         operationId,
       );
+      if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
       setMessages(prev => prev.map(m => m.id === asstId ? { ...m, content: final, pending: false } : m));
       void supabase.from('chat_messages').insert({
         user_id: profile.id,
         ...(selectedDocId ? { document_id: selectedDocId } : {}),
         role: 'assistant', content: final, credits_used: 0,
       });
+      void loadConversations();
     } catch (err: unknown) {
+      if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
       const isAbort = err instanceof Error && (err.name === 'AbortError' || /İptal/.test(err.message));
       const errText = isAbort
         ? '_Yanıt durduruldu._'
@@ -194,6 +245,7 @@ export function useChatSession({ profile, initDocId, refreshProfile }: UseChatSe
     const scoped = selectedDocId ? q.eq('document_id', selectedDocId) : q.is('document_id', null);
     const { error } = await scoped;
     if (error) toast.error('Geçmiş silinemedi.');
+    else void loadConversations();
   };
 
   return {
@@ -204,6 +256,7 @@ export function useChatSession({ profile, initDocId, refreshProfile }: UseChatSe
     selectedDocId, setSelectedDocId,
     pendingFiles, setPendingFiles,
     docContext,
+    conversations,
     abortRef,
     sendMessage,
     clearChat,

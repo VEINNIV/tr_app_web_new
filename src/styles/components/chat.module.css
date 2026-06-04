@@ -838,3 +838,177 @@
   .chatTitle { font-size: 0.88rem; }
   .docChip { display: none; }
 }
+
+/* ══════════════════════════════════════════════════════════════
+   CONVERSATIONS SIDEBAR + LOGO BRANDING (v5)
+   ══════════════════════════════════════════════════════════════ */
+
+/* Sidebar açıkken grid'e bir kolon ekle (PDF durumlarıyla birleşik). */
+.withSidebar { grid-template-columns: 268px 1fr; }
+.withSidebar.chatLayoutWithPDF { grid-template-columns: 268px 1fr 400px; }
+.withSidebar.chatLayoutExpanded { grid-template-columns: 268px 1fr 560px; }
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+  overflow: hidden;
+}
+.sidebarHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+.sidebarBrand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-heading);
+  font-size: 0.9rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--color-text-primary);
+}
+.sidebarBrand img { object-fit: contain; }
+.sidebarCloseBtn {
+  display: grid; place-items: center;
+  width: 30px; height: 30px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  transition: color 0.14s, border-color 0.14s;
+}
+.sidebarCloseBtn:hover { color: var(--color-text-primary); border-color: var(--color-border-strong); }
+
+.newChatBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 14px 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-accent-medium);
+  border-radius: 11px;
+  background: var(--color-accent-light);
+  color: var(--color-accent);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.14s, border-color 0.14s;
+}
+.newChatBtn:hover { background: var(--color-accent-medium); }
+
+.convList {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 8px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  scrollbar-width: thin;
+}
+.convEmpty {
+  padding: 18px 12px;
+  font-size: 0.8rem;
+  color: var(--color-text-tertiary);
+  line-height: 1.5;
+}
+.convItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.convItem:hover { background: var(--color-bg-alt); }
+.convItemActive {
+  background: var(--color-accent-light);
+  border-color: var(--color-accent-medium);
+}
+.convIcon {
+  width: 32px; height: 32px;
+  flex-shrink: 0;
+  display: grid; place-items: center;
+  border-radius: 9px;
+  background: var(--color-bg-alt);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+}
+.convItemActive .convIcon { background: var(--color-surface); color: var(--color-accent); border-color: var(--color-accent-medium); }
+.convInfo { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+.convName {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.convItemActive .convName { color: var(--color-accent); }
+.convPreview {
+  font-size: 0.72rem;
+  color: var(--color-text-tertiary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.sidebarBackdrop { display: none; }
+
+/* Header ghost button (sidebar açma) */
+.iconGhost {
+  display: grid; place-items: center;
+  width: 32px; height: 32px;
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.14s, border-color 0.14s;
+}
+.iconGhost:hover { color: var(--color-accent); border-color: var(--color-accent-medium); }
+
+/* Logo branding — Brain ikonu yerine site logosu */
+.headerLogo {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+}
+.headerLogoImg { width: 20px; height: 20px; object-fit: contain; }
+.avatarLogo { width: 20px; height: 20px; object-fit: contain; }
+.emptyLogo { width: 34px; height: 34px; object-fit: contain; }
+
+/* Sidebar responsive — dar ekranda off-canvas çekmece */
+@media (max-width: 980px) {
+  .withSidebar,
+  .withSidebar.chatLayoutWithPDF,
+  .withSidebar.chatLayoutExpanded { grid-template-columns: 1fr; }
+
+  .sidebar {
+    position: fixed;
+    top: var(--navbar-height);
+    left: 0;
+    bottom: 0;
+    width: 280px;
+    z-index: 45;
+    box-shadow: var(--shadow-xl);
+  }
+  .sidebarBackdrop {
+    display: block;
+    position: fixed;
+    inset: var(--navbar-height) 0 0 0;
+    z-index: 44;
+    background: rgba(0, 0, 0, 0.4);
+  }
+}

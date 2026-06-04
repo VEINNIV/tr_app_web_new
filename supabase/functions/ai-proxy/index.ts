@@ -66,12 +66,22 @@ interface AIContent {
   role: 'user' | 'model';
   parts: AIPart[];
 }
+interface ThinkingConfig {
+  thinkingLevel?: 'minimal' | 'low' | 'medium' | 'high';
+  thinkingBudget?: number;
+}
 interface AIRequest {
   mode?: 'generate' | 'stream';
   model?: string;
   contents?: AIContent[];
   systemInstruction?: { parts: Array<{ text: string }> };
-  generationConfig?: { temperature?: number; maxOutputTokens?: number };
+  generationConfig?: {
+    temperature?: number;
+    maxOutputTokens?: number;
+    topP?: number;
+    topK?: number;
+    thinkingConfig?: ThinkingConfig;
+  };
   /** Zorunlu — begin_ai_operation ile alınan operasyon jetonu. Kredi/limit zorlaması için. */
   operationId?: string;
 }
@@ -170,12 +180,28 @@ Deno.serve(async (req) => {
   }
 
   // ── Gemini istek gövdesi ────────────────────────────────────────────────
+  // generationConfig'i güvenli alanlarla ileriye taşı (whitelist). Böylece
+  // istemci thinkingConfig (Gemini 3.x düşünme seviyesi) gönderebilir; bu
+  // hem gecikmeyi (hız) hem de çıktı bütçesi tükenmesini (MAX_TOKENS) önler.
+  const inCfg = payload.generationConfig ?? {};
+  const reqMaxOut = typeof inCfg.maxOutputTokens === 'number' ? inCfg.maxOutputTokens : 16384;
+  const genCfg: Record<string, unknown> = {
+    temperature: typeof inCfg.temperature === 'number' ? Math.max(0, Math.min(inCfg.temperature, 2)) : 0.25,
+    // Üst sınır: kötü niyetli istemcinin sınırsız çıktı istemesini engelle.
+    maxOutputTokens: Math.max(1, Math.min(reqMaxOut, 65536)),
+  };
+  if (typeof inCfg.topP === 'number') genCfg.topP = inCfg.topP;
+  if (typeof inCfg.topK === 'number') genCfg.topK = inCfg.topK;
+  if (inCfg.thinkingConfig && typeof inCfg.thinkingConfig === 'object') {
+    const tc: Record<string, unknown> = {};
+    const lvl = inCfg.thinkingConfig.thinkingLevel;
+    if (lvl && ['minimal', 'low', 'medium', 'high'].includes(lvl)) tc.thinkingLevel = lvl;
+    if (typeof inCfg.thinkingConfig.thinkingBudget === 'number') tc.thinkingBudget = inCfg.thinkingConfig.thinkingBudget;
+    if (Object.keys(tc).length) genCfg.thinkingConfig = tc;
+  }
   const geminiBody: Record<string, unknown> = {
     contents: payload.contents,
-    generationConfig: {
-      temperature: payload.generationConfig?.temperature ?? 0.25,
-      maxOutputTokens: payload.generationConfig?.maxOutputTokens ?? 16384,
-    },
+    generationConfig: genCfg,
   };
   if (payload.systemInstruction) {
     geminiBody.systemInstruction = payload.systemInstruction;

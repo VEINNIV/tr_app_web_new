@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useEffect, useRef, useCallback, memo } from 'react';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { generateStudyNotes } from '../lib/ai';
+import { generateStudyNotes, translateStudyNotes, type StudyNoteLang, type StudyNoteTextSource } from '../lib/ai';
 import { STUDY_SUBJECTS } from '../lib/constants';
 import { getCreditCosts, getCachedCreditCosts } from '../lib/creditConfig';
 import { formatTrDate, formatFileSize } from '../lib/utils';
@@ -10,16 +10,18 @@ import { useExportDoc } from '../hooks/useExportDoc';
 import type { ExportFormat } from '../hooks/useExportDoc';
 import toast from 'react-hot-toast';
 import {
-  BookOpen, Upload, File as FileIcon, X, Check,
-  Image as ImageIcon, Copy, RefreshCw, FileText, FileType, FileCode, Wand2,
-  History, Clock, Eye, Loader, Trash2, Plus, FolderOpen,
+  Upload, File as FileIcon, X, Check, Image as ImageIcon, Copy, RefreshCw,
+  FileText, FileType, FileCode, Wand2, History, Clock, Eye, Loader2, Trash2,
+  Plus, FolderOpen, Layers, Languages, FileStack, GripVertical, Sparkles,
 } from 'lucide-react';
-import type { StudySession } from '../types';
+import type { Document, StudySession } from '../types';
 import styles from '../styles/components/studynotes.module.css';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 
-type Step = 'upload' | 'processing' | 'result';
+type Step = 'compose' | 'processing' | 'result';
 
 interface UploadedFile {
   id: string;
@@ -27,27 +29,63 @@ interface UploadedFile {
   preview?: string;
 }
 
+interface DocSource {
+  id: string;
+  label: string;
+  text: string;
+}
+
+const remarkPlugins = [remarkGfm, remarkMath];
+const rehypePlugins = [rehypeKatex];
+
+// Markdown'ı yalnızca metin değişince yeniden render et — streaming sırasında
+// her token'da tüm ağacın yeniden parse edilmesini önler (performans).
+const NotesMarkdown = memo(function NotesMarkdown({ text }: { text: string }) {
+  return (
+    <ReactMarkdown remarkPlugins={remarkPlugins as any} rehypePlugins={rehypePlugins as any}>
+      {text}
+    </ReactMarkdown>
+  );
+});
+
 export default function StudyNotesPage() {
   const { profile, refreshProfile } = useAuth();
+  const reduced = useReducedMotion();
   const [view, setView] = useState<'create' | 'history'>('create');
-  const [step, setStep] = useState<Step>('upload');
+  const [step, setStep] = useState<Step>('compose');
+
+  // Kaynaklar
   const [files, setFiles] = useState<UploadedFile[]>([]);
-  const [subject, setSubject] = useState(STUDY_SUBJECTS[0]);
+  const [docSources, setDocSources] = useState<DocSource[]>([]);
   const [isDragging, setIsDragging] = useState(false);
-  const [generatedNotes, setGeneratedNotes] = useState<string>('');
-  const [streamingText, setStreamingText] = useState<string>('');
+
+  // Seçenekler
+  const [subject, setSubject] = useState(STUDY_SUBJECTS[0]);
+  const [language, setLanguage] = useState<StudyNoteLang>('tr');
   const [studyCost, setStudyCost] = useState<number>(getCachedCreditCosts().studyNotes);
 
-  // Geçmiş ders notları (study_sessions)
+  // Üretim / sonuç
+  const [streamingText, setStreamingText] = useState('');
+  const [notesByLang, setNotesByLang] = useState<Partial<Record<StudyNoteLang, string>>>({});
+  const [activeLang, setActiveLang] = useState<StudyNoteLang>('tr');
+  const [translating, setTranslating] = useState(false);
+
+  // Belge seçici
+  const [docPickerOpen, setDocPickerOpen] = useState(false);
+  const [availableDocs, setAvailableDocs] = useState<Array<Document & { _text: string }>>([]);
+  const [docsLoading, setDocsLoading] = useState(false);
+
+  // Geçmiş
   const [history, setHistory] = useState<StudySession[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [viewingSession, setViewingSession] = useState<StudySession | null>(null);
-  // Aktif oturum kimliği — hata durumunda 'error' işaretlemek için
-  const sessionIdRef = useRef<string | null>(null);
 
-  useEffect(() => { getCreditCosts().then(c => setStudyCost(c.studyNotes)); }, []);
+  const sessionIdRef = useRef<string | null>(null);
   const { exporting, downloadAs: exportDoc } = useExportDoc();
 
+  useEffect(() => { getCreditCosts().then(c => setStudyCost(c.studyNotes)); }, []);
+
+  // ── Geçmiş ────────────────────────────────────────────────────────────────
   const fetchHistory = useCallback(async () => {
     if (!profile) return;
     setHistoryLoading(true);
@@ -61,95 +99,83 @@ export default function StudyNotesPage() {
     setHistoryLoading(false);
   }, [profile]);
 
-  // İlk yüklemede geçmişi getir
   useEffect(() => { void fetchHistory(); }, [fetchHistory]);
 
-  const handleDeleteSession = async (id: string) => {
-    const { error } = await supabase.from('study_sessions').delete().eq('id', id);
-    if (error) { toast.error('Silinemedi'); return; }
-    setHistory(prev => prev.filter(s => s.id !== id));
-    if (viewingSession?.id === id) setViewingSession(null);
-    toast.success('Not silindi');
-  };
+  // ── Belge kaynaklarını yükle (tamamlanmış belgeler + çevirileri) ───────────
+  const loadDocuments = useCallback(async () => {
+    if (!profile) return;
+    setDocsLoading(true);
+    try {
+      const { data: docs } = await supabase
+        .from('documents')
+        .select('*')
+        .eq('user_id', profile.id)
+        .eq('status', 'completed')
+        .order('created_at', { ascending: false });
+      const docList = (docs as Document[] | null) ?? [];
+      if (docList.length === 0) { setAvailableDocs([]); return; }
 
-  /** Markdown notu istenen formatta indirir (hem aktif sonuç hem geçmiş için). */
-  const downloadNotes = (
-    format: ExportFormat,
-    markdown: string,
-    subjectLabel: string,
-    dateStr: string,
-  ) => {
-    if (!markdown) return;
-    exportDoc(format, {
-      markdown,
-      filename: `${subjectLabel}_Notlari_${dateStr.slice(0, 10)}`.replace(/[^\w\d-_]+/g, '_'),
-      title: `${subjectLabel} Notları`,
-      subtitle: `${subjectLabel} • ${formatTrDate(dateStr)}`,
+      const { data: trans } = await supabase
+        .from('translations')
+        .select('document_id, translated_text')
+        .in('document_id', docList.map(d => d.id))
+        .eq('status', 'completed');
+
+      const textByDoc = new Map<string, string>();
+      for (const t of (trans as Array<{ document_id: string; translated_text: { pages?: string[] } | null }> | null) ?? []) {
+        const pages = t.translated_text?.pages;
+        if (Array.isArray(pages) && pages.length) {
+          textByDoc.set(t.document_id, pages.join('\n\n'));
+        }
+      }
+      setAvailableDocs(docList.map(d => ({ ...d, _text: textByDoc.get(d.id) ?? '' })));
+    } finally {
+      setDocsLoading(false);
+    }
+  }, [profile]);
+
+  const openDocPicker = () => { setDocPickerOpen(true); void loadDocuments(); };
+
+  const toggleDocSource = (doc: Document & { _text: string }) => {
+    setDocSources(prev => {
+      const exists = prev.find(s => s.id === doc.id);
+      if (exists) return prev.filter(s => s.id !== doc.id);
+      if (!doc._text) { toast.error('Bu belgenin çeviri metni bulunamadı.'); return prev; }
+      return [...prev, { id: doc.id, label: doc.original_name, text: doc._text }];
     });
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-  };
-
+  // ── Dosya yükleme ───────────────────────────────────────────────────────────
   const processFiles = (newFiles: FileList | File[]) => {
-    const validFiles = Array.from(newFiles).filter(file => {
-      // Allow images and PDFs up to 10MB each
-      const isValidType = file.type.startsWith('image/') || file.type === 'application/pdf';
-      const isValidSize = file.size <= 10 * 1024 * 1024;
-      if (!isValidType) toast.error(`${file.name} desteklenmeyen bir format.`);
-      if (!isValidSize) toast.error(`${file.name} boyutu çok büyük (Max 10MB).`);
-      return isValidType && isValidSize;
+    const valid = Array.from(newFiles).filter(file => {
+      const okType = file.type.startsWith('image/') || file.type === 'application/pdf';
+      const okSize = file.size <= 10 * 1024 * 1024;
+      if (!okType) toast.error(`${file.name} desteklenmeyen bir format.`);
+      if (!okSize) toast.error(`${file.name} çok büyük (Max 10MB).`);
+      return okType && okSize;
     });
-
-    if (files.length + validFiles.length > 5) {
-      toast.error('Tek seferde en fazla 5 dosya yükleyebilirsiniz.');
-      return;
-    }
-
-    const newUploadedFiles = validFiles.map(file => ({
-      id: Math.random().toString(36).substring(7),
+    if (files.length + valid.length > 8) { toast.error('En fazla 8 dosya ekleyebilirsiniz.'); return; }
+    setFiles(prev => [...prev, ...valid.map(file => ({
+      id: Math.random().toString(36).slice(2),
       file,
-      preview: file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined
-    }));
-
-    setFiles(prev => [...prev, ...newUploadedFiles]);
+      preview: file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined,
+    }))]);
   };
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    if (e.dataTransfer.files) {
-      processFiles(e.dataTransfer.files);
-    }
-  };
+  const removeFile = (id: string) => setFiles(prev => prev.filter(f => f.id !== id));
+  const removeDocSource = (id: string) => setDocSources(prev => prev.filter(s => s.id !== id));
 
-  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      processFiles(e.target.files);
-    }
-  };
+  const totalSources = files.length + docSources.length;
+  const totalCost = totalSources * studyCost;
 
-  const removeFile = (id: string) => {
-    setFiles(prev => prev.filter(f => f.id !== id));
-  };
-
+  // ── Üretim ───────────────────────────────────────────────────────────────
   const startProcessing = async () => {
     if (!profile) return;
-    if (files.length === 0) {
-      toast.error('Lütfen en az bir dosya yükleyin.');
-      return;
-    }
+    if (totalSources === 0) { toast.error('En az bir kaynak ekleyin (dosya veya belge).'); return; }
 
-    const totalCost = files.length * (await getCreditCosts()).studyNotes;
-    if (profile.credits_remaining < totalCost) {
-      toast.error(`Yetersiz kredi. Bu işlem ${totalCost} kredi gerektiriyor.`);
+    const cost = totalSources * (await getCreditCosts()).studyNotes;
+    if (profile.credits_remaining < cost) {
+      toast.error(`Yetersiz kredi. Bu işlem ${cost} kredi gerektiriyor.`);
       return;
     }
 
@@ -158,12 +184,10 @@ export default function StudyNotesPage() {
 
     let operationId: string | undefined;
     try {
-      // 1. Operasyon jetonu al — krediyi atomik düş + proxy çağrı hakkı üret.
-      //    Jeton olmadan ai-proxy çağrılamaz (kredi-bypass imkânsız).
       const { data: opData, error: creditErr } = await supabase.rpc('begin_ai_operation', {
         p_action: 'study_notes',
-        p_amount: totalCost,
-        p_calls: files.length * 2 + 5,
+        p_amount: cost,
+        p_calls: totalSources * 2 + 5,
         p_reference: null,
       });
       operationId = (opData as Array<{ operation_id: string }> | null)?.[0]?.operation_id;
@@ -174,342 +198,374 @@ export default function StudyNotesPage() {
             : /fazla istek/.test(m) ? 'Çok fazla istek — biraz bekleyin.'
             : 'İşlem başlatılamadı.',
         );
-        setStep('upload');
+        setStep('compose');
         return;
       }
 
-      // 2. Session kaydı oluştur — hata yutulmaz; kayıt başarısız olursa
-      //    not üretilse bile sonradan görüntülenemez, kullanıcıyı uyar.
       const { data: session, error: sessionErr } = await supabase.from('study_sessions').insert({
         user_id: profile.id,
         title: `${subject} Notları - ${formatTrDate()}`,
-        subject: subject,
-        source_count: files.length,
+        subject,
+        source_count: totalSources,
         status: 'processing',
-        credits_used: totalCost,
+        credits_used: cost,
       }).select().single();
       if (sessionErr || !session) {
-        console.error('study_sessions insert başarısız:', sessionErr);
         throw new Error('Ders notu oturumu oluşturulamadı: ' + (sessionErr?.message ?? 'bilinmeyen hata'));
       }
       sessionIdRef.current = session.id;
 
-      // 4. AI'a dosyaları DOĞRUDAN gönder — multimodal
-      const rawFiles = files.map(f => f.file);
-      const notes = await generateStudyNotes(
-        rawFiles,
+      const textSources: StudyNoteTextSource[] = docSources.map(s => ({ label: s.label, text: s.text }));
+      const notes = await generateStudyNotes({
+        files: files.map(f => f.file),
+        textSources,
         subject,
-        undefined,
-        (_delta, full) => setStreamingText(full),
+        language,
+        onChunk: (_d, full) => setStreamingText(full),
         operationId,
-      );
+      });
 
-      // 5. Sonucu kaydet — kayıt hatası da yutulmaz
       const { error: updateErr } = await supabase.from('study_sessions').update({
         generated_notes: notes,
         status: 'completed',
       }).eq('id', session.id);
-      if (updateErr) {
-        console.error('study_sessions update başarısız:', updateErr);
-        toast.error('Not oluşturuldu ama kaydedilemedi — geçmişte görünmeyebilir.');
-      }
+      if (updateErr) toast.error('Not oluşturuldu ama kaydedilemedi — geçmişte görünmeyebilir.');
 
-      sessionIdRef.current = null; // başarı: hata işaretleme yok
-      setGeneratedNotes(notes);
+      sessionIdRef.current = null;
+      setNotesByLang({ [language]: notes });
+      setActiveLang(language);
       setStep('result');
       await refreshProfile();
-      void fetchHistory(); // geçmiş listesini tazele
-      toast.success('Ders notu başarıyla oluşturuldu!');
+      void fetchHistory();
+      toast.success('Ders notu hazır!');
     } catch (error) {
-      console.error(error);
-      // Oturum açıldıysa 'error' olarak işaretle ('processing'te asılı kalmasın)
       if (sessionIdRef.current) {
-        try {
-          await supabase.from('study_sessions').update({ status: 'error' }).eq('id', sessionIdRef.current);
-        } catch { /* yut */ }
+        try { await supabase.from('study_sessions').update({ status: 'error' }).eq('id', sessionIdRef.current); } catch { /* yut */ }
         sessionIdRef.current = null;
       }
-      // Henüz hiç AI çağrısı yapılmadıysa krediyi iade et
       if (operationId) {
         try { await supabase.rpc('refund_ai_operation', { p_op_id: operationId }); } catch { /* yut */ }
         await refreshProfile();
       }
-      const msg = error instanceof Error ? error.message : 'Notlar oluşturulurken bir hata oluştu.';
-      toast.error(msg);
-      setStep('upload');
+      toast.error(error instanceof Error ? error.message : 'Notlar oluşturulurken bir hata oluştu.');
+      setStep('compose');
     }
   };
 
-  const downloadAs = (format: ExportFormat) => {
-    downloadNotes(format, generatedNotes, subject, new Date().toISOString());
+  // ── Sonuç dilini değiştir (gerekirse çevir — ek kredi) ─────────────────────
+  const switchLang = async (target: StudyNoteLang) => {
+    if (target === activeLang) return;
+    if (notesByLang[target]) { setActiveLang(target); return; }
+    if (!profile) return;
+
+    const source = notesByLang[activeLang];
+    if (!source) return;
+
+    const cost = await getCreditCosts().then(c => c.studyNotes);
+    if (profile.credits_remaining < cost) { toast.error(`Çeviri için ${cost} kredi gerekiyor.`); return; }
+
+    setTranslating(true);
+    let operationId: string | undefined;
+    try {
+      const { data: opData, error: creditErr } = await supabase.rpc('begin_ai_operation', {
+        p_action: 'study_notes', p_amount: cost, p_calls: 3, p_reference: null,
+      });
+      operationId = (opData as Array<{ operation_id: string }> | null)?.[0]?.operation_id;
+      if (creditErr || !operationId) { toast.error('Çeviri başlatılamadı.'); return; }
+
+      const translated = await translateStudyNotes(source, target, undefined, operationId);
+      setNotesByLang(prev => ({ ...prev, [target]: translated }));
+      setActiveLang(target);
+      await refreshProfile();
+      toast.success(target === 'en' ? 'İngilizce sürüm hazır.' : 'Türkçe sürüm hazır.');
+    } catch (e) {
+      if (operationId) { try { await supabase.rpc('refund_ai_operation', { p_op_id: operationId }); } catch { /* yut */ } await refreshProfile(); }
+      toast.error(e instanceof Error ? e.message : 'Çeviri başarısız.');
+    } finally {
+      setTranslating(false);
+    }
   };
 
+  // ── İndirme ──────────────────────────────────────────────────────────────
+  const downloadNotes = (format: ExportFormat, markdown: string, subjectLabel: string, dateStr: string, lang: StudyNoteLang) => {
+    if (!markdown) return;
+    const langTag = lang === 'en' ? 'EN' : 'TR';
+    exportDoc(format, {
+      markdown,
+      filename: `${subjectLabel}_Notlari_${langTag}_${dateStr.slice(0, 10)}`.replace(/[^\w\d-_]+/g, '_'),
+      title: `${subjectLabel} ${lang === 'en' ? 'Notes' : 'Notları'}`,
+      subtitle: `${subjectLabel} • ${formatTrDate(dateStr)}`,
+    });
+  };
+
+  const currentNotes = notesByLang[activeLang] ?? '';
+  const downloadCurrent = (format: ExportFormat) =>
+    downloadNotes(format, currentNotes, subject, new Date().toISOString(), activeLang);
+
   const handleCopy = () => {
-    navigator.clipboard.writeText(generatedNotes);
-    toast.success('Pano\'ya kopyalandı');
+    navigator.clipboard.writeText(currentNotes);
+    toast.success('Panoya kopyalandı');
   };
 
   const reset = () => {
+    files.forEach(f => f.preview && URL.revokeObjectURL(f.preview));
     setFiles([]);
-    setGeneratedNotes('');
-    setStep('upload');
+    setDocSources([]);
+    setNotesByLang({});
+    setStreamingText('');
+    setStep('compose');
   };
 
-  const tabStyle = (active: boolean): React.CSSProperties => ({
-    display: 'inline-flex', alignItems: 'center', gap: 6,
-    padding: '9px 16px', borderRadius: 'var(--radius-md)', cursor: 'pointer',
-    font: 'inherit', fontSize: '0.875rem', fontWeight: 600,
-    border: `1px solid ${active ? 'transparent' : 'var(--color-border)'}`,
-    background: active ? '#8b5cf6' : 'var(--color-surface)',
-    color: active ? '#fff' : 'var(--color-text-secondary)',
-    transition: 'all 0.15s',
-  });
+  const handleDeleteSession = async (id: string) => {
+    const { error } = await supabase.from('study_sessions').delete().eq('id', id);
+    if (error) { toast.error('Silinemedi'); return; }
+    setHistory(prev => prev.filter(s => s.id !== id));
+    if (viewingSession?.id === id) setViewingSession(null);
+    toast.success('Not silindi');
+  };
+
+  if (!profile) {
+    return <div className={styles.loadingPage}><Loader2 className={styles.spin} size={26} /></div>;
+  }
 
   return (
     <div className={styles.page}>
-      <div className={styles.header}>
-        <div className={styles.headerIcon}><BookOpen size={24} /></div>
-        <div>
-          <h1 className={styles.title}>Ders Notu Çıkar</h1>
-          <p className={styles.subtitle}>Sınıf tahtası, slaytlar veya kitap sayfalarından saniyeler içinde not oluşturun.</p>
+      {/* ── Başlık ── */}
+      <header className={styles.header}>
+        <div className={styles.headerBrand}>
+          <div className={styles.headerLogo}>
+            <img src="/trans_wordly.png" alt="" width={26} height={26} draggable={false} />
+          </div>
+          <div>
+            <h1 className={styles.title}>Not Stüdyosu</h1>
+            <p className={styles.subtitle}>
+              Fotoğraf, slayt, PDF veya çevirdiğin belgelerden tek tıkla ders notu çıkar.
+            </p>
+          </div>
         </div>
-      </div>
 
-      {/* Sekme: Yeni Not / Geçmiş Notlarım */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 'var(--space-5)' }}>
-        <button onClick={() => setView('create')} style={tabStyle(view === 'create')}>
-          <Plus size={16} /> Yeni Not
-        </button>
-        <button onClick={() => { setView('history'); void fetchHistory(); }} style={tabStyle(view === 'history')}>
-          <History size={16} /> Geçmiş Notlarım{history.length > 0 ? ` (${history.length})` : ''}
-        </button>
-      </div>
+        <div className={styles.tabs}>
+          <button className={`${styles.tab} ${view === 'create' ? styles.tabActive : ''}`} onClick={() => setView('create')}>
+            <Plus size={15} /> Yeni Not
+          </button>
+          <button className={`${styles.tab} ${view === 'history' ? styles.tabActive : ''}`} onClick={() => { setView('history'); void fetchHistory(); }}>
+            <History size={15} /> Notlarım{history.length > 0 ? ` · ${history.length}` : ''}
+          </button>
+        </div>
+      </header>
 
+      {/* ══════════ CREATE ══════════ */}
       {view === 'create' && (
-      <div className={styles.wizard}>
         <AnimatePresence mode="wait">
 
-          {/* ── STEP 1: UPLOAD ── */}
-          {step === 'upload' && (
+          {/* ── COMPOSE ── */}
+          {step === 'compose' && (
             <motion.div
-              key="upload"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
+              key="compose"
+              className={styles.composeGrid}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
             >
-              <div className={styles.uploadArea}>
-                <div
-                  className={`${styles.dropzone} ${isDragging ? styles.dropzoneActive : ''}`}
-                  onDragOver={handleDragOver}
-                  onDragLeave={handleDragLeave}
-                  onDrop={handleDrop}
-                  onClick={() => document.getElementById('fileUpload')?.click()}
-                >
-                  <Upload size={48} className={styles.uploadIcon} />
-                  <div className={styles.dropzoneText}>Görsel veya PDF'leri buraya sürükleyin</div>
-                  <div className={styles.dropzoneSubtext}>veya cihazınızdan seçmek için tıklayın. (Max 5 dosya)</div>
-                  <input
-                    id="fileUpload"
-                    type="file"
-                    multiple
-                    accept="image/*,application/pdf"
-                    onChange={handleFileInput}
-                    style={{ display: 'none' }}
-                  />
+              {/* Kaynaklar kartı */}
+              <section className={styles.panel}>
+                <div className={styles.panelHead}>
+                  <Layers size={16} />
+                  <h2>Kaynaklar</h2>
+                  {totalSources > 0 && <span className={styles.countPill}>{totalSources}</span>}
                 </div>
 
-                {files.length > 0 && (
-                  <div className={styles.fileList}>
-                    {files.map(file => (
-                      <div key={file.id} className={styles.fileItem}>
-                        <div className={styles.fileItemIcon}>
-                          {file.file.type.startsWith('image/') ? <ImageIcon size={20} /> : <FileIcon size={20} />}
+                <div
+                  className={`${styles.dropzone} ${isDragging ? styles.dropzoneActive : ''}`}
+                  onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
+                  onDragLeave={e => { e.preventDefault(); setIsDragging(false); }}
+                  onDrop={e => { e.preventDefault(); setIsDragging(false); if (e.dataTransfer.files) processFiles(e.dataTransfer.files); }}
+                  onClick={() => document.getElementById('snFileInput')?.click()}
+                >
+                  <div className={styles.dropIcon}><Upload size={22} /></div>
+                  <div className={styles.dropText}>Görsel veya PDF sürükle</div>
+                  <div className={styles.dropSub}>ya da seçmek için tıkla — en fazla 8 dosya, 10MB</div>
+                  <input id="snFileInput" type="file" multiple accept="image/*,application/pdf"
+                    onChange={e => { if (e.target.files) processFiles(e.target.files); e.target.value = ''; }}
+                    style={{ display: 'none' }} />
+                </div>
+
+                <button className={styles.addDocsBtn} onClick={openDocPicker}>
+                  <FileStack size={15} /> Belgelerimden / çevirilerimden ekle
+                </button>
+
+                {/* Seçili kaynak listesi */}
+                {(files.length > 0 || docSources.length > 0) && (
+                  <div className={styles.sourceList}>
+                    {docSources.map(s => (
+                      <div key={s.id} className={styles.sourceItem}>
+                        <span className={`${styles.sourceIcon} ${styles.sourceIconDoc}`}><Languages size={16} /></span>
+                        <div className={styles.sourceInfo}>
+                          <div className={styles.sourceName}>{s.label}</div>
+                          <div className={styles.sourceMeta}>Çevrilmiş belge · {Math.round(s.text.length / 1000)}K karakter</div>
                         </div>
-                        <div className={styles.fileItemInfo}>
-                          <div className={styles.fileItemName}>{file.file.name}</div>
-                          <div className={styles.fileItemSize}>{formatFileSize(file.file.size)}</div>
+                        <button className={styles.sourceRemove} onClick={() => removeDocSource(s.id)}><X size={15} /></button>
+                      </div>
+                    ))}
+                    {files.map(f => (
+                      <div key={f.id} className={styles.sourceItem}>
+                        <span className={styles.sourceIcon}>
+                          {f.preview ? <img src={f.preview} alt="" className={styles.sourceThumb} /> : f.file.type.startsWith('image/') ? <ImageIcon size={16} /> : <FileIcon size={16} />}
+                        </span>
+                        <div className={styles.sourceInfo}>
+                          <div className={styles.sourceName}>{f.file.name}</div>
+                          <div className={styles.sourceMeta}>{formatFileSize(f.file.size)}</div>
                         </div>
-                        <button className={styles.removeBtn} onClick={(e) => { e.stopPropagation(); removeFile(file.id); }}>
-                          <X size={16} />
-                        </button>
+                        <button className={styles.sourceRemove} onClick={() => removeFile(f.id)}><X size={15} /></button>
                       </div>
                     ))}
                   </div>
                 )}
-              </div>
+              </section>
 
-              <div className={styles.actionBar}>
-                <select
-                  className={styles.subjectSelect}
-                  value={subject}
-                  onChange={e => setSubject(e.target.value)}
-                >
-                  {STUDY_SUBJECTS.map(sub => (
-                    <option key={sub} value={sub}>{sub}</option>
-                  ))}
-                </select>
+              {/* Ayarlar kartı */}
+              <section className={`${styles.panel} ${styles.panelOptions}`}>
+                <div className={styles.panelHead}>
+                  <Wand2 size={16} />
+                  <h2>Not Ayarları</h2>
+                </div>
 
-                <button
+                <label className={styles.field}>
+                  <span className={styles.fieldLabel}>Ders / Konu</span>
+                  <select className={styles.select} value={subject} onChange={e => setSubject(e.target.value)}>
+                    {STUDY_SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </label>
+
+                <div className={styles.field}>
+                  <span className={styles.fieldLabel}>Not dili</span>
+                  <div className={styles.langSwitch}>
+                    {(['tr', 'en'] as StudyNoteLang[]).map(l => (
+                      <button key={l} className={`${styles.langOpt} ${language === l ? styles.langOptActive : ''}`} onClick={() => setLanguage(l)}>
+                        {l === 'tr' ? 'Türkçe' : 'İngilizce'}
+                      </button>
+                    ))}
+                  </div>
+                  <span className={styles.fieldHint}>Sonuç ekranında diğer dile de çevirebilirsin.</span>
+                </div>
+
+                <div className={styles.costRow}>
+                  <div className={styles.costInfo}>
+                    <span className={styles.costLabel}>Tahmini maliyet</span>
+                    <span className={styles.costValue}>{totalCost} kredi</span>
+                  </div>
+                  <span className={styles.costNote}>{totalSources} kaynak × {studyCost}</span>
+                </div>
+
+                <motion.button
                   className={styles.generateBtn}
                   onClick={startProcessing}
-                  disabled={files.length === 0}
+                  disabled={totalSources === 0}
+                  whileHover={reduced || totalSources === 0 ? undefined : { y: -2 }}
+                  whileTap={reduced ? undefined : { scale: 0.98 }}
                 >
-                  <Wand2 size={16} /> Notları Oluştur
-                  <span style={{ fontSize: '0.75rem', opacity: 0.8, marginLeft: 4 }}>
-                    ({files.length * studyCost} Kredi)
-                  </span>
-                </button>
-              </div>
+                  <Sparkles size={17} /> Notları Oluştur
+                </motion.button>
+              </section>
             </motion.div>
           )}
 
-          {/* ── STEP 2: PROCESSING ── */}
+          {/* ── PROCESSING ── */}
           {step === 'processing' && (
-            <motion.div
-              key="processing"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className={styles.processingArea}
-            >
-              <motion.div
-                className={styles.processingIcon}
-                animate={{ rotate: [0, 5, -5, 0] }}
-                transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-              >
-                <BookOpen size={64} />
-              </motion.div>
-              <h2 className={styles.processingTitle}>Yapay Zeka Çalışıyor</h2>
-              <p className={styles.processingSubtitle}>
-                {files.length} kaynak analiz ediliyor ve {subject} notları oluşturuluyor.
-              </p>
-              <div className="animate-spin" style={{ width: 32, height: 32, border: '3px solid var(--color-border)', borderTopColor: '#8b5cf6', borderRadius: '50%', margin: '0 auto var(--space-6)' }} />
+            <motion.div key="processing" className={styles.panel}
+              initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}>
+              <div className={styles.processing}>
+                <div className={styles.processingOrb}>
+                  <motion.span animate={{ rotate: 360 }} transition={{ duration: 8, repeat: Infinity, ease: 'linear' }} className={styles.orbRing} />
+                  <img src="/trans_wordly.png" alt="" width={34} height={34} draggable={false} />
+                </div>
+                <h2 className={styles.processingTitle}>Notların hazırlanıyor</h2>
+                <p className={styles.processingSub}>{totalSources} kaynak analiz ediliyor · {subject}</p>
+              </div>
               {streamingText && (
-                <motion.div
-                  className="markdown-body"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  style={{
-                    textAlign: 'left', maxHeight: 360, overflow: 'auto',
-                    background: 'var(--color-bg-alt)', borderRadius: 'var(--radius-lg)',
-                    padding: 'var(--space-4)', border: '1px solid var(--color-border)',
-                    fontSize: '0.875rem',
-                  }}
-                >
-                  <ReactMarkdown remarkPlugins={[remarkGfm as any]}>
-                    {streamingText}
-                  </ReactMarkdown>
-                </motion.div>
+                <div className={`${styles.streamPreview} markdown-body`}>
+                  <NotesMarkdown text={streamingText} />
+                </div>
               )}
             </motion.div>
           )}
 
-          {/* ── STEP 3: RESULT ── */}
+          {/* ── RESULT ── */}
           {step === 'result' && (
-            <motion.div
-              key="result"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className={styles.resultsArea}
-            >
-              <div className={styles.resultsHeader}>
-                <div className={styles.resultsTitle}>
-                  <Check size={20} color="var(--color-success)" />
-                  {subject} Notları Hazır
+            <motion.div key="result" className={styles.panel}
+              initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}>
+              <div className={styles.resultHead}>
+                <div className={styles.resultTitle}>
+                  <Check size={18} className={styles.resultCheck} /> {subject} Notları
                 </div>
-                <div className={styles.resultsActions}>
-                  <button className={styles.actionBtn} onClick={() => downloadAs('pdf')} disabled={!!exporting} style={{ color: 'var(--color-success)', borderColor: 'var(--color-success-bg)' }}>
-                    <FileText size={16} /> {exporting === 'pdf' ? 'PDF…' : 'PDF'}
+                <div className={styles.resultActions}>
+                  <div className={styles.langSwitch}>
+                    {(['tr', 'en'] as StudyNoteLang[]).map(l => (
+                      <button key={l} disabled={translating}
+                        className={`${styles.langOpt} ${activeLang === l ? styles.langOptActive : ''}`}
+                        onClick={() => switchLang(l)}>
+                        {translating && activeLang !== l ? <Loader2 size={13} className={styles.spin} /> : null}
+                        {l === 'tr' ? 'TR' : 'EN'}{!notesByLang[l] && l !== activeLang ? ` (+${studyCost})` : ''}
+                      </button>
+                    ))}
+                  </div>
+                  <button className={styles.actionBtn} onClick={() => downloadCurrent('pdf')} disabled={!!exporting}>
+                    <FileText size={15} /> {exporting === 'pdf' ? '…' : 'PDF'}
                   </button>
-                  <button className={styles.actionBtn} onClick={() => downloadAs('docx')} disabled={!!exporting}>
-                    <FileType size={16} /> {exporting === 'docx' ? 'Word…' : 'Word'}
+                  <button className={styles.actionBtn} onClick={() => downloadCurrent('docx')} disabled={!!exporting}>
+                    <FileType size={15} /> {exporting === 'docx' ? '…' : 'Word'}
                   </button>
-                  <button className={styles.actionBtn} onClick={() => downloadAs('txt')} disabled={!!exporting}>
-                    <FileCode size={16} /> {exporting === 'txt' ? 'TXT…' : 'TXT'}
+                  <button className={styles.actionBtn} onClick={() => downloadCurrent('txt')} disabled={!!exporting}>
+                    <FileCode size={15} /> TXT
                   </button>
-                  <button className={styles.actionBtn} onClick={handleCopy}>
-                    <Copy size={16} /> Kopyala
-                  </button>
-                  <button className={styles.actionBtn} onClick={reset}>
-                    <RefreshCw size={16} /> Yeni Not
-                  </button>
+                  <button className={styles.actionBtn} onClick={handleCopy}><Copy size={15} /> Kopyala</button>
+                  <button className={`${styles.actionBtn} ${styles.actionBtnPrimary}`} onClick={reset}><RefreshCw size={15} /> Yeni</button>
                 </div>
               </div>
-
-              <div className={`${styles.markdownContent} markdown-body`} style={{ padding: 'var(--space-4)', background: 'var(--color-surface)', borderRadius: 'var(--radius-md)' }}>
-                <ReactMarkdown remarkPlugins={[remarkGfm as any]}>
-                  {generatedNotes}
-                </ReactMarkdown>
+              <div className={`${styles.notesBody} markdown-body`}>
+                <NotesMarkdown text={currentNotes} />
               </div>
             </motion.div>
           )}
-
         </AnimatePresence>
-      </div>
       )}
 
-      {/* ── GEÇMİŞ NOTLARIM ── */}
+      {/* ══════════ HISTORY ══════════ */}
       {view === 'history' && (
-        <div className={styles.wizard}>
+        <div className={styles.panel}>
           {historyLoading && (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '48px 0', color: 'var(--color-text-tertiary)' }}>
-              <Loader size={20} style={{ animation: 'spin 0.8s linear infinite' }} /> Yükleniyor…
-            </div>
+            <div className={styles.historyEmpty}><Loader2 size={22} className={styles.spin} /> Yükleniyor…</div>
           )}
-
           {!historyLoading && history.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--color-text-tertiary)' }}>
-              <FolderOpen size={48} style={{ opacity: 0.4, marginBottom: 12 }} />
-              <p style={{ fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4 }}>Henüz ders notu yok</p>
-              <p style={{ fontSize: '0.875rem' }}>İlk notunuzu oluşturmak için “Yeni Not” sekmesine geçin.</p>
+            <div className={styles.historyEmpty}>
+              <FolderOpen size={42} style={{ opacity: 0.4 }} />
+              <p className={styles.historyEmptyTitle}>Henüz ders notu yok</p>
+              <p>İlk notunu oluşturmak için “Yeni Not” sekmesine geç.</p>
             </div>
           )}
-
           {!historyLoading && history.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div className={styles.historyList}>
               {history.map(s => (
-                <div
-                  key={s.id}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px',
-                    background: 'var(--color-surface)', border: '1px solid var(--color-border)',
-                    borderRadius: 'var(--radius-lg)',
-                  }}
-                >
-                  <div style={{ width: 40, height: 40, flexShrink: 0, borderRadius: 10, display: 'grid', placeItems: 'center', background: 'rgba(139,92,246,0.12)', color: '#8b5cf6' }}>
-                    <BookOpen size={20} />
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--color-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {s.title}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.78rem', color: 'var(--color-text-tertiary)', marginTop: 2 }}>
-                      <Clock size={12} /> {formatTrDate(s.created_at)}
-                      <span>•</span>{s.source_count} kaynak
-                      {s.status === 'processing' && <span style={{ color: 'var(--color-warning, #d97706)' }}>• işleniyor</span>}
-                      {s.status === 'error' && <span style={{ color: 'var(--color-error, #dc2626)' }}>• hata</span>}
+                <div key={s.id} className={styles.historyItem}>
+                  <div className={styles.historyIcon}><FileText size={18} /></div>
+                  <div className={styles.historyInfo}>
+                    <div className={styles.historyName}>{s.title}</div>
+                    <div className={styles.historyMeta}>
+                      <Clock size={12} /> {formatTrDate(s.created_at)} · {s.source_count} kaynak
+                      {s.status === 'processing' && <span className={styles.statusWarn}> · işleniyor</span>}
+                      {s.status === 'error' && <span className={styles.statusErr}> · hata</span>}
                     </div>
                   </div>
                   {s.status === 'completed' && s.generated_notes ? (
-                    <>
-                      <button className={styles.actionBtn} onClick={() => setViewingSession(s)}>
-                        <Eye size={14} /> Görüntüle
-                      </button>
-                      <button className={styles.actionBtn} disabled={!!exporting} title="PDF indir"
-                        onClick={() => downloadNotes('pdf', s.generated_notes!, s.subject ?? 'Ders', s.created_at)}>
-                        <FileText size={14} /> PDF
-                      </button>
-                      <button className={styles.actionBtn} disabled={!!exporting} title="Word indir"
-                        onClick={() => downloadNotes('docx', s.generated_notes!, s.subject ?? 'Ders', s.created_at)}>
-                        <FileType size={14} /> Word
-                      </button>
-                    </>
+                    <div className={styles.historyBtns}>
+                      <button className={styles.actionBtn} onClick={() => setViewingSession(s)}><Eye size={14} /> Görüntüle</button>
+                      <button className={styles.actionBtn} disabled={!!exporting} onClick={() => downloadNotes('pdf', s.generated_notes!, s.subject ?? 'Ders', s.created_at, 'tr')}><FileText size={14} /> PDF</button>
+                      <button className={styles.iconBtn} title="Sil" onClick={() => handleDeleteSession(s.id)}><Trash2 size={14} /></button>
+                    </div>
                   ) : (
-                    <span style={{ fontSize: '0.8rem', color: 'var(--color-text-tertiary)' }}>—</span>
+                    <button className={styles.iconBtn} title="Sil" onClick={() => handleDeleteSession(s.id)}><Trash2 size={14} /></button>
                   )}
-                  <button className={styles.actionBtn} title="Sil" onClick={() => handleDeleteSession(s.id)} style={{ color: 'var(--color-error, #dc2626)' }}>
-                    <Trash2 size={14} />
-                  </button>
                 </div>
               ))}
             </div>
@@ -517,42 +573,67 @@ export default function StudyNotesPage() {
         </div>
       )}
 
-      {/* ── GEÇMİŞ NOT GÖRÜNTÜLEME MODALI ── */}
+      {/* ── Belge seçici modal ── */}
+      <AnimatePresence>
+        {docPickerOpen && (
+          <motion.div className={styles.modalOverlay} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            onClick={() => setDocPickerOpen(false)}>
+            <motion.div className={styles.modal} onClick={e => e.stopPropagation()}
+              initial={{ scale: 0.96, opacity: 0, y: 8 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.96, opacity: 0 }}>
+              <div className={styles.modalHead}>
+                <div><h3>Belgelerimden ekle</h3><p>Çevirisi tamamlanmış belgelerini kaynak olarak birleştir.</p></div>
+                <button className={styles.iconBtn} onClick={() => setDocPickerOpen(false)}><X size={18} /></button>
+              </div>
+              <div className={styles.modalBody}>
+                {docsLoading && <div className={styles.historyEmpty}><Loader2 size={20} className={styles.spin} /> Belgeler yükleniyor…</div>}
+                {!docsLoading && availableDocs.length === 0 && (
+                  <div className={styles.historyEmpty}><FolderOpen size={32} style={{ opacity: 0.4 }} /><p>Tamamlanmış belge bulunamadı.</p></div>
+                )}
+                {!docsLoading && availableDocs.map(d => {
+                  const selected = !!docSources.find(s => s.id === d.id);
+                  const hasText = !!d._text;
+                  return (
+                    <button key={d.id} className={`${styles.docOpt} ${selected ? styles.docOptActive : ''}`}
+                      onClick={() => toggleDocSource(d)} disabled={!hasText}>
+                      <span className={styles.docOptCheck}>{selected ? <Check size={14} /> : <GripVertical size={14} />}</span>
+                      <div className={styles.sourceInfo}>
+                        <div className={styles.sourceName}>{d.original_name}</div>
+                        <div className={styles.sourceMeta}>{hasText ? `${Math.round(d._text.length / 1000)}K karakter` : 'Çeviri metni yok'}</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className={styles.modalFoot}>
+                <button className={`${styles.actionBtn} ${styles.actionBtnPrimary}`} onClick={() => setDocPickerOpen(false)}>
+                  Tamam{docSources.length ? ` · ${docSources.length} seçildi` : ''}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Geçmiş not görüntüleme ── */}
       <AnimatePresence>
         {viewingSession && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            onClick={() => setViewingSession(null)}
-            style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
-              onClick={e => e.stopPropagation()}
-              style={{ background: 'var(--color-bg)', borderRadius: 'var(--radius-xl, 18px)', maxWidth: 760, width: '100%', maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid var(--color-border)' }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px', borderBottom: '1px solid var(--color-border)' }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--color-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{viewingSession.title}</h2>
-                  <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--color-text-tertiary)' }}>{viewingSession.subject} • {formatTrDate(viewingSession.created_at)}</p>
+          <motion.div className={styles.modalOverlay} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            onClick={() => setViewingSession(null)}>
+            <motion.div className={`${styles.modal} ${styles.modalWide}`} onClick={e => e.stopPropagation()}
+              initial={{ scale: 0.96, opacity: 0, y: 8 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.96, opacity: 0 }}>
+              <div className={styles.modalHead}>
+                <div>
+                  <h3>{viewingSession.title}</h3>
+                  <p>{viewingSession.subject} • {formatTrDate(viewingSession.created_at)}</p>
                 </div>
-                <button className={styles.actionBtn} disabled={!!exporting}
-                  onClick={() => downloadNotes('pdf', viewingSession.generated_notes ?? '', viewingSession.subject ?? 'Ders', viewingSession.created_at)}>
-                  <FileText size={14} /> PDF
-                </button>
-                <button className={styles.actionBtn} disabled={!!exporting}
-                  onClick={() => downloadNotes('docx', viewingSession.generated_notes ?? '', viewingSession.subject ?? 'Ders', viewingSession.created_at)}>
-                  <FileType size={14} /> Word
-                </button>
-                <button className={styles.actionBtn} disabled={!!exporting}
-                  onClick={() => downloadNotes('txt', viewingSession.generated_notes ?? '', viewingSession.subject ?? 'Ders', viewingSession.created_at)}>
-                  <FileCode size={14} /> TXT
-                </button>
-                <button className={styles.actionBtn} onClick={() => setViewingSession(null)}><X size={16} /></button>
+                <div className={styles.resultActions}>
+                  <button className={styles.actionBtn} disabled={!!exporting} onClick={() => downloadNotes('pdf', viewingSession.generated_notes ?? '', viewingSession.subject ?? 'Ders', viewingSession.created_at, 'tr')}><FileText size={14} /> PDF</button>
+                  <button className={styles.actionBtn} disabled={!!exporting} onClick={() => downloadNotes('docx', viewingSession.generated_notes ?? '', viewingSession.subject ?? 'Ders', viewingSession.created_at, 'tr')}><FileType size={14} /> Word</button>
+                  <button className={styles.iconBtn} onClick={() => setViewingSession(null)}><X size={18} /></button>
+                </div>
               </div>
-              <div className={`${styles.markdownContent} markdown-body`} style={{ flex: 1, overflowY: 'auto', padding: 'var(--space-5)' }}>
-                <ReactMarkdown remarkPlugins={[remarkGfm as any]}>
-                  {viewingSession.generated_notes ?? ''}
-                </ReactMarkdown>
+              <div className={`${styles.notesBody} ${styles.notesBodyModal} markdown-body`}>
+                <NotesMarkdown text={viewingSession.generated_notes ?? ''} />
               </div>
             </motion.div>
           </motion.div>
@@ -561,4 +642,3 @@ export default function StudyNotesPage() {
     </div>
   );
 }
-
