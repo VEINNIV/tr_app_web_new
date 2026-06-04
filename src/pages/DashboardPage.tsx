@@ -11,7 +11,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { STATUS_LABELS } from '../lib/constants';
+import { STATUS_LABELS, CREDIT_COSTS, pdfPerCredits } from '../lib/constants';
+import { getCreditCosts } from '../lib/creditConfig';
 import { formatTrDate } from '../lib/utils';
 import type { Document } from '../types';
 import { useAnimatedNumber, SPRING_TIGHT } from '../components/ui/motion';
@@ -37,6 +38,12 @@ export default function DashboardPage() {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [totalTranslations, setTotalTranslations] = useState(0);
   const [loading, setLoading] = useState(true);
+  // Sayfa başı çeviri maliyeti (canlı app_config) → "≈ X PDF" gösterimi için
+  const [perPage, setPerPage] = useState<number>(CREDIT_COSTS.TRANSLATION_PER_PAGE);
+
+  useEffect(() => {
+    getCreditCosts().then(c => setPerPage(c.translationPerPage)).catch(() => {});
+  }, []);
 
   const cDocs = useAnimatedNumber(documents.length);
   const cTrans = useAnimatedNumber(totalTranslations);
@@ -236,6 +243,22 @@ export default function DashboardPage() {
         <div className={styles.creditFooter}>
           <span>{profile.credits_monthly_limit - profile.credits_remaining} kredi kullanıldı</span>
           <span>%{creditPercent} kaldı</span>
+        </div>
+
+        {/* Dinamik değer + düşük kredi yükseltmesi (sepet/ödeme akışına bağlanır) */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--color-border)', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <Languages size={14} style={{ color: 'var(--color-accent)' }} />
+            Kalan krediyle <strong style={{ color: 'var(--color-text-primary)' }}>≈ {pdfPerCredits(profile.credits_remaining, perPage)} sayfa</strong> çevirebilirsin
+          </span>
+          {creditPercent <= 20 && (
+            <Link
+              to="/#pricing"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 13px', borderRadius: 999, background: 'var(--color-accent)', color: '#fff', fontSize: '0.78rem', fontWeight: 700, textDecoration: 'none' }}
+            >
+              <Zap size={13} /> Kredi yükle
+            </Link>
+          )}
         </div>
       </motion.div>
 

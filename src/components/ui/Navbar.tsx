@@ -4,9 +4,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Menu, X, LogOut, Settings, LayoutDashboard, Languages, FolderOpen,
   MessageSquare, BookOpen, Shield, ChevronDown, User, ScrollText, Sun, Moon,
+  ShoppingCart, Trash2, ArrowRight,
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { useAuth } from '../../context/auth';
 import { useThemeContext } from '../../context/ThemeContext';
+import { useCart } from '../../context/CartContext';
 import styles from '../../styles/components/navbar.module.css';
 
 // Smooth scroll to anchor
@@ -32,6 +35,11 @@ export default function Navbar() {
   const [activeSection, setActiveSection] = useState('');
   const profileRef = useRef<HTMLDivElement>(null);
   const lastScrollY = useRef(0);
+
+  // Sepet
+  const { item: cartItem, clear: clearCart } = useCart();
+  const [cartOpen, setCartOpen] = useState(false);
+  const cartRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const onScroll = () => {
@@ -59,6 +67,9 @@ export default function Navbar() {
     const handler = (e: MouseEvent) => {
       if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
         setProfileOpen(false);
+      }
+      if (cartRef.current && !cartRef.current.contains(e.target as Node)) {
+        setCartOpen(false);
       }
     };
     document.addEventListener('mousedown', handler);
@@ -278,6 +289,57 @@ export default function Navbar() {
               </motion.div>
             </>
           )}
+
+            {/* Sepet */}
+            {cartItem && (
+              <div className={styles.profileWrapper} ref={cartRef} style={{ position: 'relative' }}>
+                <motion.button
+                  onClick={() => setCartOpen(o => !o)}
+                  aria-label="Sepet"
+                  whileHover={{ y: -1 }}
+                  whileTap={{ scale: 0.95 }}
+                  transition={{ type: 'spring', stiffness: 520, damping: 28 }}
+                  style={{ position: 'relative', display: 'grid', placeItems: 'center', width: 38, height: 38, borderRadius: 10, background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
+                >
+                  <ShoppingCart size={17} />
+                  <span style={{ position: 'absolute', top: -5, right: -5, minWidth: 17, height: 17, padding: '0 4px', borderRadius: 999, background: 'var(--color-accent)', color: '#fff', fontSize: '0.62rem', fontWeight: 700, display: 'grid', placeItems: 'center', boxShadow: '0 2px 6px rgba(0,87,255,0.4)' }}>1</span>
+                </motion.button>
+
+                <AnimatePresence>
+                  {cartOpen && (
+                    <motion.div
+                      className={styles.profileDropdown}
+                      initial={{ opacity: 0, y: 15, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                      transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
+                      style={{ padding: 16, minWidth: 264 }}
+                    >
+                      <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--color-text-tertiary)', marginBottom: 10 }}>Sepetiniz</div>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 12px', borderRadius: 12, background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+                        <div>
+                          <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--color-text-primary)' }}>{cartItem.planName} Planı</div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-tertiary)' }}>Aylık abonelik{cartItem.student ? ' · öğrenci' : ''}</div>
+                        </div>
+                        <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--color-accent)' }}>₺{cartItem.price}</div>
+                      </div>
+                      <button
+                        onClick={() => { setCartOpen(false); navigate(`/checkout?plan=${cartItem.planId}${cartItem.student ? '&student=1' : ''}`); }}
+                        style={{ width: '100%', marginTop: 12, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '11px', borderRadius: 11, border: 'none', background: 'var(--color-accent)', color: '#fff', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}
+                      >
+                        Ödemeye Geç <ArrowRight size={15} />
+                      </button>
+                      <button
+                        onClick={() => { clearCart(); setCartOpen(false); toast.success('Sepet boşaltıldı'); }}
+                        style={{ width: '100%', marginTop: 8, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '9px', borderRadius: 11, border: 'none', background: 'transparent', color: 'var(--color-text-tertiary)', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer' }}
+                      >
+                        <Trash2 size={14} /> Sepetten çıkar
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
 
             {/* Theme Toggle */}
             <motion.button

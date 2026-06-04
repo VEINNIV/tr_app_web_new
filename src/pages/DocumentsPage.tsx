@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
-import { FileText, MessageSquare, Trash2, FolderOpen, Eye, X, Languages, DownloadCloud, FileType, FileCode, Layers, Loader, BookOpen, Share2, Archive, CheckSquare, Square, Lock } from 'lucide-react';
+import { FileText, MessageSquare, Trash2, FolderOpen, Eye, X, DownloadCloud, FileType, FileCode, Layers, Loader, BookOpen, Share2, Archive, CheckSquare, Square, Lock, MoreVertical, LayoutGrid, Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import JSZip from 'jszip';
 import { SPRING_TIGHT } from '../components/ui/motion';
@@ -39,6 +39,22 @@ export default function DocumentsPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [zipping, setZipping] = useState(false);
 
+  // New UI/UX states
+  const [searchQuery, setSearchQuery] = useState('');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [activeOverlayId, setActiveOverlayId] = useState<string | null>(null);
+
+  // Close dropdown menu and overlays when clicking anywhere on the screen
+  useEffect(() => {
+    const handleOutsideClick = () => {
+      setActiveMenuId(null);
+      setActiveOverlayId(null);
+    };
+    window.addEventListener('click', handleOutsideClick);
+    return () => window.removeEventListener('click', handleOutsideClick);
+  }, []);
+
   // Paylaşım modalı (şifre opsiyonu)
   const [shareModalDoc, setShareModalDoc] = useState<DocumentWithTranslation | null>(null);
   const [shareUsePassword, setShareUsePassword] = useState(false);
@@ -52,7 +68,6 @@ export default function DocumentsPage() {
   // PDF Overlay Viewer
   const [overlayDoc, setOverlayDoc] = useState<DocumentWithTranslation | null>(null);
   const [overlayUrl, setOverlayUrl] = useState('');
-  const [overlayLoading, setOverlayLoading] = useState(false);
 
   // Özet modal
   const [summaryDoc, setSummaryDoc] = useState<DocumentWithTranslation | null>(null);
@@ -179,19 +194,21 @@ export default function DocumentsPage() {
       toast.error('Orijinal PDF bulunamadı.');
       return;
     }
-    setOverlayLoading(true);
-    try {
+    
+    const promise = (async () => {
       const { data, error } = await supabase.storage
         .from('originals')
         .createSignedUrl(doc.original_storage_path, 3600);
       if (error || !data?.signedUrl) throw new Error('PDF URL alınamadı');
       setOverlayUrl(data.signedUrl);
       setOverlayDoc(doc);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'PDF açılamadı');
-    } finally {
-      setOverlayLoading(false);
-    }
+    })();
+
+    toast.promise(promise, {
+      loading: 'PDF yükleniyor...',
+      success: 'PDF yüklendi',
+      error: 'PDF açılamadı',
+    });
   };
 
   /** Özet oluştur */
@@ -274,10 +291,15 @@ export default function DocumentsPage() {
     });
   };
 
+  const filteredDocs = documents.filter(doc =>
+    doc.original_name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
     <div className={styles.page}>
       <div className={styles.header}>
         <div>
+          <span className={styles.heroEyebrow}><FolderOpen size={13} /> Belge Yönetimi</span>
           <h1 className={styles.title}>Dokümanlarım</h1>
           <p className={styles.desc}>Yüklediğiniz ve çevirdiğiniz tüm belgeler burada.</p>
         </div>
@@ -292,19 +314,50 @@ export default function DocumentsPage() {
         </motion.div>
       </div>
 
-      {/* Toplu seçim toolbar */}
-      {!loading && documents.some(d => d.translation?.translated_text) && (
-        <div className={styles.bulkBar}>
-          <button className={styles.bulkBtn} onClick={selected.size === 0 ? selectAll : clearSelect}>
-            {selected.size === 0 ? <CheckSquare size={14} /> : <Square size={14} />}
-            {selected.size === 0 ? 'Tümünü Seç' : 'Seçimi Temizle'}
-          </button>
-          {selected.size > 0 && (
-            <button className={styles.bulkZipBtn} onClick={downloadZip} disabled={zipping}>
-              {zipping ? <Loader size={14} style={{ animation: 'spin 0.8s linear infinite' }} /> : <Archive size={14} />}
-              {zipping ? 'Hazırlanıyor…' : `${selected.size} Seçili ZIP İndir`}
-            </button>
-          )}
+      {/* Kontrol Barı */}
+      {!loading && documents.length > 0 && (
+        <div className={styles.controlsBar}>
+          <div className={styles.searchWrapper}>
+            <Search size={16} className={styles.searchIcon} />
+            <input
+              type="text"
+              placeholder="Belgelerde ara..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className={styles.searchInput}
+            />
+            {searchQuery && (
+              <button onClick={() => setSearchQuery('')} className={styles.searchClear}>
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
+          <div className={styles.controlsRight}>
+            {documents.some(d => d.translation?.translated_text) && (
+              <button className={styles.selectAllBtn} onClick={selected.size === 0 ? selectAll : clearSelect}>
+                {selected.size === 0 ? <CheckSquare size={14} /> : <Square size={14} />}
+                <span>{selected.size === 0 ? 'Tümünü Seç' : 'Temizle'}</span>
+              </button>
+            )}
+
+            <div className={styles.viewToggle}>
+              <button
+                className={`${styles.toggleBtn} ${viewMode === 'grid' ? styles.toggleBtnActive : ''}`}
+                onClick={() => setViewMode('grid')}
+                title="Izgara Görünümü"
+              >
+                <LayoutGrid size={15} />
+              </button>
+              <button
+                className={`${styles.toggleBtn} ${viewMode === 'list' ? styles.toggleBtnActive : ''}`}
+                onClick={() => setViewMode('list')}
+                title="Liste Görünümü"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-list"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -335,7 +388,7 @@ export default function DocumentsPage() {
       {/* Boş durum & liste */}
       {!loading && (documents.length === 0 ? (
         <div className={styles.empty}>
-          <FolderOpen size={48} className={styles.emptyIcon} />
+          <div className={styles.emptyIcon}><FolderOpen size={40} /></div>
           <p className={styles.emptyTitle}>Henüz doküman yok</p>
           <p className={styles.emptyDesc}>
             İlk belgenizi çevirmek için{' '}
@@ -343,191 +396,338 @@ export default function DocumentsPage() {
             gidin.
           </p>
         </div>
-      ) : (
-        <div className={styles.grid}>
-          <AnimatePresence mode="popLayout">
-            {documents.map((doc, i) => (
-              <motion.div
-                key={doc.id}
-                layout
-                className={styles.card}
-                initial={{ opacity: 0, y: 20, scale: 0.96 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.92, transition: { duration: 0.22 } }}
-                transition={{ delay: i * 0.05, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-                whileHover={reduced ? undefined : { y: -4 }}
-              >
-                {/* Üst kısım: ikon + isim + durum */}
-                <div className={styles.cardHeader}>
-                  {doc.translation?.translated_text && (
-                    <button
-                      className={`${styles.checkBtn} ${selected.has(doc.id) ? styles.checkBtnActive : ''}`}
-                      onClick={() => toggleSelect(doc.id)}
-                      aria-label="Seç"
-                    >
-                      {selected.has(doc.id) ? <CheckSquare size={15} /> : <Square size={15} />}
-                    </button>
-                  )}
-                  <motion.div
-                    className={styles.cardIcon}
-                    whileHover={reduced ? undefined : { rotate: -8, scale: 1.08 }}
-                    transition={SPRING_TIGHT}
-                  >
-                    <FileText size={20} />
-                  </motion.div>
-                  <div className={styles.cardInfo}>
-                    <div className={styles.cardName} title={doc.original_name}>{doc.original_name}</div>
-                    <div className={styles.cardMeta}>
-                      {doc.page_count || '?'} sayfa &bull; {(doc.file_size_bytes / 1024 / 1024).toFixed(1)} MB
-                    </div>
-                  </div>
-                  <span className={`${styles.status} ${statusClass(doc.status)}`}>
-                    {STATUS_LABELS[doc.status] || doc.status}
-                  </span>
-                </div>
-
-                {/* Tarih */}
-                <div className={styles.cardDate}>
-                  {formatTrDate(doc.created_at)}
-                </div>
-
-                {/* Çeviri dil satırı + kalite skoru */}
-                {doc.translation && (
-                  <div className={styles.translationRow}>
-                    <Languages size={13} />
-                    <span>Türkçe çeviri mevcut</span>
-                    {doc.status === 'completed' && doc.translation.status === 'completed' && (() => {
-                      const q = getQualityScore(doc.page_count, doc.file_size_bytes, doc.id);
-                      return (
-                        <span
-                          className={styles.qualityBadge}
-                          style={{ '--q-color': q.color } as React.CSSProperties}
-                          title={`Çeviri kalitesi: ${q.score}/100`}
-                        >
-                          {q.label} {q.score}
-                        </span>
-                      );
-                    })()}
-                  </div>
-                )}
-
-                {/* İşlem butonları */}
-                <div className={styles.cardActions}>
-                  {/* PDF üstüne yaz — ana özellik, tam genişlik */}
-                  {doc.status === 'completed' && doc.original_storage_path && (
-                    <motion.button
-                      className={styles.btnOverlay}
-                      onClick={() => openOverlay(doc)}
-                      disabled={overlayLoading}
-                      whileHover={reduced ? undefined : { y: -1 }}
-                      whileTap={reduced ? undefined : { scale: 0.95 }}
-                      transition={SPRING_TIGHT}
-                      title="Çeviriyi orijinal PDF üzerinde göster"
-                    >
-                      {overlayLoading && overlayDoc?.id === doc.id
-                        ? <Loader size={13} style={{ animation: 'spin 0.8s linear infinite' }} />
-                        : <Layers size={13} />
-                      }
-                      PDF Görünümü
-                    </motion.button>
-                  )}
-
-                  {/* İkincil butonlar — tek satırda */}
-                  <div className={styles.cardActionsRow}>
-                    {doc.translation?.translated_text && (
-                      <motion.button
-                        className={styles.btnSummary}
-                        onClick={() => openSummary(doc)}
-                        whileHover={reduced ? undefined : { y: -1 }}
-                        whileTap={reduced ? undefined : { scale: 0.95 }}
-                        transition={SPRING_TIGHT}
-                        title="Yapay zeka ile belge özeti oluştur"
-                      >
-                        <BookOpen size={13} /> Özetle
-                      </motion.button>
-                    )}
-
-                    {doc.translation?.translated_text && (
-                      <motion.button
-                        className={styles.btnView}
-                        onClick={() => setSelectedDoc(doc)}
-                        whileHover={reduced ? undefined : { y: -1 }}
-                        whileTap={reduced ? undefined : { scale: 0.95 }}
-                        transition={SPRING_TIGHT}
-                      >
-                        <Eye size={14} /> Metin
-                      </motion.button>
-                    )}
-
-                    <motion.div
-                      whileHover={reduced ? undefined : { y: -1 }}
-                      whileTap={reduced ? undefined : { scale: 0.95 }}
-                      transition={SPRING_TIGHT}
-                      style={{ display: 'inline-flex', flex: 1 }}
-                    >
-                      <Link to="/chat" state={{ documentId: doc.id }} className={styles.btnChat}>
-                        <MessageSquare size={14} /> AI Sor
-                      </Link>
-                    </motion.div>
-
-                    {doc.status === 'completed' && doc.translation?.id && (
-                      <motion.button
-                        className={`${styles.btnSummary} ${styles.btnIconOnly}`}
-                        onClick={() => openShareModal(doc)}
-                        disabled={sharing.has(doc.id)}
-                        whileHover={reduced ? undefined : { y: -1 }}
-                        whileTap={reduced ? undefined : { scale: 0.95 }}
-                        transition={SPRING_TIGHT}
-                        title="Paylaşılabilir link oluştur"
-                      >
-                        {sharing.has(doc.id)
-                          ? <Loader size={13} style={{ animation: 'spin 0.8s linear infinite' }} />
-                          : <Share2 size={13} />
-                        }
-                      </motion.button>
-                    )}
-
-                    <motion.button
-                      className={`${styles.btnDelete} ${styles.btnIconOnly}`}
-                      onClick={() => handleDelete(doc.id)}
-                      whileHover={reduced ? undefined : { y: -1 }}
-                      whileTap={reduced ? undefined : { scale: 0.95 }}
-                      transition={SPRING_TIGHT}
-                      title="Sil"
-                    >
-                      <Trash2 size={14} />
-                    </motion.button>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </AnimatePresence>
+      ) : filteredDocs.length === 0 ? (
+        <div className={styles.empty}>
+          <div className={styles.emptyIcon}><Search size={40} /></div>
+          <p className={styles.emptyTitle}>Eşleşen belge bulunamadı</p>
         </div>
-      ) )}
+      ) : (
+        <>
+          {/* Izgara Görünümü (Grid View) */}
+          {viewMode === 'grid' && (
+            <div className={styles.grid}>
+              <AnimatePresence mode="popLayout">
+                {filteredDocs.map((doc, i) => (
+                  <motion.div
+                    key={doc.id}
+                    layout
+                    className={`${styles.card} ${selected.has(doc.id) ? styles.cardSelected : ''} ${activeOverlayId === doc.id ? styles.cardOverlayActive : ''}`}
+                    initial={{ opacity: 0, y: 20, scale: 0.96 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.92, transition: { duration: 0.22 } }}
+                    transition={{ delay: i * 0.05, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                    whileHover={reduced ? undefined : { y: -4 }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveOverlayId(activeOverlayId === doc.id ? null : doc.id);
+                    }}
+                  >
+                    <div className={styles.cardAccent} />
+                    
+                    {/* PDF Tag at top left */}
+                    <span className={styles.pdfTag}>PDF</span>
+
+                    {/* Checkbox */}
+                    {doc.translation?.translated_text && (
+                      <button
+                        className={`${styles.checkBtn} ${selected.has(doc.id) ? styles.checkBtnActive : ''} ${styles.checkBtnHoverShow}`}
+                        onClick={(e) => { e.stopPropagation(); toggleSelect(doc.id); }}
+                        aria-label="Seç"
+                      >
+                        {selected.has(doc.id) ? <CheckSquare size={15} /> : <Square size={15} />}
+                      </button>
+                    )}
+
+                    {/* Stylized Paper Cover Content */}
+                    <div className={styles.paperBody}>
+                      <div className={styles.paperTitleArea}>
+                        <h3 className={styles.paperTitle} title={doc.original_name}>{doc.original_name}</h3>
+                      </div>
+
+                      {/* Beautiful Blurred Mock Page Preview */}
+                      <div className={styles.mockPreview}>
+                        <div className={styles.mockPreviewHeader}>
+                          <div className={styles.mockLogo} />
+                          <div className={styles.mockHeaderLine} />
+                        </div>
+                        
+                        <div className={styles.mockPreviewRow}>
+                          <div className={styles.mockPreviewLeftCol}>
+                            <div className={styles.mockTextLine} style={{ width: '100%' }} />
+                            <div className={styles.mockTextLine} style={{ width: '90%' }} />
+                            <div className={styles.mockTextLine} style={{ width: '95%' }} />
+                            <div className={styles.mockTextLine} style={{ width: '85%' }} />
+                          </div>
+                          <div className={styles.mockPreviewRightCol}>
+                            <div className={styles.mockChartContainer}>
+                              <div className={styles.mockChartBar} style={{ height: '70%' }} />
+                              <div className={styles.mockChartBar} style={{ height: '40%' }} />
+                              <div className={styles.mockChartBar} style={{ height: '90%' }} />
+                              <div className={styles.mockChartBar} style={{ height: '60%' }} />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className={styles.mockTextLine} style={{ width: '100%' }} />
+                        <div className={styles.mockTextLine} style={{ width: '95%' }} />
+                        <div className={styles.mockTextLine} style={{ width: '40%' }} />
+                        
+                        <div className={styles.mockPreviewRow} style={{ marginTop: '4px' }}>
+                          <div className={styles.mockPreviewLeftCol} style={{ flex: '1.2' }}>
+                            <div className={styles.mockTextLine} style={{ width: '90%' }} />
+                            <div className={styles.mockTextLine} style={{ width: '80%' }} />
+                            <div className={styles.mockTextLine} style={{ width: '85%' }} />
+                          </div>
+                          <div className={styles.mockPreviewRightCol} style={{ flex: '0.8' }}>
+                            <div className={styles.mockCircleGraphic} />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Quality score badge inside page */}
+                      {doc.translation && doc.status === 'completed' && doc.translation.status === 'completed' && (() => {
+                        const q = getQualityScore(doc.page_count, doc.file_size_bytes, doc.id);
+                        return (
+                          <div className={styles.paperQualityBadge} style={{ '--q-color': q.color } as React.CSSProperties}>
+                            <span className={styles.paperQualityText}>TR &bull; {q.score} Skor</span>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    {/* Paper Footer with page details and date */}
+                    <div className={styles.paperFooter}>
+                      <div className={styles.paperMetaRow}>
+                        <span className={`${styles.statusBadge} ${statusClass(doc.status)}`}>
+                          <span className={styles.statusDot} /> {STATUS_LABELS[doc.status] || doc.status}
+                        </span>
+                        <span className={styles.paperPageCount}>{doc.page_count || '?'} sayfa &bull; {(doc.file_size_bytes / 1024 / 1024).toFixed(1)} MB</span>
+                      </div>
+                      <span className={styles.paperDate}>{formatTrDate(doc.created_at)}</span>
+                    </div>
+
+                    {/* Buzlu Cam Eylem Katmanı (Overlay Actions) */}
+                    <div className={styles.cardOverlay} onClick={(e) => e.stopPropagation()}>
+                      <button 
+                        className={styles.overlayClose} 
+                        onClick={(e) => { e.stopPropagation(); setActiveOverlayId(null); }}
+                        title="Kapat"
+                      >
+                        <X size={14} />
+                      </button>
+
+                      <div className={styles.overlayTitle}>{doc.original_name}</div>
+                      
+                      <div className={styles.overlayActionsGrid}>
+                        {doc.status === 'completed' && doc.original_storage_path && (
+                          <button className={styles.overlayPrimaryBtn} onClick={() => { setActiveOverlayId(null); openOverlay(doc); }}>
+                            <Layers size={14} /> <span>PDF Görüntüle</span>
+                          </button>
+                        )}
+                        
+                        <div className={styles.overlaySecondaryRow}>
+                          {doc.translation?.translated_text && (
+                            <button className={styles.overlaySecBtn} onClick={() => { setActiveOverlayId(null); setSelectedDoc(doc); }} title="Metni Oku">
+                              <Eye size={14} /> <span>Metin</span>
+                            </button>
+                          )}
+                          
+                          {doc.translation?.translated_text && (
+                            <button className={styles.overlaySecBtn} onClick={() => { setActiveOverlayId(null); openSummary(doc); }} title="Özet Çıkar">
+                              <BookOpen size={14} /> <span>Özetle</span>
+                            </button>
+                          )}
+                        </div>
+
+                        <div className={styles.overlaySecondaryRow}>
+                          <Link to="/chat" state={{ documentId: doc.id }} className={styles.overlaySecBtn} onClick={() => setActiveOverlayId(null)} title="AI ile Konuş">
+                            <MessageSquare size={14} /> <span>AI Sor</span>
+                          </Link>
+
+                          {doc.status === 'completed' && doc.translation?.id && (
+                            <button className={styles.overlaySecBtn} onClick={() => { setActiveOverlayId(null); openShareModal(doc); }} title="Belgeyi Paylaş">
+                              <Share2 size={14} /> <span>Paylaş</span>
+                            </button>
+                          )}
+                        </div>
+
+                        <div className={styles.overlayDivider} />
+
+                        <button className={styles.overlayDeleteBtn} onClick={() => { setActiveOverlayId(null); handleDelete(doc.id); }}>
+                          <Trash2 size={14} /> <span>Belgeyi Sil</span>
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
+          )}
+
+          {/* Liste Görünümü (List View) */}
+          {viewMode === 'list' && (
+            <div className={styles.listContainer}>
+              <table className={styles.listTable}>
+                <thead>
+                  <tr>
+                    <th style={{ width: 40 }}>Seç</th>
+                    <th>Dosya Adı</th>
+                    <th style={{ width: 140 }}>Yükleme Tarihi</th>
+                    <th style={{ width: 160 }}>Çeviri Kalitesi</th>
+                    <th style={{ width: 120 }}>Durum</th>
+                    <th style={{ width: 50 }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredDocs.map((doc) => (
+                    <tr key={doc.id} className={`${styles.listRow} ${activeMenuId === doc.id ? styles.listRowActiveMenu : ''}`}>
+                      <td>
+                        {doc.translation?.translated_text ? (
+                          <button
+                            className={`${styles.listCheckBtn} ${selected.has(doc.id) ? styles.listCheckBtnActive : ''}`}
+                            onClick={() => toggleSelect(doc.id)}
+                            aria-label="Seç"
+                          >
+                            {selected.has(doc.id) ? <CheckSquare size={14} /> : <Square size={14} />}
+                          </button>
+                        ) : (
+                          <span className={styles.listCheckPlaceholder}>-</span>
+                        )}
+                      </td>
+                      <td className={styles.listFileNameCol} onClick={() => doc.status === 'completed' && openOverlay(doc)}>
+                        <div className={styles.listFileIcon}>
+                          <FileText size={16} />
+                        </div>
+                        <div className={styles.listFileInfo}>
+                          <span className={styles.listFileName} title={doc.original_name}>{doc.original_name}</span>
+                          <span className={styles.listFileMeta}>
+                            {doc.page_count || '?'} sayfa &bull; {(doc.file_size_bytes / 1024 / 1024).toFixed(1)} MB
+                          </span>
+                        </div>
+                      </td>
+                      <td>
+                        <span className={styles.listDate}>{formatTrDate(doc.created_at)}</span>
+                      </td>
+                      <td>
+                        {doc.translation ? (
+                          doc.status === 'completed' && doc.translation.status === 'completed' ? (() => {
+                            const q = getQualityScore(doc.page_count, doc.file_size_bytes, doc.id);
+                            return (
+                              <div className={styles.listTranslationInfo}>
+                                <span className={styles.listLanguageBadge}>Türkçe</span>
+                                <span className={styles.listQualityDot} style={{ background: q.color }} />
+                                <span className={styles.listQualityText} style={{ color: q.color }}>{q.score} Skor</span>
+                              </div>
+                            );
+                          })() : (
+                            <span className={styles.listTranslationPending}>Hazırlanıyor...</span>
+                          )
+                        ) : (
+                          <span className={styles.listNoTranslation}>Mevcut Değil</span>
+                        )}
+                      </td>
+                      <td>
+                        <span className={`${styles.statusBadge} ${statusClass(doc.status)}`}>
+                          <span className={styles.statusDot} /> {STATUS_LABELS[doc.status] || doc.status}
+                        </span>
+                      </td>
+                      <td>
+                        <div className={styles.menuContainer}>
+                          <button
+                            className={`${styles.menuTrigger} ${activeMenuId === doc.id ? styles.menuTriggerActive : ''}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveMenuId(activeMenuId === doc.id ? null : doc.id);
+                            }}
+                          >
+                            <MoreVertical size={16} />
+                          </button>
+                          <AnimatePresence>
+                            {activeMenuId === doc.id && (
+                              <motion.div
+                                initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                                transition={{ duration: 0.15 }}
+                                className={styles.dropdownMenu}
+                                style={{ right: 0, top: '100%' }}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {doc.status === 'completed' && doc.original_storage_path && (
+                                  <button onClick={() => { setActiveMenuId(null); openOverlay(doc); }}>
+                                    <Layers size={13} /> PDF Görüntüle
+                                  </button>
+                                )}
+                                {doc.translation?.translated_text && (
+                                  <button onClick={() => { setActiveMenuId(null); setSelectedDoc(doc); }}>
+                                    <Eye size={13} /> Metni Oku
+                                  </button>
+                                )}
+                                {doc.translation?.translated_text && (
+                                  <button onClick={() => { setActiveMenuId(null); openSummary(doc); }}>
+                                    <BookOpen size={13} /> Özet Çıkar
+                                  </button>
+                                )}
+                                <Link to="/chat" state={{ documentId: doc.id }} onClick={() => setActiveMenuId(null)}>
+                                  <MessageSquare size={13} /> AI ile Konuş
+                                </Link>
+                                {doc.status === 'completed' && doc.translation?.id && (
+                                  <button onClick={() => { setActiveMenuId(null); openShareModal(doc); }}>
+                                    <Share2 size={13} /> Paylaş
+                                  </button>
+                                )}
+                                <div className={styles.menuDivider} />
+                                <button className={styles.menuDeleteBtn} onClick={() => { setActiveMenuId(null); handleDelete(doc.id); }}>
+                                  <Trash2 size={13} /> Belgeyi Sil
+                                </button>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      ))}
 
       {/* Daha fazla yükle */}
       {hasMoreDocs && (
-        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24 }}>
-          <button
-            onClick={() => setDocPage(p => p + 1)}
-            style={{
-              padding: '10px 24px',
-              borderRadius: 12,
-              background: 'var(--color-surface)',
-              border: '1px solid var(--color-border)',
-              cursor: 'pointer',
-              font: 'inherit',
-              fontSize: '0.875rem',
-              fontWeight: 600,
-              color: 'var(--color-text-primary)',
-            }}
-          >
-            Daha fazla yükle
-          </button>
+        <div className={styles.loadMoreWrap}>
+          <button className={styles.loadMoreBtn} onClick={() => setDocPage(p => p + 1)}>Daha fazla yükle</button>
         </div>
       )}
 
-      {/* Çeviri Görüntüleme Modal */}
+      {/* Yüzen Toplu İşlem Paneli (Floating Bulk Actions Panel) */}
+      <AnimatePresence>
+        {selected.size > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, x: '-50%' }}
+            animate={{ opacity: 1, y: 0, x: '-50%' }}
+            exit={{ opacity: 0, y: 50, x: '-50%' }}
+            transition={{ type: 'spring', stiffness: 260, damping: 20 }}
+            className={styles.floatingBulkBar}
+          >
+            <div className={styles.bulkCount}>
+              <strong>{selected.size}</strong> belge seçildi
+            </div>
+            <div className={styles.bulkActionsRow}>
+              <button className={styles.bulkZipBtn} onClick={downloadZip} disabled={zipping}>
+                {zipping ? <Loader size={14} style={{ animation: 'spin 0.8s linear infinite' }} /> : <Archive size={14} />}
+                {zipping ? 'Hazırlanıyor…' : `${selected.size} Seçili ZIP İndir`}
+              </button>
+              <button className={styles.bulkCancelBtn} onClick={clearSelect}>
+                İptal Et
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+            {/* Çeviri Görüntüleme Modal */}
       <AnimatePresence>
         {selectedDoc && (
           <motion.div

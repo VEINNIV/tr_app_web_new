@@ -57,6 +57,14 @@ export interface Translation {
   started_at: string | null;
   completed_at: string | null;
   created_at: string;
+  // ── Paylaşım alanları (opsiyonel) ──
+  share_token?: string | null;
+  shared_pdf_url?: string | null;
+  share_password_hash?: string | null;
+  /** Sahibe özel düz-metin erişim kodu — tekrar gösterim için (RLS: yalnızca sahip okur). */
+  share_code?: string | null;
+  /** Paylaşım son kullanma tarihi (ISO). Süresi dolunca cron temizler. */
+  share_expires_at?: string | null;
 }
 
 export type TranslationStatus = 'pending' | 'extracting' | 'translating' | 'generating' | 'completed' | 'error';

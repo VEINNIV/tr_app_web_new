@@ -160,12 +160,25 @@
   display: flex;
   justify-content: center;
   align-items: flex-start;
+  transition: all 0.2s ease;
+}
+
+.grabCursor {
+  cursor: grab;
+}
+
+.grabbingCursor {
+  cursor: grabbing !important;
+  user-select: none;
+}
+
+.grabbingCursor * {
+  pointer-events: none !important;
 }
 
 .pageWrapper {
   display: inline-block;
-  transform-origin: top center;
-  transition: transform 0.2s ease;
+  transition: width 0.2s ease, max-width 0.2s ease;
 }
 
 /* Sayfa container — translated PDF doğrudan render edilir, overlay yok */

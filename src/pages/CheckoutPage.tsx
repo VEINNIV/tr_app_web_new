@@ -1,20 +1,22 @@
 /**
  * TransWordly — CheckoutPage
- * Kullanıcı "Plan Seç" butonuna bastığında gelir.
- * ?plan=starter|pro  &student=1 (öğrenci indirimi)
+ * Sepetten veya plan kartından gelinir.  ?plan=starter|pro  &student=1
  *
- * Ödeme altyapısı (PayTR / iyzico) henüz entegre edilmemiş;
- * bu sayfa ödeme akışının UI + entegrasyon iskeletidir.
+ * Ödeme akışı: kullanıcı iletişim bilgilerini girer → "Güvenli Öde" →
+ * PayTR'nin kendi güvenli ödeme sayfasına yönlendirilir (kart bilgisi orada
+ * istenir, bizde saklanmaz). Tutar istemciden DEĞİL, app_config.plan_price'tan
+ * okunur (paytr-init edge function). Başarılı ödemede webhook krediyi yükler.
  */
 import { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   ShieldCheck, CreditCard, Lock, Check, ChevronLeft,
-  Zap, AlertCircle, User, Mail, Phone,
+  Zap, AlertCircle, User, Mail, Phone, ArrowUpRight,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/auth';
+import { useCart } from '../context/CartContext';
 import { PRICING_PLANS, CREDIT_COSTS, pdfPerCredits } from '../lib/constants';
 import styles from '../styles/components/checkout.module.css';
 
@@ -27,9 +29,11 @@ export default function CheckoutPage() {
   const [params] = useSearchParams();
   const navigate  = useNavigate();
   const { user, profile } = useAuth();
+  const { item: cartItem, clear: clearCart } = useCart();
 
-  const planId    = params.get('plan') ?? 'starter';
-  const isStudent = params.get('student') === '1';
+  // Plan/öğrenci bilgisi öncelik sırası: URL parametresi → sepet → varsayılan
+  const planId    = params.get('plan') ?? cartItem?.planId ?? 'starter';
+  const isStudent = params.get('student') === '1' || (!params.get('plan') && !!cartItem?.student);
 
   const staticPlan = PRICING_PLANS.find(p => p.id === planId) ?? PRICING_PLANS[1];
 
@@ -70,6 +74,12 @@ export default function CheckoutPage() {
 
   // PayTR ok/fail dönüşü: ?status=success|fail
   const payStatus = params.get('status');
+
+  // Ödeme başarılıysa sepeti boşalt (kullanıcı geri gelince eski sepetle karşılaşmasın)
+  useEffect(() => {
+    if (payStatus === 'success') clearCart();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [payStatus]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -154,7 +164,7 @@ export default function CheckoutPage() {
           {/* Özellikler */}
           <ul className={styles.featureList}>
             {planCredits > 0 && (
-              <li><Check size={13} />{planCredits} kredi/ay · ≈{pdfPerCredits(planCredits, perPage)} PDF çeviri</li>
+              <li><Check size={13} />{planCredits} kredi/ay · ≈{pdfPerCredits(planCredits, perPage)} sayfa çeviri</li>
             )}
             {staticPlan.features.map((f, i) => (
               <li key={i}><Check size={13} />{f}</li>
@@ -256,14 +266,15 @@ export default function CheckoutPage() {
               </div>
             </div>
 
-            {/* Kart bilgisi — ödeme sağlayıcı iframi buraya gelecek */}
+            {/* Ödeme yöntemi — kart bilgisi PayTR'nin güvenli sayfasında istenir */}
             <div className={styles.cardPlaceholder}>
               <div className={styles.cardPlaceholderInner}>
-                <CreditCard size={24} className={styles.cardIcon} />
+                <ShieldCheck size={24} className={styles.cardIcon} />
                 <div className={styles.cardPlaceholderText}>
-                  <strong>Kart bilgisi alanı</strong>
-                  <span>PayTR veya iyzico entegrasyonu yapıldığında burada ödeme formu görünecek.</span>
+                  <strong>Güvenli ödeme — PayTR</strong>
+                  <span>“Güvenli Öde”ye bastığınızda PayTR’nin 3D Secure ödeme sayfasına yönlendirilirsiniz. Kart bilgileriniz PayTR tarafında işlenir, sitemizde saklanmaz.</span>
                 </div>
+                <ArrowUpRight size={18} style={{ marginLeft: 'auto', color: 'var(--color-text-tertiary)', flexShrink: 0 }} />
               </div>
             </div>
 

@@ -13,8 +13,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
   Upload, FileText, X, Check, AlertCircle, Download, MessageSquare,
-  ArrowRight, Globe, Info, Search, MonitorPlay, BellRing, AlertTriangle,
-  Loader, Pause, Layers, ImageIcon, Eye,
+  ArrowRight, Info, Search, MonitorPlay, BellRing, AlertTriangle,
+  Loader, Pause, ImageIcon, Eye, ChevronDown,
+  HeartPulse, Scale, Sigma, Wrench, Cpu, TrendingUp, Sparkles, RotateCcw,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { SPRING_TIGHT } from '../components/ui/motion';
@@ -51,6 +52,7 @@ export default function TranslatorPage() {
   const [checkingImages, setCheckingImages] = useState(false);
   const [caps, setCaps] = useState<ServiceCapabilities>({ available: false });
   const [showPreview, setShowPreview] = useState(false);
+  const [langOpen, setLangOpen] = useState(false);
 
   // Tamamlanan çevirinin in-app önizlemesi için kaynak PDF'in object URL'i.
   // Yalnızca dosya bellekteyken (bu oturumda çevrildiyse) üretilir.
@@ -184,20 +186,25 @@ export default function TranslatorPage() {
 
   return (
     <div className={styles.translator}>
-      <h1 className={styles.pageTitle}>Belge Çevir</h1>
-      <p className={styles.pageDesc}>
-        PDF yükleyin — metni AI ile Türkçeye çevirelim. Grafikler, resimler ve şekiller orijinal hâliyle korunur.
-      </p>
+      <div className={styles.hero}>
+        <span className={styles.heroEyebrow}><Sparkles size={13} /> AI Belge Çevirisi</span>
+        <h1 className={styles.pageTitle}>
+          Belgeni <span className={styles.titleAccent}>Türkçeye</span> çevir
+        </h1>
+        <p className={styles.pageDesc}>
+          PDF'ini yükle — metni yapay zekâ ile Türkçeye çevirelim. Grafikler, resimler ve şekiller orijinal hâliyle korunur.
+        </p>
+      </div>
 
       {/* Adım çubuğu */}
       <div className={styles.steps}>
-        {(['Yükle', 'Mod', 'Çeviri', 'Sonuç'] as const).map((label, i) => {
+        {(['Yükle', 'Ayarla', 'Çevir', 'Sonuç'] as const).map((label, i) => {
           const isDone = i < stepIndex;
           const isActive = i === stepIndex;
           return (
             <div key={i} className={styles.step}>
               <div className={`${styles.stepDot} ${isDone ? styles.stepDotDone : ''} ${isActive ? styles.stepDotActive : ''}`}>
-                {isDone ? '✓' : i + 1}
+                {isDone ? <Check size={12} /> : i + 1}
               </div>
               <span className={`${styles.stepName} ${isDone ? styles.stepNameDone : ''} ${isActive ? styles.stepNameActive : ''}`}>
                 {label}
@@ -220,45 +227,47 @@ export default function TranslatorPage() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
           >
-            <motion.div
-              className={`${styles.dropzone} ${dragActive ? styles.dropzoneActive : ''}`}
-              onDragEnter={onDrag} onDragLeave={onDrag} onDragOver={onDrag} onDrop={onDrop}
-              onClick={() => fileInputRef.current?.click()}
-              whileHover={reduced ? undefined : { scale: 1.005 }}
-              whileTap={reduced ? undefined : { scale: 0.995 }}
-              animate={dragActive && !reduced ? { scale: 1.02 } : { scale: 1 }}
-              transition={SPRING_TIGHT}
-            >
-              <input ref={fileInputRef} type="file" accept="application/pdf" onChange={onSelect} hidden />
+            {!file && (
               <motion.div
-                className={styles.dropIcon}
-                animate={reduced ? undefined : { y: [0, -6, 0] }}
-                transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
+                className={`${styles.dropzone} ${dragActive ? styles.dropzoneActive : ''}`}
+                onDragEnter={onDrag} onDragLeave={onDrag} onDragOver={onDrag} onDrop={onDrop}
+                onClick={() => fileInputRef.current?.click()}
+                whileHover={reduced ? undefined : { scale: 1.005 }}
+                whileTap={reduced ? undefined : { scale: 0.995 }}
+                animate={dragActive && !reduced ? { scale: 1.02 } : { scale: 1 }}
+                transition={SPRING_TIGHT}
               >
-                <Upload size={28} />
+                <input ref={fileInputRef} type="file" accept="application/pdf" onChange={onSelect} hidden />
+                <motion.div
+                  className={styles.dropIcon}
+                  animate={reduced ? undefined : { y: [0, -6, 0] }}
+                  transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
+                >
+                  <Upload size={28} />
+                </motion.div>
+                <div className={styles.dropTitle}>PDF'ini sürükle ya da seç</div>
+                <div className={styles.dropHint}>Sadece PDF • Maks. 100 MB</div>
               </motion.div>
-              <div className={styles.dropTitle}>PDF dosyanızı sürükleyin veya seçin</div>
-              <div className={styles.dropHint}>Sadece PDF • Maks. 100 MB</div>
-            </motion.div>
+            )}
 
             <AnimatePresence>
               {file && (
                 <motion.div
                   className={styles.fileInfo}
-                  initial={{ opacity: 0, y: -8, height: 0 }}
-                  animate={{ opacity: 1, y: 0, height: 'auto' }}
-                  exit={{ opacity: 0, y: -8, height: 0 }}
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
                   transition={{ duration: 0.28 }}
-                  style={{ overflow: 'hidden' }}
                 >
-                  <div className={styles.fileInfoIcon}><FileText size={20} /></div>
+                  <div className={styles.fileInfoIcon}><FileText size={22} /></div>
                   <div className={styles.fileInfoText}>
                     <div className={styles.fileInfoName}>{file.name}</div>
-                    <div className={styles.fileInfoSize}>{formatSize(file.size)}</div>
+                    <div className={styles.fileInfoSize}>{formatSize(file.size)} · PDF</div>
                   </div>
                   <motion.button
                     className={styles.fileRemove}
-                    onClick={() => setFile(null)}
+                    onClick={() => { setFile(null); setLangOpen(false); }}
+                    title="Dosyayı kaldır"
                     whileHover={reduced ? undefined : { rotate: 90, scale: 1.1 }}
                     whileTap={reduced ? undefined : { scale: 0.9 }}
                     transition={SPRING_TIGHT}
@@ -278,72 +287,98 @@ export default function TranslatorPage() {
                   exit={{ opacity: 0, y: 8 }}
                   transition={{ duration: 0.32, delay: 0.05 }}
                 >
-                  <div className={styles.configLabel}><Globe size={16} /> Kaynak Dil</div>
-                  <div className={styles.langGrid}>
+                  {/* ── Diller: kompakt seçici → hedef ── */}
+                  <div className={styles.fieldLabel}>Diller</div>
+                  <div className={styles.langPair}>
                     <button
-                      className={`${styles.langOption} ${styles.langAuto} ${sourceLang === 'auto' ? styles.langSelected : ''}`}
-                      onClick={() => setSourceLang('auto')}
+                      type="button"
+                      className={`${styles.langPicker} ${langOpen ? styles.langPickerOpen : ''}`}
+                      onClick={() => setLangOpen(o => !o)}
                     >
-                      <Search size={14} /> Otomatik Algıla
+                      <span className={styles.langPickerLabel}>
+                        {sourceLang === 'auto' ? (
+                          <><Search size={15} /> Otomatik Algıla</>
+                        ) : (() => {
+                          const l = SUPPORTED_LANGUAGES.find(x => x.code === sourceLang);
+                          return <>{l?.flag} {l?.name ?? 'Kaynak dil'}</>;
+                        })()}
+                      </span>
+                      <ChevronDown size={16} className={styles.langChevron} />
                     </button>
-                    {SUPPORTED_LANGUAGES.map(l => (
-                      <button
-                        key={l.code}
-                        className={`${styles.langOption} ${sourceLang === l.code ? styles.langSelected : ''}`}
-                        onClick={() => setSourceLang(l.code)}
-                      >
-                        {l.flag} {l.name}
-                      </button>
-                    ))}
-                  </div>
-                  <div className={styles.configLabel} style={{ marginTop: 'var(--space-5)' }}>
-                    <ArrowRight size={16} /> Hedef Dil
-                  </div>
-                  <div className={styles.targetLang}>
-                    <span className={styles.targetFlag}>{TARGET_LANGUAGE.flag}</span>
-                    <span className={styles.targetText}>{TARGET_LANGUAGE.nativeName} ({TARGET_LANGUAGE.name})</span>
+                    <span className={styles.langArrow}><ArrowRight size={16} /></span>
+                    <div className={styles.langTarget}>
+                      <span className={styles.langTargetFlag}>{TARGET_LANGUAGE.flag}</span>
+                      <span>{TARGET_LANGUAGE.name}</span>
+                    </div>
                   </div>
 
-                  {/* Alan / bağlam seçimi */}
-                  <div className={styles.configLabel} style={{ marginTop: 'var(--space-5)' }}>
-                    <Search size={16} /> Belge Alanı
-                  </div>
+                  <AnimatePresence>
+                    {langOpen && (
+                      <motion.div
+                        className={styles.langPanel}
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.24 }}
+                        style={{ overflow: 'hidden' }}
+                      >
+                        <div className={styles.langGrid}>
+                          <button
+                            className={`${styles.langOption} ${styles.langAuto} ${sourceLang === 'auto' ? styles.langSelected : ''}`}
+                            onClick={() => { setSourceLang('auto'); setLangOpen(false); }}
+                          >
+                            <Search size={14} /> Otomatik Algıla
+                          </button>
+                          {SUPPORTED_LANGUAGES.map(l => (
+                            <button
+                              key={l.code}
+                              className={`${styles.langOption} ${sourceLang === l.code ? styles.langSelected : ''}`}
+                              onClick={() => { setSourceLang(l.code); setLangOpen(false); }}
+                            >
+                              {l.flag} {l.name}
+                            </button>
+                          ))}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* ── Belge alanı ── */}
+                  <div className={styles.fieldLabel} style={{ marginTop: 'var(--space-6)' }}>Belge alanı</div>
                   <div className={styles.domainGrid}>
                     {([
-                      { id: 'general',     label: 'Genel',        emoji: '📄' },
-                      { id: 'medical',     label: 'Tıp',          emoji: '🏥' },
-                      { id: 'legal',       label: 'Hukuk',        emoji: '⚖️' },
-                      { id: 'math',        label: 'Matematik',    emoji: '∑' },
-                      { id: 'engineering', label: 'Mühendislik',  emoji: '⚙️' },
-                      { id: 'cs',          label: 'Bilgisayar',   emoji: '💻' },
-                      { id: 'economics',   label: 'İktisat',      emoji: '📊' },
+                      { id: 'general',     label: 'Genel',        icon: <FileText size={16} /> },
+                      { id: 'medical',     label: 'Tıp',          icon: <HeartPulse size={16} /> },
+                      { id: 'legal',       label: 'Hukuk',        icon: <Scale size={16} /> },
+                      { id: 'math',        label: 'Matematik',    icon: <Sigma size={16} /> },
+                      { id: 'engineering', label: 'Mühendislik',  icon: <Wrench size={16} /> },
+                      { id: 'cs',          label: 'Bilgisayar',   icon: <Cpu size={16} /> },
+                      { id: 'economics',   label: 'İktisat',      icon: <TrendingUp size={16} /> },
                     ] as const).map(d => (
                       <button
                         key={d.id}
-                        className={`${styles.domainOption} ${domain === d.id ? styles.domainSelected : ''}`}
+                        className={`${styles.domainCard} ${domain === d.id ? styles.domainCardActive : ''}`}
                         onClick={() => setDomain(d.id)}
                         type="button"
                       >
-                        <span>{d.emoji}</span> {d.label}
+                        <span className={styles.domainCardIcon}>{d.icon}</span>
+                        <span className={styles.domainCardLabel}>{d.label}</span>
                       </button>
                     ))}
                   </div>
 
-                  {/* Mod seçimi */}
-                  <div className={styles.configLabel} style={{ marginTop: 'var(--space-6)' }}>
-                    <Layers size={16} /> Çeviri Modu
-                  </div>
+                  {/* ── Çeviri modu ── */}
+                  <div className={styles.fieldLabel} style={{ marginTop: 'var(--space-6)' }}>Çeviri modu</div>
                   <div className={styles.modeChoice}>
                     <button
                       className={`${styles.modeCard} ${chosenMode === 'foreground' ? styles.modeCardActive : ''}`}
                       onClick={() => setChosenMode('foreground')}
                       type="button"
                     >
-                      <span className={styles.modeCardTitle}>
-                        <MonitorPlay size={14} /> Bu sayfada kal
-                      </span>
-                      <span className={styles.modeCardDesc}>
-                        İlerlemeyi canlı izleyin. Tarayıcı sekmesini kapatmayın.
+                      <span className={styles.modeRadio} aria-hidden />
+                      <span className={styles.modeBody}>
+                        <span className={styles.modeCardTitle}><MonitorPlay size={15} /> Bu sayfada kal</span>
+                        <span className={styles.modeCardDesc}>İlerlemeyi canlı izle. Sekmeyi kapatma.</span>
                       </span>
                     </button>
                     <button
@@ -351,24 +386,21 @@ export default function TranslatorPage() {
                       onClick={() => setChosenMode('background')}
                       type="button"
                     >
-                      <span className={styles.modeCardTitle}>
-                        <BellRing size={14} /> Arka planda çevir
-                      </span>
-                      <span className={styles.modeCardDesc}>
-                        Diğer sayfalarda gezinin — bittiğinde tarayıcı bildirimi göndereceğiz.
+                      <span className={styles.modeRadio} aria-hidden />
+                      <span className={styles.modeBody}>
+                        <span className={styles.modeCardTitle}><BellRing size={15} /> Arka planda çevir</span>
+                        <span className={styles.modeCardDesc}>Gezinmeye devam et — bitince haber veririz.</span>
                       </span>
                     </button>
                   </div>
 
-                  {/* Görsel çeviri seçeneği — görseller varsa göster */}
+                  {/* ── Görsel çevirisi (görseller varsa) ── */}
                   {(hasImages || checkingImages) && (
-                    <div style={{ marginTop: 'var(--space-5)' }}>
-                      <div className={styles.configLabel}>
-                        <ImageIcon size={16} /> Görsel Çevirisi
-                      </div>
+                    <>
+                      <div className={styles.fieldLabel} style={{ marginTop: 'var(--space-6)' }}>Görsel çevirisi</div>
                       {checkingImages ? (
-                        <div className={styles.demoNotice} style={{ background: 'var(--color-bg-alt)' }}>
-                          <Loader size={14} style={{ animation: 'spin 0.9s linear infinite' }} />
+                        <div className={styles.hint}>
+                          <Loader size={14} style={{ animation: 'spin 0.9s linear infinite', color: 'var(--color-accent)' }} />
                           <span>Görseller kontrol ediliyor…</span>
                         </div>
                       ) : hasImages ? (
@@ -376,79 +408,65 @@ export default function TranslatorPage() {
                           type="button"
                           className={`${styles.modeCard} ${translateImages ? styles.modeCardActive : ''}`}
                           onClick={() => setTranslateImages(prev => !prev)}
-                          style={{ width: '100%', cursor: 'pointer' }}
+                          style={{ width: '100%' }}
                         >
-                          <span className={styles.modeCardTitle}>
-                            <ImageIcon size={14} />
-                            {translateImages ? 'Görsellerdeki metinler çevrilecek ✓' : 'Görsellerdeki metinleri de çevir'}
-                          </span>
-                          <span className={styles.modeCardDesc}>
-                            PDF içindeki grafik, diyagram ve şekillerde bulunan metinler de hedef dile çevrilir.
-                            {translateImages ? ' (Aktif — kapatmak için tıklayın)' : ' (Tıklayarak etkinleştirin)'}
+                          <span className={styles.modeRadio} aria-hidden />
+                          <span className={styles.modeBody}>
+                            <span className={styles.modeCardTitle}><ImageIcon size={15} /> Görsellerdeki metinleri de çevir</span>
+                            <span className={styles.modeCardDesc}>
+                              PDF içindeki grafik, diyagram ve şekillerde bulunan metinler de Türkçeye çevrilir.
+                            </span>
                           </span>
                         </button>
                       ) : null}
+                    </>
+                  )}
+
+                  {/* ── İnce uyarı ── */}
+                  {chosenMode === 'foreground' ? (
+                    <div className={styles.hint}>
+                      <AlertTriangle size={15} />
+                      <span>Çeviri bu pencerede çalışır — sekmeyi kapatma. Başka sayfada gezmek istersen <strong>Arka planda çevir</strong>'i seç.</span>
+                    </div>
+                  ) : (
+                    <div className={`${styles.hint} ${styles.hintInfo}`}>
+                      <BellRing size={15} style={{ color: 'var(--color-accent)' }} />
+                      <span>İstediğin sayfada gezinebilirsin; bitince bildirim göndeririz. Yine de tarayıcıyı kapatma.</span>
                     </div>
                   )}
 
-                  {chosenMode === 'foreground' && (
-                    <div className={styles.warning}>
-                      <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
-                      <span>
-                        <strong>Sayfayı veya sekmeyi kapatmayın.</strong> Çeviri bu pencerede çalışır. Diğer sekmelere geçebilirsiniz, ama tarayıcıyı kapatırsanız iş kaybolur. Daha rahat etmek için "Arka planda çevir" modunu seçin.
+                  {/* ── Footer: kredi + servis durumu + başlat ── */}
+                  <div className={styles.footerBar}>
+                    <div className={styles.footerMeta}>
+                      <span className={styles.footerCredit}>
+                        <Info size={14} /> Sayfa başına <strong>1 kredi</strong> · {profile?.credits_remaining ?? 0} kredin var
+                      </span>
+                      <span className={`${styles.serviceBadge} ${caps.redactionWrite ? styles.serviceOn : styles.serviceOff}`}>
+                        {caps.redactionWrite
+                          ? <><Check size={12} /> Profesyonel mod</>
+                          : <><AlertTriangle size={12} /> Standart mod</>}
                       </span>
                     </div>
-                  )}
-                  {chosenMode === 'background' && (
-                    <div className={styles.warning} style={{ background: 'var(--color-accent-light)', borderColor: 'var(--color-accent-medium)', color: 'var(--color-accent)' }}>
-                      <BellRing size={16} style={{ flexShrink: 0, marginTop: 2 }} />
-                      <span>
-                        Çeviri başladıktan sonra dilediğiniz sayfaya gidebilirsiniz. Bittiğinde tarayıcı bildirimi + bildirim çubuğu ile uyaracağız. Tarayıcıyı kapatmamaya yine dikkat edin.
-                      </span>
+                    <motion.button
+                      className={styles.btnPrimary}
+                      onClick={handleStart}
+                      disabled={!file}
+                      whileHover={reduced || !file ? undefined : { y: -2 }}
+                      whileTap={reduced || !file ? undefined : { scale: 0.97 }}
+                      transition={SPRING_TIGHT}
+                    >
+                      Çeviriyi Başlat <ArrowRight size={18} />
+                    </motion.button>
+                  </div>
+
+                  {!caps.redactionWrite && (
+                    <div className={styles.serviceNote}>
+                      PDF servisi bağlı değil — çeviri yine çalışır. En temiz çıktı için <code>cd backend &amp;&amp; uvicorn main:app --port 5050</code> ile servisi başlat.
                     </div>
                   )}
-
-                  <div className={styles.demoNotice}>
-                    <Info size={14} />
-                    <span>
-                      Sayfa başına 1 kredi. Mevcut: <strong>{profile?.credits_remaining ?? 0}</strong> kredi.
-                    </span>
-                  </div>
-
-                  {/* Backend yetenek bilgisi (kalite ipucu) */}
-                  <div
-                    className={styles.demoNotice}
-                    style={{
-                      background: caps.redactionWrite ? 'var(--color-success-bg)' : 'var(--color-bg-alt)',
-                      borderColor: caps.redactionWrite ? 'rgba(48, 209, 88, 0.3)' : 'var(--color-border)',
-                      color: caps.redactionWrite ? 'var(--color-success)' : 'var(--color-text-secondary)',
-                    }}
-                  >
-                    {caps.redactionWrite ? <Check size={14} /> : <AlertTriangle size={14} />}
-                    <span>
-                      {caps.redactionWrite ? (
-                        <><strong>Profesyonel mod aktif:</strong> PDF servisi (v{caps.version}) bağlı — orijinal metin gerçek redaction ile silinir, kutusuz çıktı.</>
-                      ) : (
-                        <><strong>Standart mod:</strong> PDF servisi bağlı değil. Çeviri çalışır ama çıktı kalitesi için <code style={{ background: 'var(--color-surface)', padding: '1px 5px', borderRadius: 4, fontFamily: 'monospace', fontSize: 12 }}>cd backend &amp;&amp; pip install -r requirements.txt &amp;&amp; uvicorn main:app --port 5050</code> ile servisi başlatın.</>
-                      )}
-                    </span>
-                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
-
-            <div className={styles.actions}>
-              <motion.button
-                className={styles.btnPrimary}
-                onClick={handleStart}
-                disabled={!file}
-                whileHover={reduced || !file ? undefined : { y: -2 }}
-                whileTap={reduced || !file ? undefined : { scale: 0.97 }}
-                transition={SPRING_TIGHT}
-              >
-                Çeviriyi Başlat
-              </motion.button>
-            </div>
           </motion.div>
         )}
 
@@ -518,7 +536,7 @@ export default function TranslatorPage() {
                   onClick={handleReset}
                   variants={{ hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0 } }}
                 >
-                  Yeni Çeviri
+                  <RotateCcw size={15} /> Yeni Çeviri
                 </motion.button>
                 {job.status === 'completed' && (
                   <>

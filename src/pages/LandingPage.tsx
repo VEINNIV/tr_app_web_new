@@ -10,6 +10,8 @@ import {
 import { PRICING_PLANS, CREDIT_COSTS, pdfPerCredits, fmtCredit } from '../lib/constants';
 import { supabase } from '../lib/supabase';
 import { Magnetic } from '../components/ui/motion';
+import { useCart } from '../context/CartContext';
+import toast from 'react-hot-toast';
 import styles from '../styles/components/landing.module.css';
 
 /* ── Animation variants ───────────────────────────────────── */
@@ -163,6 +165,7 @@ const PHASE_INFO: Record<LivePhase, { label: string; sub: string; pct: [number, 
 export default function LandingPage() {
   const reduced = useReducedMotion();
   const navigate = useNavigate();
+  const { add: addToCart } = useCart();
 
   /* ── Hero typewriter ── */
   const trTexts = HERO_DEMOS.map(d => d.tr);
@@ -1110,7 +1113,7 @@ export default function LandingPage() {
               </div>
               {plan.credits > 0 && (
                 <div className={styles.pricingCredits}>
-                  {plan.credits} kredi/ay · ≈{pdfPerCredits(plan.credits, credit.perPage)} PDF çeviri
+                  {plan.credits} kredi/ay · ≈{pdfPerCredits(plan.credits, credit.perPage)} sayfa çeviri
                 </div>
               )}
               <ul className={styles.pricingFeatureList}>
@@ -1123,10 +1126,13 @@ export default function LandingPage() {
                 onClick={() => {
                   if (plan.price === 0) navigate('/auth?mode=register');
                   else if (plan.price === -1) navigate('/auth?mode=register');
-                  else navigate(`/checkout?plan=${plan.id}${isStudent ? '&student=1' : ''}`);
+                  else {
+                    addToCart({ planId: plan.id, planName: plan.name, student: isStudent, price: plan.displayedPrice });
+                    toast.success(`${plan.name} planı sepete eklendi`, { icon: '🛒' });
+                  }
                 }}
               >
-                {plan.price === 0 ? 'Ücretsiz Başla' : plan.price === -1 ? 'İletişime Geçin' : 'Plan Seç'}
+                {plan.price === 0 ? 'Ücretsiz Başla' : plan.price === -1 ? 'İletişime Geçin' : 'Sepete Ekle'}
               </button>
             </motion.div>
           ))}

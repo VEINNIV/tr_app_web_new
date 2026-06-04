@@ -5,6 +5,7 @@ import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { TranslationProvider } from './context/TranslationContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { CartProvider } from './context/CartContext';
 import Navbar from './components/ui/Navbar';
 import BottomNav from './components/ui/BottomNav';
 import TranslationStatusBar from './components/TranslationStatusBar';
@@ -133,9 +134,11 @@ export default function App() {
       <BrowserRouter>
         <ThemeProvider>
           <AuthProvider>
-            <TranslationProvider>
-              <AppLayout />
-            </TranslationProvider>
+            <CartProvider>
+              <TranslationProvider>
+                <AppLayout />
+              </TranslationProvider>
+            </CartProvider>
           </AuthProvider>
         </ThemeProvider>
       </BrowserRouter>

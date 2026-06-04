@@ -271,6 +271,57 @@ def _extract_blocks_from_text_dict(
     return blocks
 
 
+def _cell_style_from_clip(
+    page: fitz.Page, clip: fitz.Rect
+) -> tuple[str, float, bool, list[float]]:
+    """
+    Bir tablo hücresinin KENDİ bbox'undan metni ve baskın stilini (boyut/kalın/renk)
+    okur. Metin doğrudan hücrenin geometrik kutusundan alındığı için metin↔konum
+    eşlemesi GARANTİLİDİR — `tab.extract()` sıra/sütun kayması yaşanmaz.
+    """
+    default = ("", 9.0, False, [0.0, 0.0, 0.0])
+    try:
+        d = page.get_text(
+            "dict", clip=clip, flags=fitz.TEXT_PRESERVE_WHITESPACE
+        )
+    except Exception:
+        return default
+
+    parts: list[str] = []
+    first_size: Optional[float] = None
+    first_bold = False
+    first_color: Optional[list[float]] = None
+
+    for blk in d.get("blocks", []):
+        if blk.get("type") != 0:
+            continue
+        for line in blk.get("lines", []):
+            for s in line.get("spans", []):
+                t = s.get("text", "")
+                if not t.strip():
+                    continue
+                parts.append(t.strip())
+                if first_size is None:
+                    first_size = float(s.get("size", 9.0))
+                    first_bold = bool(int(s.get("flags", 0)) & 2**4)
+                    ci = int(s.get("color", 0))
+                    first_color = [
+                        ((ci >> 16) & 0xFF) / 255,
+                        ((ci >> 8) & 0xFF) / 255,
+                        (ci & 0xFF) / 255,
+                    ]
+
+    text = " ".join(parts)
+    if not text:
+        return default
+    return (
+        text,
+        first_size if first_size is not None else 9.0,
+        first_bold,
+        first_color if first_color is not None else [0.0, 0.0, 0.0],
+    )
+
+
 def _page_has_images(page: fitz.Page) -> bool:
     try:
         images = page.get_image_info(xrefs=True)
@@ -640,45 +691,52 @@ async def extract_pdf(file: UploadFile = File(...)):
             finder = page.find_tables()
             for tab in finder.tables:
                 table_rects_pts.append(fitz.Rect(tab.bbox))
-                rows = tab.extract()
-                if not rows:
-                    continue
-                ncols = max(len(r) for r in rows)
-                if ncols == 0:
-                    continue
-                flat_cells = getattr(tab, "cells", [])
-                for r_idx, row in enumerate(rows):
-                    for c_idx, cell_text in enumerate(row):
-                        if not isinstance(cell_text, str) or not cell_text.strip():
-                            continue
-                        cell_idx = r_idx * ncols + c_idx
-                        if cell_idx >= len(flat_cells):
-                            continue
-                        cell_bbox = flat_cells[cell_idx]
-                        if cell_bbox is None:
-                            continue
-                        try:
-                            cx0, cy0, cx1, cy1 = (
-                                float(cell_bbox[0]), float(cell_bbox[1]),
-                                float(cell_bbox[2]), float(cell_bbox[3]),
-                            )
-                        except (TypeError, IndexError):
-                            continue
-                        if cx1 - cx0 < 2 or cy1 - cy0 < 2:
-                            continue
-                        table_cell_blocks.append(TextBlock(
-                            text=cell_text.strip(),
-                            x=max(0.0, cx0 / pw),
-                            y=max(0.0, cy0 / ph),
-                            w=max(0.0, min(1.0, (cx1 - cx0) / pw)),
-                            h=max(0.0, min(1.0, (cy1 - cy0) / ph)),
-                            fontSize=9.0,
-                            fontName="",
-                            bold=False,
-                            italic=False,
-                            color=[0.0, 0.0, 0.0],
-                            alignment=0,
-                        ))
+
+                # Hücre bbox'larını satır yapısından topla. `tab.rows[r].cells`
+                # ve metin AYNI kaynaktan geldiği için kayma olmaz; ayrıca metni
+                # her hücrenin KENDİ kutusundan (clip) okuyarak konum eşlemesini
+                # %100 garantiye alıyoruz (eski stride-tabanlı index hatası giderildi).
+                cell_bboxes: list = []
+                trows = getattr(tab, "rows", None)
+                if trows:
+                    for trow in trows:
+                        for cbbox in (getattr(trow, "cells", None) or []):
+                            if cbbox is not None:
+                                cell_bboxes.append(cbbox)
+                else:
+                    cell_bboxes = [
+                        c for c in (getattr(tab, "cells", None) or []) if c is not None
+                    ]
+
+                for cbbox in cell_bboxes:
+                    try:
+                        cx0, cy0, cx1, cy1 = (
+                            float(cbbox[0]), float(cbbox[1]),
+                            float(cbbox[2]), float(cbbox[3]),
+                        )
+                    except (TypeError, IndexError):
+                        continue
+                    if cx1 - cx0 < 2 or cy1 - cy0 < 2:
+                        continue
+
+                    clip = fitz.Rect(cx0, cy0, cx1, cy1)
+                    cell_text, cell_fs, cell_bold, cell_color = _cell_style_from_clip(page, clip)
+                    if not cell_text.strip():
+                        continue
+
+                    table_cell_blocks.append(TextBlock(
+                        text=cell_text.strip(),
+                        x=max(0.0, cx0 / pw),
+                        y=max(0.0, cy0 / ph),
+                        w=max(0.0, min(1.0, (cx1 - cx0) / pw)),
+                        h=max(0.0, min(1.0, (cy1 - cy0) / ph)),
+                        fontSize=cell_fs,
+                        fontName="",
+                        bold=cell_bold,
+                        italic=False,
+                        color=cell_color,
+                        alignment=0,
+                    ))
         except Exception as e:
             print(f"  [INFO] Tablo tespiti p{page_idx + 1}: {e}")
 

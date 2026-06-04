@@ -59,6 +59,88 @@ export default function PDFOverlayViewer({
   const [loadError, setLoadError] = useState('');
   const [showTranslation, setShowTranslation] = useState(true);
   const [scale, setScale] = useState(1);
+  const [isPanning, setIsPanning] = useState(false);
+  const pageAreaRef = useRef<HTMLDivElement>(null);
+
+  // Drag-to-pan scrolling mechanism
+  useEffect(() => {
+    const area = pageAreaRef.current;
+    if (!area || scale <= 1) return;
+
+    let isDown = false;
+    let startX = 0;
+    let startY = 0;
+    let scrollLeft = 0;
+    let scrollTop = 0;
+
+    const handleMouseDown = (e: MouseEvent) => {
+      if ((e.target as HTMLElement).closest('button, input, a, textarea')) return;
+      isDown = true;
+      setIsPanning(true);
+      startX = e.pageX - area.offsetLeft;
+      startY = e.pageY - area.offsetTop;
+      scrollLeft = area.scrollLeft;
+      scrollTop = area.scrollTop;
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDown) return;
+      e.preventDefault();
+      const x = e.pageX - area.offsetLeft;
+      const y = e.pageY - area.offsetTop;
+      const walkX = (x - startX) * 1.5;
+      const walkY = (y - startY) * 1.5;
+      area.scrollLeft = scrollLeft - walkX;
+      area.scrollTop = scrollTop - walkY;
+    };
+
+    const handleMouseUpOrLeave = () => {
+      isDown = false;
+      setIsPanning(false);
+    };
+
+    let touchStartX = 0;
+    let touchStartY = 0;
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return;
+      if ((e.target as HTMLElement).closest('button, input, a, textarea')) return;
+      isDown = true;
+      touchStartX = e.touches[0].pageX - area.offsetLeft;
+      touchStartY = e.touches[0].pageY - area.offsetTop;
+      scrollLeft = area.scrollLeft;
+      scrollTop = area.scrollTop;
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!isDown || e.touches.length !== 1) return;
+      const x = e.touches[0].pageX - area.offsetLeft;
+      const y = e.touches[0].pageY - area.offsetTop;
+      const walkX = (x - touchStartX) * 1.2;
+      const walkY = (y - touchStartY) * 1.2;
+      area.scrollLeft = scrollLeft - walkX;
+      area.scrollTop = scrollTop - walkY;
+    };
+
+    area.addEventListener('mousedown', handleMouseDown);
+    area.addEventListener('mousemove', handleMouseMove);
+    area.addEventListener('mouseup', handleMouseUpOrLeave);
+    area.addEventListener('mouseleave', handleMouseUpOrLeave);
+
+    area.addEventListener('touchstart', handleTouchStart, { passive: true });
+    area.addEventListener('touchmove', handleTouchMove, { passive: true });
+    area.addEventListener('touchend', handleMouseUpOrLeave);
+
+    return () => {
+      area.removeEventListener('mousedown', handleMouseDown);
+      area.removeEventListener('mousemove', handleMouseMove);
+      area.removeEventListener('mouseup', handleMouseUpOrLeave);
+      area.removeEventListener('mouseleave', handleMouseUpOrLeave);
+
+      area.removeEventListener('touchstart', handleTouchStart);
+      area.removeEventListener('touchmove', handleTouchMove);
+      area.removeEventListener('touchend', handleMouseUpOrLeave);
+    };
+  }, [scale]);
 
   // ── Overlay üretimi (eski belgeler) ────────────────────────────────────
   const [generating, setGenerating] = useState(false);
@@ -367,7 +449,10 @@ export default function PDFOverlayViewer({
         </div>
 
         {/* ── Sayfa alanı ──────────────────────────────────────────── */}
-        <div className={styles.pageArea}>
+        <div
+          ref={pageAreaRef}
+          className={`${styles.pageArea} ${scale > 1 ? styles.grabCursor : ''} ${isPanning ? styles.grabbingCursor : ''}`}
+        >
 
           {/* İlk yükleme */}
           {loading && (
@@ -422,13 +507,16 @@ export default function PDFOverlayViewer({
 
           {/* Sayfa görüntüsü */}
           {!loading && !loadError && pdfProxy && !generating && (
-            <div
-              className={`${styles.pageWrapper} ${sideBySide ? styles.pageWrapperSbs : ''}`}
-              style={{ transform: `scale(${scale})`, transformOrigin: 'top center' }}
-            >
+            <div className={`${styles.pageWrapper} ${sideBySide ? styles.pageWrapperSbs : ''}`}>
               {/* ── Tek sayfa modu ── */}
               {!sideBySide && (
-                <div className={styles.pageContainer}>
+                <div
+                  className={styles.pageContainer}
+                  style={{
+                    width: scale === 1 ? undefined : `${760 * scale}px`,
+                    maxWidth: scale === 1 ? undefined : 'none',
+                  }}
+                >
                   <AnimatePresence mode="wait">
                     {currentImage ? (
                       <motion.img
@@ -437,6 +525,7 @@ export default function PDFOverlayViewer({
                         alt={`Sayfa ${currentPage}`}
                         className={styles.pageImg}
                         draggable={false}
+                        onDragStart={e => e.preventDefault()}
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
@@ -474,9 +563,15 @@ export default function PDFOverlayViewer({
                   {/* Sol: Orijinal */}
                   <div className={styles.sbsCol}>
                     <div className={styles.sbsLabel}>Orijinal</div>
-                    <div className={styles.pageContainer}>
+                    <div
+                      className={styles.pageContainer}
+                      style={{
+                        width: scale === 1 ? undefined : `${760 * scale}px`,
+                        maxWidth: scale === 1 ? undefined : 'none',
+                      }}
+                    >
                       {pageImages[currentPage]
-                        ? <img src={pageImages[currentPage]} alt="Orijinal" className={styles.pageImg} draggable={false} />
+                        ? <img src={pageImages[currentPage]} alt="Orijinal" className={styles.pageImg} draggable={false} onDragStart={e => e.preventDefault()} />
                         : <div className={styles.pageLoading}><Loader size={20} className={styles.spin} /></div>
                       }
                     </div>
@@ -487,9 +582,15 @@ export default function PDFOverlayViewer({
                       Türkçe
                       {building && <Loader size={11} className={styles.spin} style={{ marginLeft: 6 }} />}
                     </div>
-                    <div className={styles.pageContainer}>
+                    <div
+                      className={styles.pageContainer}
+                      style={{
+                        width: scale === 1 ? undefined : `${760 * scale}px`,
+                        maxWidth: scale === 1 ? undefined : 'none',
+                      }}
+                    >
                       {translatedImages[currentPage]
-                        ? <img src={translatedImages[currentPage]} alt="Çeviri" className={styles.pageImg} draggable={false} />
+                        ? <img src={translatedImages[currentPage]} alt="Çeviri" className={styles.pageImg} draggable={false} onDragStart={e => e.preventDefault()} />
                         : pageImages[currentPage]
                           ? <div className={styles.pageLoading}><Loader size={20} className={styles.spin} /><span style={{ fontSize: 12, marginTop: 8 }}>Hazırlanıyor…</span></div>
                           : <div className={styles.pageLoading}><Loader size={20} className={styles.spin} /></div>

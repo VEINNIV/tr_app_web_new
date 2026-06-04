@@ -79,11 +79,14 @@ export const STATUS_LABELS: Record<string, string> = {
   draft: 'Taslak',
 };
 
+// NOT: Bunlar yalnızca DB (app_config → credit_cost.*) okunamadığında kullanılan
+// fail-safe fallback'lerdir. Gerçek/canlı değerler her zaman app_config'ten gelir
+// ve admin panelinden yönetilir. Değerler "son bilinen canlı" ile senkron tutulur.
 export const CREDIT_COSTS = {
-  TRANSLATION_PER_PAGE: 1,
-  CHAT_PER_QUESTION: 0.5,
-  STUDY_NOTES_PER_SOURCE: 0.5,
-  GLOSSARY_SUGGEST: 0.5,
+  TRANSLATION_PER_PAGE: 3.5,
+  CHAT_PER_QUESTION: 3,
+  STUDY_NOTES_PER_SOURCE: 8,
+  GLOSSARY_SUGGEST: 3,
 };
 
 /**
