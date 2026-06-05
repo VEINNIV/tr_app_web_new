@@ -14,6 +14,7 @@ import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
 import { generateGlossarySuggestions } from '../lib/ai';
 import { getCreditCosts } from '../lib/creditConfig';
+import { beginAiOperation } from '../lib/aiOperation';
 import { useThemeContext } from '../context/ThemeContext';
 import type { Profession, UseCase } from '../types';
 import styles from '../styles/components/onboarding.module.css';
@@ -93,15 +94,14 @@ export default function OnboardingModal({ userId, onComplete }: Props) {
 
       // 2) Generate AI glossary suggestions (operasyon jetonuyla — proxy bypass'ı önler)
       toast.loading('Sözlük önerileri hazırlanıyor...', { id: 'glossary-gen' });
-      const { data: opData } = await supabase.rpc('begin_ai_operation', {
-        p_action: 'glossary',
-        p_amount: (await getCreditCosts()).glossary,
-        p_calls: 2,
-        p_reference: null,
+      const begin = await beginAiOperation({
+        action: 'glossary',
+        amount: (await getCreditCosts()).glossary,
+        calls: 2,
+        reference: null,
       });
-      const operationId = (opData as Array<{ operation_id: string }> | null)?.[0]?.operation_id;
-      const suggestions = operationId
-        ? await generateGlossarySuggestions(profession, useCase, nativeLang, operationId)
+      const suggestions = begin.ok
+        ? await generateGlossarySuggestions(profession, useCase, nativeLang, begin.operationId)
         : [];
 
       if (suggestions.length > 0) {
