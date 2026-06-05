@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
 import { streamDocumentChat, type ChatTurn } from '../lib/ai';
 import { getCreditCosts } from '../lib/creditConfig';
+import { beginAiOperation } from '../lib/aiOperation';
 import type { Document } from '../types';
 import type { User } from '../types';
 
@@ -161,24 +162,23 @@ export function useChatSession({ profile, initDocId, refreshProfile }: UseChatSe
 
     // ── Kredi zorlaması (server-side, atomik) — "bedava sohbet" sızıntısını önler ──
     const CHAT_COST = (await getCreditCosts()).chat;
-    const { data: opData, error: creditErr } = await supabase.rpc('begin_ai_operation', {
-      p_action: 'chat',
-      p_amount: CHAT_COST,
-      p_calls: 5,
-      p_reference: selectedDocId || null,
+    const begin = await beginAiOperation({
+      action: 'chat',
+      amount: CHAT_COST,
+      calls: 5,
+      reference: selectedDocId || null,
     });
-    const operationId = (opData as Array<{ operation_id: string }> | null)?.[0]?.operation_id;
-    if (creditErr || !operationId) {
-      const m = creditErr?.message ?? '';
-      if (/Yetersiz/.test(m)) {
+    if (!begin.ok) {
+      if (begin.reason === 'insufficient') {
         toast.error(`Krediniz yetersiz. Sohbet için en az ${CHAT_COST} kredi gerekiyor.`);
-      } else if (/fazla istek/.test(m)) {
+      } else if (begin.reason === 'rate_limit') {
         toast.error('Çok fazla istek — birkaç saniye bekleyin.');
       } else {
         toast.error('Mesaj gönderilemedi, tekrar deneyin.');
       }
       return;
     }
+    const operationId = begin.operationId;
     void refreshProfile?.();
 
     const userMsg: ChatMessage = {

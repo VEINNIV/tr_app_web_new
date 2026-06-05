@@ -8,6 +8,8 @@ import { getCreditCosts, getCachedCreditCosts } from '../lib/creditConfig';
 import { formatTrDate, formatFileSize } from '../lib/utils';
 import { useExportDoc } from '../hooks/useExportDoc';
 import type { ExportFormat } from '../hooks/useExportDoc';
+import { beginAiOperation, refundAiOperation } from '../lib/aiOperation';
+import { useAiOperation } from '../hooks/useAiOperation';
 import toast from 'react-hot-toast';
 import {
   Upload, File as FileIcon, X, Check, Image as ImageIcon, Copy, RefreshCw,
@@ -50,6 +52,7 @@ const NotesMarkdown = memo(function NotesMarkdown({ text }: { text: string }) {
 
 export default function StudyNotesPage() {
   const { profile, refreshProfile } = useAuth();
+  const { run: runAiOp } = useAiOperation();
   const reduced = useReducedMotion();
   const [view, setView] = useState<'create' | 'history'>('create');
   const [step, setStep] = useState<Step>('compose');
@@ -184,15 +187,15 @@ export default function StudyNotesPage() {
 
     let operationId: string | undefined;
     try {
-      const { data: opData, error: creditErr } = await supabase.rpc('begin_ai_operation', {
-        p_action: 'study_notes',
-        p_amount: cost,
-        p_calls: totalSources * 2 + 5,
-        p_reference: null,
+      const begin = await beginAiOperation({
+        action: 'study_notes',
+        amount: cost,
+        calls: totalSources * 2 + 5,
+        reference: null,
       });
-      operationId = (opData as Array<{ operation_id: string }> | null)?.[0]?.operation_id;
-      if (creditErr || !operationId) {
-        const m = creditErr?.message ?? '';
+      operationId = begin.ok ? begin.operationId : undefined;
+      if (!begin.ok) {
+        const m = begin.message;
         toast.error(
           /Yetersiz/.test(m) ? 'Yetersiz kredi.'
             : /fazla istek/.test(m) ? 'Çok fazla istek — biraz bekleyin.'
@@ -244,7 +247,7 @@ export default function StudyNotesPage() {
         sessionIdRef.current = null;
       }
       if (operationId) {
-        try { await supabase.rpc('refund_ai_operation', { p_op_id: operationId }); } catch { /* yut */ }
+        await refundAiOperation(operationId);
         await refreshProfile();
       }
       toast.error(error instanceof Error ? error.message : 'Notlar oluşturulurken bir hata oluştu.');
@@ -265,22 +268,20 @@ export default function StudyNotesPage() {
     if (profile.credits_remaining < cost) { toast.error(`Çeviri için ${cost} kredi gerekiyor.`); return; }
 
     setTranslating(true);
-    let operationId: string | undefined;
     try {
-      const { data: opData, error: creditErr } = await supabase.rpc('begin_ai_operation', {
-        p_action: 'study_notes', p_amount: cost, p_calls: 3, p_reference: null,
+      const res = await runAiOp({
+        action: 'study_notes',
+        amount: cost,
+        calls: 3,
+        reference: null,
+        messages: { insufficient: 'Çeviri başlatılamadı.', rate_limit: 'Çeviri başlatılamadı.', error: 'Çeviri başlatılamadı.' },
+        run: (operationId) => translateStudyNotes(source, target, undefined, operationId),
       });
-      operationId = (opData as Array<{ operation_id: string }> | null)?.[0]?.operation_id;
-      if (creditErr || !operationId) { toast.error('Çeviri başlatılamadı.'); return; }
-
-      const translated = await translateStudyNotes(source, target, undefined, operationId);
-      setNotesByLang(prev => ({ ...prev, [target]: translated }));
-      setActiveLang(target);
-      await refreshProfile();
-      toast.success(target === 'en' ? 'İngilizce sürüm hazır.' : 'Türkçe sürüm hazır.');
-    } catch (e) {
-      if (operationId) { try { await supabase.rpc('refund_ai_operation', { p_op_id: operationId }); } catch { /* yut */ } await refreshProfile(); }
-      toast.error(e instanceof Error ? e.message : 'Çeviri başarısız.');
+      if (res.ok) {
+        setNotesByLang(prev => ({ ...prev, [target]: res.data }));
+        setActiveLang(target);
+        toast.success(target === 'en' ? 'İngilizce sürüm hazır.' : 'Türkçe sürüm hazır.');
+      }
     } finally {
       setTranslating(false);
     }

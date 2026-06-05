@@ -26,6 +26,7 @@ import { detectLanguage } from '../lib/ai';
 import { notify, requestPermission } from '../lib/notifications';
 import { TARGET_LANGUAGE } from '../lib/constants';
 import { getCreditCosts } from '../lib/creditConfig';
+import { beginAiOperation, refundAiOperation } from '../lib/aiOperation';
 import { pdfjsLib } from '../lib/pdfWorker';
 import type { OverlayData, OverlayPage } from '../types';
 
@@ -98,7 +99,7 @@ export function TranslationProvider({ children }: { children: ReactNode }) {
     const op = opIdRef.current;
     opIdRef.current = null;
     if (!op) return;
-    try { await supabase.rpc('refund_ai_operation', { p_op_id: op }); } catch { /* yut */ }
+    await refundAiOperation(op);
   };
 
   // Sayfa kapatma uyarısı — foreground modunda iş devam ediyorsa
@@ -265,23 +266,22 @@ export function TranslationProvider({ children }: { children: ReactNode }) {
       const perPage = (await getCreditCosts()).translationPerPage;
       const estimatedCost = Math.max(perPage, pageCount * perPage);
       const callBudget = pageCount * 6 + 30; // chunk + görsel + retry payı (kredi zaten ödendi)
-      const { data: opData, error: opErr } = await supabase.rpc('begin_ai_operation', {
-        p_action: 'translation',
-        p_amount: estimatedCost,
-        p_calls: callBudget,
-        p_reference: docId,
+      const begin = await beginAiOperation({
+        action: 'translation',
+        amount: estimatedCost,
+        calls: callBudget,
+        reference: docId,
       });
-      const operationId = (opData as Array<{ operation_id: string }> | null)?.[0]?.operation_id;
-      if (opErr || !operationId) {
-        const m = opErr?.message ?? '';
+      if (!begin.ok) {
         throw new Error(
-          /Yetersiz/.test(m)
+          begin.reason === 'insufficient'
             ? `Yetersiz kredi — bu çeviri ${estimatedCost} kredi gerektiriyor.`
-            : /fazla istek/.test(m)
+            : begin.reason === 'rate_limit'
               ? 'Çok fazla istek — birkaç saniye bekleyip tekrar deneyin.'
-              : 'Çeviri başlatılamadı: ' + (m || 'bilinmeyen hata'),
+              : 'Çeviri başlatılamadı: ' + (begin.message || 'bilinmeyen hata'),
         );
       }
+      const operationId = begin.operationId;
       opIdRef.current = operationId;
 
       // Dil tespiti (auto ise) — artık operasyon jetonuyla
