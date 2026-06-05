@@ -15,12 +15,14 @@ import {
   Search, ChevronDown, Plus, Minus, BookOpen, SlidersHorizontal, Save,
   LayoutGrid, Calculator, ShieldCheck, TrendingUp, Check, Lock, Zap,
   ShoppingCart, Gift, RefreshCw, AlertTriangle, X, Layers, Wallet, Receipt,
+  Trash2, Ban, ShieldOff, CheckSquare, Square, UserX, Clock3,
 } from 'lucide-react';
 import { SPRING_TIGHT } from '../components/ui/motion';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../context/auth';
 import { invalidateCreditCosts } from '../lib/creditConfig';
 import toast from 'react-hot-toast';
-import type { User, Plan, UserRole } from '../types';
+import { isBanActive, type User, type Plan, type UserRole } from '../types';
 import styles from '../styles/components/admin.module.css';
 
 interface PlatformStats {
@@ -38,6 +40,21 @@ interface ConfigRow {
 }
 
 type Tab = 'overview' | 'credits' | 'users' | 'security';
+
+/** Yasak süresi seçenekleri. */
+type BanDuration = 'day' | 'week' | 'month' | 'perm';
+const BAN_OPTIONS: { id: BanDuration; label: string }[] = [
+  { id: 'day', label: '1 gün' },
+  { id: 'week', label: '7 gün' },
+  { id: 'month', label: '30 gün' },
+  { id: 'perm', label: 'Kalıcı' },
+];
+/** Seçili süreyi admin_set_ban için timestamptz değerine çevir. */
+function banUntilValue(d: BanDuration): string {
+  if (d === 'perm') return 'infinity';
+  const days = d === 'day' ? 1 : d === 'week' ? 7 : 30;
+  return new Date(Date.now() + days * 86400_000).toISOString();
+}
 
 /** Per-user kredi defteri (admin_user_ledger RPC çıktısı). */
 interface Ledger {
@@ -149,6 +166,28 @@ export default function AdminDashboardPage() {
   // Rol değişimi onay modalı (kaza koruması)
   const [roleModal, setRoleModal] = useState<{ user: User; newRole: UserRole } | null>(null);
   const [roleConfirmText, setRoleConfirmText] = useState('');
+
+  // ── Moderasyon: toplu seçim + ban/sil ──────────────────────────────────────
+  const { profile: me } = useAuth();
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [banModal, setBanModal] = useState<{ user: User } | null>(null);
+  const [banDuration, setBanDuration] = useState<BanDuration>('week');
+  const [banReason, setBanReason] = useState('');
+  const [deleteModal, setDeleteModal] = useState<{ users: User[] } | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  /** Bu kullanıcı korunuyor mu? (kendisi veya admin → silinemez/yasaklanamaz) */
+  const isProtected = (u: User) => u.id === me?.id || u.role === 'admin';
+
+  const toggleSelect = (id: string) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const clearSelection = () => setSelected(new Set());
 
   useEffect(() => {
     supabase
@@ -294,8 +333,55 @@ export default function AdminDashboardPage() {
     fetchData();
   };
 
+  // ── Moderasyon aksiyonları (admin RPC) ─────────────────────────────────────
+  const confirmBan = async () => {
+    if (!banModal) return;
+    setBusy(true);
+    const { error } = await supabase.rpc('admin_set_ban', {
+      p_user_id: banModal.user.id,
+      p_until: banUntilValue(banDuration),
+      p_reason: banReason.trim() || null,
+    });
+    setBusy(false);
+    if (error) { toast.error('Yasaklanamadı: ' + error.message); return; }
+    const label = BAN_OPTIONS.find(o => o.id === banDuration)?.label ?? '';
+    toast.success(`Kullanıcı yasaklandı (${label})`);
+    setBanModal(null); setBanReason(''); setBanDuration('week');
+    fetchData();
+  };
+
+  const unbanUser = async (user: User) => {
+    const { error } = await supabase.rpc('admin_set_ban', { p_user_id: user.id, p_until: null, p_reason: null });
+    if (error) { toast.error('Yasak kaldırılamadı: ' + error.message); return; }
+    toast.success('Yasak kaldırıldı');
+    fetchData();
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteModal) return;
+    const ids = deleteModal.users.map(u => u.id);
+    setBusy(true);
+    const { data, error } = await supabase.rpc('admin_delete_users', { p_user_ids: ids });
+    setBusy(false);
+    if (error) { toast.error('Silinemedi: ' + error.message); return; }
+    toast.success(`${data ?? ids.length} kullanıcı kalıcı olarak silindi`);
+    setDeleteModal(null); setDeleteConfirmText('');
+    clearSelection();
+    setExpandedUserId(null);
+    fetchData();
+  };
+
   const filteredUsers = users;
-  const onSearch = (v: string) => { setSearchTerm(v); setPage(0); };
+  // Sayfadaki seçilebilir (korumasız) kullanıcılar — toplu seçim için
+  const selectableOnPage = filteredUsers.filter(u => !isProtected(u));
+  const allSelectableSelected = selectableOnPage.length > 0 && selectableOnPage.every(u => selected.has(u.id));
+  const selectedUsers = filteredUsers.filter(u => selected.has(u.id));
+  const toggleSelectAll = () => {
+    if (allSelectableSelected) clearSelection();
+    else setSelected(new Set(selectableOnPage.map(u => u.id)));
+  };
+  const onSearch = (v: string) => { setSearchTerm(v); setPage(0); clearSelection(); };
+  const goToPage = (p: number) => { setPage(p); clearSelection(); };
 
   // ── Config yardımcıları ───────────────────────────────────────────────────
   const cfg = useMemo(() => {
@@ -453,6 +539,58 @@ export default function AdminDashboardPage() {
             </div>
           </div>
 
+          {/* Toplu seçim satırı + (seçim varsa) toplu aksiyon çubuğu */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 4px 12px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={toggleSelectAll}
+              disabled={selectableOnPage.length === 0}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '6px 10px', borderRadius: 8, background: 'transparent', border: '1px solid var(--color-border)', cursor: selectableOnPage.length ? 'pointer' : 'not-allowed', color: 'var(--color-text-secondary)', font: 'inherit', fontSize: '0.78rem', fontWeight: 600, opacity: selectableOnPage.length ? 1 : 0.5 }}
+            >
+              {allSelectableSelected ? <CheckSquare size={15} style={{ color: 'var(--color-accent)' }} /> : <Square size={15} />}
+              {allSelectableSelected ? 'Seçimi temizle' : 'Tümünü seç'}
+              <span style={{ color: 'var(--color-text-tertiary)' }}>({selectableOnPage.length})</span>
+            </button>
+            <span style={{ fontSize: '0.72rem', color: 'var(--color-text-tertiary)' }}>
+              Admin ve kendi hesabın seçilemez.
+            </span>
+          </div>
+
+          <AnimatePresence>
+            {selected.size > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: -8, height: 0 }}
+                animate={{ opacity: 1, y: 0, height: 'auto' }}
+                exit={{ opacity: 0, y: -8, height: 0 }}
+                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                style={{ overflow: 'hidden', marginBottom: 14 }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', padding: '12px 16px', borderRadius: 12, background: 'var(--color-accent-light)', border: '1px solid var(--color-accent-medium)' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', fontWeight: 700, color: 'var(--color-text-primary)' }}>
+                    <CheckSquare size={16} style={{ color: 'var(--color-accent)' }} />
+                    {selected.size} kullanıcı seçildi
+                  </span>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    <button
+                      type="button"
+                      onClick={clearSelection}
+                      style={{ padding: '7px 14px', borderRadius: 8, background: 'var(--color-surface)', border: '1px solid var(--color-border)', cursor: 'pointer', color: 'var(--color-text-secondary)', font: 'inherit', fontSize: '0.8rem', fontWeight: 600 }}
+                    >
+                      Vazgeç
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setDeleteConfirmText(''); setDeleteModal({ users: selectedUsers }); }}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, background: '#dc2626', border: 'none', cursor: 'pointer', color: '#fff', font: 'inherit', fontSize: '0.8rem', fontWeight: 700 }}
+                    >
+                      <Trash2 size={14} /> Seçilenleri sil
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <motion.div className={styles.userList} layout>
             <AnimatePresence mode="popLayout">
               {filteredUsers.map((user, i) => (
@@ -471,6 +609,20 @@ export default function AdminDashboardPage() {
                     whileHover={reduced ? undefined : { x: 2 }}
                     transition={SPRING_TIGHT}
                   >
+                    {/* Toplu seçim kutusu (korunan kullanıcılarda gizli) */}
+                    {isProtected(user) ? (
+                      <span aria-hidden style={{ width: 18, flexShrink: 0 }} />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={e => { e.stopPropagation(); toggleSelect(user.id); }}
+                        aria-label={selected.has(user.id) ? 'Seçimi kaldır' : 'Seç'}
+                        aria-pressed={selected.has(user.id)}
+                        style={{ display: 'inline-flex', padding: 0, background: 'transparent', border: 'none', cursor: 'pointer', color: selected.has(user.id) ? 'var(--color-accent)' : 'var(--color-text-tertiary)', flexShrink: 0 }}
+                      >
+                        {selected.has(user.id) ? <CheckSquare size={18} /> : <Square size={18} />}
+                      </button>
+                    )}
                     <div className={styles.userAvatar}>
                       {(user.nickname || user.full_name)?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?'}
                     </div>
@@ -479,6 +631,11 @@ export default function AdminDashboardPage() {
                       <div className={styles.userEmail}>{user.email}</div>
                     </div>
                     <div className={styles.userBadges}>
+                      {isBanActive(user.banned_until) && (
+                        <span className={styles.badge} style={{ background: 'rgba(220,38,38,0.12)', color: '#dc2626', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          <Ban size={11} /> YASAKLI
+                        </span>
+                      )}
                       <span className={`${styles.badge} ${styles[`badge${user.role}`]}`}>{user.role.toUpperCase()}</span>
                       <span className={`${styles.badge} ${styles.badgePlan}`}>{user.plan.toUpperCase()}</span>
                     </div>
@@ -549,6 +706,56 @@ export default function AdminDashboardPage() {
                           </div>
                         </div>
 
+                        {/* ── Moderasyon (yasakla / yasağı kaldır / sil) ── */}
+                        <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--color-border)' }}>
+                          <label className={styles.expandedLabel} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#dc2626' }}>
+                            <ShieldOff size={13} /> Moderasyon
+                          </label>
+                          {isProtected(user) ? (
+                            <p style={{ fontSize: '0.78rem', color: 'var(--color-text-tertiary)', margin: '8px 0 0' }}>
+                              {user.id === me?.id ? 'Kendi hesabını buradan yönetemezsin.' : 'Admin hesapları yasaklanamaz veya silinemez.'}
+                            </p>
+                          ) : (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginTop: 8 }}>
+                              {isBanActive(user.banned_until) ? (
+                                <>
+                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: '#dc2626', fontWeight: 600 }}>
+                                    <Ban size={13} /> Yasaklı
+                                    {user.banned_until !== 'infinity' && (
+                                      <span style={{ color: 'var(--color-text-tertiary)', fontWeight: 500 }}>
+                                        · {new Date(user.banned_until as string).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: '2-digit' })}'e kadar
+                                      </span>
+                                    )}
+                                    {user.banned_until === 'infinity' && <span style={{ color: 'var(--color-text-tertiary)', fontWeight: 500 }}>· kalıcı</span>}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => unbanUser(user)}
+                                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, background: 'var(--color-success-bg)', color: 'var(--color-success)', border: '1px solid', borderColor: 'color-mix(in srgb, var(--color-success) 30%, transparent)', cursor: 'pointer', font: 'inherit', fontSize: '0.8rem', fontWeight: 600 }}
+                                  >
+                                    <Check size={14} /> Yasağı kaldır
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => { setBanReason(''); setBanDuration('week'); setBanModal({ user }); }}
+                                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, background: 'rgba(245,158,11,0.12)', color: '#b45309', border: '1px solid rgba(245,158,11,0.3)', cursor: 'pointer', font: 'inherit', fontSize: '0.8rem', fontWeight: 600 }}
+                                >
+                                  <Ban size={14} /> Yasakla
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => { setDeleteConfirmText(''); setDeleteModal({ users: [user] }); }}
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, background: 'rgba(220,38,38,0.1)', color: '#dc2626', border: '1px solid rgba(220,38,38,0.28)', cursor: 'pointer', font: 'inherit', fontSize: '0.8rem', fontWeight: 600 }}
+                              >
+                                <Trash2 size={14} /> Hesabı sil
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
                         {/* ── Kredi defteri (admin_user_ledger) ── */}
                         {(() => {
                           const led = ledgers[user.id];
@@ -617,7 +824,7 @@ export default function AdminDashboardPage() {
           {totalPages > 1 && (
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, margin: '24px 0', fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>
               <button
-                onClick={() => setPage(p => Math.max(0, p - 1))}
+                onClick={() => goToPage(Math.max(0, page - 1))}
                 disabled={page === 0}
                 style={{ padding: '6px 14px', borderRadius: 8, background: 'var(--color-bg-alt)', border: '1px solid var(--color-border)', cursor: page === 0 ? 'not-allowed' : 'pointer', opacity: page === 0 ? 0.5 : 1, font: 'inherit', fontWeight: 500 }}
               >
@@ -628,7 +835,7 @@ export default function AdminDashboardPage() {
                 <span style={{ marginLeft: 8, color: 'var(--color-text-tertiary)' }}>({stats.totalUsers} kullanıcı)</span>
               </span>
               <button
-                onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                onClick={() => goToPage(Math.min(totalPages - 1, page + 1))}
                 disabled={page >= totalPages - 1}
                 style={{ padding: '6px 14px', borderRadius: 8, background: 'var(--color-bg-alt)', border: '1px solid var(--color-border)', cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer', opacity: page >= totalPages - 1 ? 0.5 : 1, font: 'inherit', fontWeight: 500 }}
               >
@@ -739,6 +946,144 @@ export default function AdminDashboardPage() {
                   <button className={styles.modalCancel} onClick={() => setRoleModal(null)}>Vazgeç</button>
                   <button className={styles.modalConfirm} disabled={!matches} onClick={confirmRoleChange}>
                     {matches ? <><Check size={15} /> Rolü Değiştir</> : <><Lock size={15} /> E-postayı yaz</>}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          );
+        })()}
+      </AnimatePresence>
+
+      {/* ── Yasaklama modalı (süre + sebep) ── */}
+      <AnimatePresence>
+        {banModal && (() => {
+          const target = banModal.user;
+          return (
+            <motion.div
+              className={styles.modalOverlay}
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setBanModal(null)}
+            >
+              <motion.div
+                className={styles.modalCard}
+                initial={{ opacity: 0, scale: 0.95, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }}
+                transition={SPRING_TIGHT}
+                onClick={e => e.stopPropagation()}
+              >
+                <div className={styles.modalHeader}>
+                  <h3 className={styles.modalTitle}>Kullanıcıyı Yasakla</h3>
+                  <button className={styles.modalClose} onClick={() => setBanModal(null)} aria-label="Kapat"><X size={18} /></button>
+                </div>
+                <p className={styles.modalText}>
+                  <strong>{target.nickname || target.full_name || target.email}</strong> yasaklanırken giriş yapamaz ve hiçbir AI işlemi yapamaz. İstediğin zaman geri alabilirsin.
+                </p>
+
+                <label className={styles.modalLabel} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Clock3 size={14} /> Süre
+                </label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '4px 0 14px' }}>
+                  {BAN_OPTIONS.map(o => (
+                    <button
+                      key={o.id}
+                      type="button"
+                      onClick={() => setBanDuration(o.id)}
+                      style={{
+                        padding: '7px 14px', borderRadius: 8, cursor: 'pointer', font: 'inherit', fontSize: '0.82rem', fontWeight: 600,
+                        background: banDuration === o.id ? 'var(--color-accent)' : 'var(--color-bg-alt)',
+                        color: banDuration === o.id ? '#fff' : 'var(--color-text-secondary)',
+                        border: '1px solid', borderColor: banDuration === o.id ? 'var(--color-accent)' : 'var(--color-border)',
+                      }}
+                    >
+                      {o.id === 'perm' && <Ban size={12} style={{ marginRight: 5, verticalAlign: '-1px' }} />}{o.label}
+                    </button>
+                  ))}
+                </div>
+
+                <label className={styles.modalLabel}>Sebep (opsiyonel — kullanıcıya gösterilmez)</label>
+                <input
+                  autoFocus
+                  className={styles.modalInput}
+                  value={banReason}
+                  onChange={e => setBanReason(e.target.value)}
+                  placeholder="örn. spam / kötüye kullanım"
+                  onKeyDown={e => { if (e.key === 'Enter' && !busy) confirmBan(); }}
+                />
+                <div className={styles.modalActions}>
+                  <button className={styles.modalCancel} onClick={() => setBanModal(null)}>Vazgeç</button>
+                  <button className={styles.modalConfirm} disabled={busy} onClick={confirmBan} style={{ background: '#d97706' }}>
+                    <Ban size={15} /> {busy ? 'Yasaklanıyor…' : 'Yasakla'}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          );
+        })()}
+      </AnimatePresence>
+
+      {/* ── Silme modalı (geri alınamaz — onay metni) ── */}
+      <AnimatePresence>
+        {deleteModal && (() => {
+          const list = deleteModal.users;
+          const single = list.length === 1 ? list[0] : null;
+          const expected = single ? (single.email || '').trim().toLowerCase() : `SİL ${list.length}`;
+          const matches = single
+            ? expected.length > 0 && deleteConfirmText.trim().toLowerCase() === expected
+            : deleteConfirmText.trim().toLocaleUpperCase('tr-TR') === expected;
+          return (
+            <motion.div
+              className={styles.modalOverlay}
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setDeleteModal(null)}
+            >
+              <motion.div
+                className={styles.modalCard}
+                initial={{ opacity: 0, scale: 0.95, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }}
+                transition={SPRING_TIGHT}
+                onClick={e => e.stopPropagation()}
+              >
+                <div className={styles.modalHeader}>
+                  <h3 className={styles.modalTitle} style={{ color: '#dc2626' }}>
+                    {single ? 'Hesabı Kalıcı Sil' : `${list.length} Hesabı Kalıcı Sil`}
+                  </h3>
+                  <button className={styles.modalClose} onClick={() => setDeleteModal(null)} aria-label="Kapat"><X size={18} /></button>
+                </div>
+
+                <div className={styles.modalWarn} style={{ background: 'rgba(220,38,38,0.1)', color: '#dc2626' }}>
+                  <AlertTriangle size={15} /> Bu işlem <strong>geri alınamaz</strong>. Kullanıcı{single ? 'nın' : 'ların'} tüm belgeleri, çevirileri, notları, kredileri ve oturumları kalıcı olarak silinir.
+                </div>
+
+                {single ? (
+                  <p className={styles.modalText}>
+                    <strong>{single.nickname || single.full_name || single.email}</strong> hesabını silmek üzeresin.
+                  </p>
+                ) : (
+                  <div style={{ maxHeight: 132, overflowY: 'auto', margin: '4px 0 12px', display: 'grid', gap: 4 }}>
+                    {list.map(u => (
+                      <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8rem', color: 'var(--color-text-secondary)', padding: '4px 0' }}>
+                        <UserX size={13} style={{ color: '#dc2626', flexShrink: 0 }} />
+                        <span style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>{u.nickname || u.full_name || 'İsimsiz'}</span>
+                        <span style={{ color: 'var(--color-text-tertiary)' }}>{u.email}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <label className={styles.modalLabel}>
+                  Onaylamak için {single ? 'kullanıcının e-postasını' : <>büyük harfle <code className={styles.modalEmail}>{expected}</code></>} yaz:
+                  {single && <code className={styles.modalEmail}>{single.email}</code>}
+                </label>
+                <input
+                  autoFocus
+                  className={styles.modalInput}
+                  value={deleteConfirmText}
+                  onChange={e => setDeleteConfirmText(e.target.value)}
+                  placeholder={single ? (single.email || '') : expected}
+                  onKeyDown={e => { if (e.key === 'Enter' && matches && !busy) confirmDelete(); }}
+                />
+                <div className={styles.modalActions}>
+                  <button className={styles.modalCancel} onClick={() => setDeleteModal(null)}>Vazgeç</button>
+                  <button className={styles.modalConfirm} disabled={!matches || busy} onClick={confirmDelete} style={{ background: matches ? '#dc2626' : undefined }}>
+                    {matches ? <><Trash2 size={15} /> {busy ? 'Siliniyor…' : 'Kalıcı Sil'}</> : <><Lock size={15} /> Onay metnini yaz</>}
                   </button>
                 </div>
               </motion.div>

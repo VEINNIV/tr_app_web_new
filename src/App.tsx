@@ -27,6 +27,10 @@ const AdminDashboardPage  = lazy(() => import('./pages/AdminDashboardPage'));
 const CheckoutPage        = lazy(() => import('./pages/CheckoutPage'));
 const GlossaryPage        = lazy(() => import('./pages/GlossaryPage'));
 const SharedDocumentPage  = lazy(() => import('./pages/SharedDocumentPage'));
+const ToolsPage           = lazy(() => import('./pages/ToolsPage'));
+const ContactPage         = lazy(() => import('./pages/ContactPage'));
+const WritePage           = lazy(() => import('./pages/WritePage'));
+const UnderConstructionPage = lazy(() => import('./pages/UnderConstructionPage'));
 const NotFoundPage        = lazy(() => import('./pages/NotFoundPage'));
 
 function PageLoader() {
@@ -95,9 +99,18 @@ function AppLayout() {
               <Route path="/study" element={<ProtectedRoute><PageTransition><StudyDeckPage /></PageTransition></ProtectedRoute>} />
               <Route path="/admin" element={<AdminRoute><PageTransition><AdminDashboardPage /></PageTransition></AdminRoute>} />
               <Route path="/glossary" element={<ProtectedRoute><PageTransition><GlossaryPage /></PageTransition></ProtectedRoute>} />
+              <Route path="/tools" element={<ProtectedRoute><PageTransition><ToolsPage /></PageTransition></ProtectedRoute>} />
+              <Route path="/listen" element={<ProtectedRoute><PageTransition><UnderConstructionPage slug="listen" /></PageTransition></ProtectedRoute>} />
+              <Route path="/projects" element={<ProtectedRoute><PageTransition><UnderConstructionPage slug="projects" /></PageTransition></ProtectedRoute>} />
+              <Route path="/highlight" element={<ProtectedRoute><PageTransition><UnderConstructionPage slug="highlight" /></PageTransition></ProtectedRoute>} />
+              <Route path="/mindmap" element={<ProtectedRoute><PageTransition><UnderConstructionPage slug="mindmap" /></PageTransition></ProtectedRoute>} />
+              <Route path="/cite" element={<ProtectedRoute><PageTransition><UnderConstructionPage slug="cite" /></PageTransition></ProtectedRoute>} />
+              <Route path="/write" element={<ProtectedRoute><PageTransition><WritePage /></PageTransition></ProtectedRoute>} />
+              <Route path="/achievements" element={<ProtectedRoute><PageTransition><UnderConstructionPage slug="achievements" /></PageTransition></ProtectedRoute>} />
               <Route path="/shared/:token" element={<PageTransition><SharedDocumentPage /></PageTransition>} />
               <Route path="/checkout" element={<PageTransition><CheckoutPage /></PageTransition>} />
               <Route path="/pricing" element={<PageTransition><LandingPage /></PageTransition>} />
+              <Route path="/contact" element={<PageTransition><ContactPage /></PageTransition>} />
               <Route path="*" element={<PageTransition><NotFoundPage /></PageTransition>} />
             </Routes>
           </AnimatePresence>

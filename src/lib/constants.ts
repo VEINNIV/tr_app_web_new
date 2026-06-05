@@ -88,6 +88,7 @@ export const CREDIT_COSTS = {
   STUDY_NOTES_PER_SOURCE: 8,
   GLOSSARY_SUGGEST: 3,
   FLASHCARDS: 2,
+  WRITE: 1,
 };
 
 /**

@@ -30,6 +30,11 @@ interface DocumentWithTranslation extends Document {
   translation?: Translation | null;
 }
 
+/** Paylaşım süresi seçenekleri (saniye) — maksimum 1 ay. */
+type ShareDuration = '1d' | '7d' | '30d';
+const DURATION_SECONDS: Record<ShareDuration, number> = { '1d': 86400, '7d': 604800, '30d': 2592000 };
+const DURATION_LABELS: Record<ShareDuration, string> = { '1d': '1 gün', '7d': '1 hafta', '30d': '1 ay' };
+
 export default function DocumentsPage() {
   const { profile } = useAuth();
   const { run: runAiOp } = useAiOperation();
@@ -69,6 +74,7 @@ export default function DocumentsPage() {
   const [shareModalDoc, setShareModalDoc] = useState<DocumentWithTranslation | null>(null);
   const [shareUsePassword, setShareUsePassword] = useState(false);
   const [shareCode, setShareCode] = useState('');
+  const [shareDuration, setShareDuration] = useState<ShareDuration>('7d');
 
   const toggleSelect = (id: string) =>
     setSelected(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
@@ -142,32 +148,57 @@ export default function DocumentsPage() {
     return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
   };
 
-  /** Paylaşım linkini oluştur — opsiyonel 4 haneli şifre ile */
-  const createShareLink = async (doc: DocumentWithTranslation, code?: string) => {
+  /** Belgenin süresi dolmamış aktif bir paylaşımı var mı? */
+  const hasActiveShare = (doc: DocumentWithTranslation): boolean => {
+    const t = doc.translation;
+    if (!t?.share_token || !t?.shared_pdf_url) return false;
+    if (t.share_expires_at && new Date(t.share_expires_at).getTime() < Date.now()) return false;
+    return true;
+  };
+
+  /** documents + (varsa) açık modal state'ini aynı çeviri yamasıyla günceller. */
+  const patchShareState = (docId: string, patch: Partial<Translation>) => {
+    const apply = (d: DocumentWithTranslation): DocumentWithTranslation =>
+      d.id === docId && d.translation ? { ...d, translation: { ...d.translation, ...patch } } : d;
+    setDocuments(prev => prev.map(apply));
+    setShareModalDoc(prev => (prev && prev.id === docId ? apply(prev) : prev));
+  };
+
+  /** Paylaşım linkini oluştur — opsiyonel şifre + süre (max 1 ay). */
+  const createShareLink = async (doc: DocumentWithTranslation, code: string | undefined, duration: ShareDuration) => {
     if (!doc.translation?.id || !doc.original_storage_path) {
       toast.error('Paylaşım için tamamlanmış bir çeviri gerekli.');
       return;
     }
     setSharing(prev => new Set(prev).add(doc.id));
     try {
+      const durSec = DURATION_SECONDS[duration];
       const { data: signedData, error: signErr } = await supabase.storage
         .from('originals')
-        .createSignedUrl(doc.original_storage_path, 31536000);
+        .createSignedUrl(doc.original_storage_path, durSec);
       if (signErr || !signedData?.signedUrl) throw new Error('PDF URL oluşturulamadı');
       const token = crypto.randomUUID();
       const share_password_hash = code ? await hashShareCode(token, code) : null;
+      const patch: Partial<Translation> = {
+        share_token: token,
+        shared_pdf_url: signedData.signedUrl,
+        share_password_hash,
+        share_code: code ? code.toUpperCase() : null,
+        share_expires_at: new Date(Date.now() + durSec * 1000).toISOString(),
+      };
       const { error: updateErr } = await supabase
         .from('translations')
-        .update({ share_token: token, shared_pdf_url: signedData.signedUrl, share_password_hash })
+        .update(patch)
         .eq('id', doc.translation.id);
       if (updateErr) throw new Error('Paylaşım kaydedilemedi: ' + updateErr.message);
+      // Local state'i güncelle → modal anında "aktif paylaşım" moduna geçer, re-share kilidi devreye girer.
+      patchShareState(doc.id, patch);
       const shareUrl = `${window.location.origin}/shared/${token}`;
       await navigator.clipboard.writeText(shareUrl).catch(() => {});
-      setShareModalDoc(null);
       toast.success(
         code
-          ? `Şifreli link kopyalandı! Kod: ${code.toUpperCase()} (1 yıl geçerli)`
-          : 'Paylaşım linki kopyalandı! (1 yıl geçerli)',
+          ? `Şifreli link kopyalandı! Kod: ${code.toUpperCase()}`
+          : 'Paylaşım linki kopyalandı!',
         { duration: 7000 },
       );
     } catch (e) {
@@ -175,6 +206,40 @@ export default function DocumentsPage() {
     } finally {
       setSharing(prev => { const s = new Set(prev); s.delete(doc.id); return s; });
     }
+  };
+
+  /** Aktif paylaşımı iptal et — tüm paylaşım alanlarını temizler. */
+  const revokeShare = async (doc: DocumentWithTranslation) => {
+    if (!doc.translation?.id) return;
+    setSharing(prev => new Set(prev).add(doc.id));
+    try {
+      const patch: Partial<Translation> = {
+        share_token: null,
+        shared_pdf_url: null,
+        share_password_hash: null,
+        share_code: null,
+        share_expires_at: null,
+      };
+      const { error } = await supabase
+        .from('translations')
+        .update(patch)
+        .eq('id', doc.translation.id);
+      if (error) throw new Error(error.message);
+      patchShareState(doc.id, patch);
+      toast.success('Paylaşım iptal edildi.');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Paylaşım iptal edilemedi');
+    } finally {
+      setSharing(prev => { const s = new Set(prev); s.delete(doc.id); return s; });
+    }
+  };
+
+  /** Aktif paylaşım linkini panoya kopyala. */
+  const copyShareLink = (doc: DocumentWithTranslation) => {
+    const token = doc.translation?.share_token;
+    if (!token) return;
+    navigator.clipboard.writeText(`${window.location.origin}/shared/${token}`).catch(() => {});
+    toast.success('Bağlantı kopyalandı.');
   };
 
   /** Paylaşım modalını aç */
@@ -185,6 +250,7 @@ export default function DocumentsPage() {
     }
     setShareUsePassword(false);
     setShareCode('');
+    setShareDuration('7d');
     setShareModalDoc(doc);
   };
 
@@ -1024,14 +1090,121 @@ export default function DocumentsPage() {
               <div className={styles.modalHeader}>
                 <div>
                   <h2 className={styles.modalTitle}>Belgeyi Paylaş</h2>
-                  <p className={styles.modalSub}>Bağlantıyı alan herkes görüntüleyip indirebilir</p>
+                  <p className={styles.modalSub}>
+                    {hasActiveShare(shareModalDoc)
+                      ? 'Bu belgenin etkin bir paylaşımı var'
+                      : 'Bağlantıyı alan herkes görüntüleyip indirebilir'}
+                  </p>
                 </div>
                 <button className={styles.modalClose} onClick={() => setShareModalDoc(null)}>
                   <X size={20} />
                 </button>
               </div>
 
+              {hasActiveShare(shareModalDoc) ? (
+                /* ── Mod 1: Aktif paylaşım bilgisi (yeni link üretme kilitli) ── */
+                <div className={styles.modalBody} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {/* Bağlantı + kopyala */}
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                    <div style={{
+                      flex: 1, padding: '12px 14px', borderRadius: 12, background: 'var(--color-bg)',
+                      border: '1px solid var(--color-border)', fontSize: '0.82rem', color: 'var(--color-text-secondary)',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'monospace',
+                    }}>
+                      {`${window.location.origin}/shared/${shareModalDoc.translation!.share_token}`}
+                    </div>
+                    <button
+                      onClick={() => copyShareLink(shareModalDoc)}
+                      style={{
+                        padding: '12px 16px', fontSize: '0.82rem', fontWeight: 600, whiteSpace: 'nowrap',
+                        color: '#fff', background: 'var(--color-accent)', border: 'none', borderRadius: 12, cursor: 'pointer',
+                      }}
+                    >
+                      Kopyala
+                    </button>
+                  </div>
+
+                  {/* Şifre rozeti + kod (yalnız sahip görür) */}
+                  {shareModalDoc.translation!.share_password_hash && (
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 12,
+                      background: 'rgba(0,87,255,0.05)', border: '1px solid rgba(0,87,255,0.18)',
+                    }}>
+                      <Lock size={18} style={{ color: 'var(--color-accent)', flexShrink: 0 }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--color-text-primary)' }}>Şifre korumalı</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--color-text-tertiary)' }}>
+                          {shareModalDoc.translation!.share_code
+                            ? 'Açmak için bu kod gerekli'
+                            : 'Kod kaydedilmemiş — gerekirse yeniden paylaşın'}
+                        </div>
+                      </div>
+                      {shareModalDoc.translation!.share_code && (
+                        <span style={{
+                          fontFamily: 'monospace', fontSize: '1.25rem', fontWeight: 700, letterSpacing: '0.25em',
+                          color: 'var(--color-accent)', paddingLeft: 4,
+                        }}>
+                          {shareModalDoc.translation!.share_code}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Geçerlilik */}
+                  <div style={{ fontSize: '0.8rem', color: 'var(--color-text-tertiary)', padding: '0 2px' }}>
+                    {shareModalDoc.translation!.share_expires_at
+                      ? `Geçerlilik: ${formatTrDate(shareModalDoc.translation!.share_expires_at)} tarihine kadar`
+                      : 'Süre sınırı yok'}
+                  </div>
+
+                  <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--color-text-tertiary)', lineHeight: 1.5, padding: '0 2px' }}>
+                    Yeni bir bağlantı üretmek için önce mevcut paylaşımı iptal edin.
+                  </p>
+
+                  {/* İptal */}
+                  <button
+                    onClick={() => revokeShare(shareModalDoc)}
+                    disabled={sharing.has(shareModalDoc.id)}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '13px',
+                      borderRadius: 12, border: '1.5px solid var(--color-error)', fontSize: '0.9rem', fontWeight: 700,
+                      color: 'var(--color-error)', background: 'var(--color-error-bg)',
+                      cursor: sharing.has(shareModalDoc.id) ? 'wait' : 'pointer',
+                      opacity: sharing.has(shareModalDoc.id) ? 0.7 : 1, transition: 'all 0.15s',
+                    }}
+                  >
+                    {sharing.has(shareModalDoc.id)
+                      ? <><Loader size={15} style={{ animation: 'spin 0.8s linear infinite' }} /> İptal ediliyor…</>
+                      : <><Trash2 size={15} /> Paylaşımı iptal et</>}
+                  </button>
+                </div>
+              ) : (
+              /* ── Mod 2: Yeni paylaşım oluştur (süre + opsiyonel şifre) ── */
               <div className={styles.modalBody} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                {/* Süre seçici */}
+                <div>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: 8 }}>
+                    Paylaşım süresi
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {(Object.keys(DURATION_LABELS) as ShareDuration[]).map((d) => (
+                      <button
+                        key={d}
+                        onClick={() => setShareDuration(d)}
+                        style={{
+                          flex: 1, padding: '10px 8px', borderRadius: 10, fontSize: '0.82rem', fontWeight: 600,
+                          cursor: 'pointer', transition: 'all 0.15s',
+                          border: `1.5px solid ${shareDuration === d ? 'var(--color-accent)' : 'var(--color-border)'}`,
+                          background: shareDuration === d ? 'rgba(0,87,255,0.06)' : 'var(--color-surface)',
+                          color: shareDuration === d ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+                        }}
+                      >
+                        {DURATION_LABELS[d]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Şifre koruması toggle */}
                 <button
                   onClick={() => { setShareUsePassword(v => !v); if (!shareUsePassword && !shareCode) randomCode(); }}
@@ -1101,7 +1274,7 @@ export default function DocumentsPage() {
                 </AnimatePresence>
 
                 <button
-                  onClick={() => createShareLink(shareModalDoc, shareUsePassword ? shareCode : undefined)}
+                  onClick={() => createShareLink(shareModalDoc, shareUsePassword ? shareCode : undefined, shareDuration)}
                   disabled={sharing.has(shareModalDoc.id) || (shareUsePassword && shareCode.length !== 4)}
                   style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '13px',
@@ -1116,6 +1289,7 @@ export default function DocumentsPage() {
                     : <><Share2 size={15} /> Linki oluştur ve kopyala</>}
                 </button>
               </div>
+              )}
             </motion.div>
           </motion.div>
         )}

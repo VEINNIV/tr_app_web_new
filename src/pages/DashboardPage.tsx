@@ -7,7 +7,7 @@ import { motion, useReducedMotion } from 'framer-motion';
 import {
   FileText, Languages, MessageSquare, Clock,
   Zap, BookOpen, Shield, ArrowRight, ChevronRight,
-  Activity, Coins, CheckCircle2, Sunrise, Sun, Sunset, Moon, Brain, Play,
+  Activity, Coins, CheckCircle2, Sunrise, Sun, Sunset, Moon, Brain, Play, Compass,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -18,7 +18,10 @@ import { formatTrDate } from '../lib/utils';
 import type { Document } from '../types';
 import { useAnimatedNumber, SPRING_TIGHT } from '../components/ui/motion';
 import { useOnboardingTour } from '../hooks/useOnboardingTour';
+import { useToolPrefs } from '../hooks/useToolPrefs';
+import { getFeatureBySlug } from '../lib/upcomingFeatures';
 import OnboardingTour from '../components/OnboardingTour';
+import QuickAccessStrip from '../components/ui/QuickAccessStrip';
 import styles from '../styles/components/dashboard.module.css';
 
 const stagger = {
@@ -36,6 +39,7 @@ export default function DashboardPage() {
   const reduced = useReducedMotion();
   // Tur yalnızca kurulum sihirbazı tamamlandıktan SONRA başlar (ikisi sırayla aksın)
   const { runTour, finishTour } = useOnboardingTour(profile?.onboarding_completed === true);
+  const { recordUse } = useToolPrefs();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [totalTranslations, setTotalTranslations] = useState(0);
   const [dueCards, setDueCards] = useState(0);
@@ -124,6 +128,7 @@ export default function DashboardPage() {
     { to: '/study-notes', Icon: BookOpen, label: 'Ders Notu', desc: 'Görsellerden not', accent: '#8b5cf6' },
     { to: '/study', Icon: Brain, label: 'Çalış', desc: 'Aralıklı tekrar (SRS)', accent: '#14b8a6' },
     { to: '/chat', Icon: MessageSquare, label: 'AI Chat', desc: 'Belgeye soru sor', accent: '#0ea5e9' },
+    { to: '/tools', Icon: Compass, label: 'Araçlar', desc: 'Tüm sistemler + yakında', accent: '#6366f1' },
     ...(isAdmin ? [{ to: '/admin', Icon: Shield, label: 'Admin', desc: 'Kullanıcı yönet', accent: '#f43f5e' }] : []),
   ];
 
@@ -214,6 +219,9 @@ export default function DashboardPage() {
           </motion.div>
         ))}
       </motion.div>
+
+      {/* ── Hızlı Erişim (favori) şeridi — kredi kartının üstünde ── */}
+      <QuickAccessStrip />
 
       {/* ── Credit bar ── */}
       <motion.div
@@ -325,7 +333,14 @@ export default function DashboardPage() {
                 whileTap={reduced ? undefined : { scale: 0.985 }}
                 transition={SPRING_TIGHT}
               >
-                <Link to={to} className={styles.actionRow}>
+                <Link
+                  to={to}
+                  className={styles.actionRow}
+                  onClick={() => {
+                    const slug = to.replace(/^\//, '');
+                    if (getFeatureBySlug(slug)?.status === 'ready') recordUse(slug);
+                  }}
+                >
                   <div className={styles.actionIcon} style={{ '--accent': accent } as React.CSSProperties}>
                     <Icon size={16} strokeWidth={2} />
                   </div>

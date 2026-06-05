@@ -1159,6 +1159,71 @@ export async function summarizeDocument(
   return streamOrFallback({ contents, systemInstruction: systemPrompt, maxOutputTokens: 2048, onChunk, signal, operationId });
 }
 
+// ─── Akademik Yazım Asistanı (F7) ────────────────────────────────────────────
+
+/** Yazım asistanı modları. */
+export type WriteMode = 'academic' | 'paraphrase' | 'grammar' | 'shorten' | 'expand';
+
+export interface RewriteOptions {
+  operationId?: string;
+  signal?: AbortSignal;
+  onChunk?: (delta: string, full: string) => void;
+}
+
+const WRITE_PROMPTS: Record<WriteMode, string> = {
+  academic:
+    `Sen bir akademik yazım editörüsün. Verilen metni akademik Türkçeye dönüştür:
+• Resmî, nesnel ve akademik bir ton kullan; günlük/konuşma dilini kaldır.
+• Anlamı koru; yeni bilgi UYDURMA.
+• Akıcı, net ve tutarlı cümleler kur.
+• SADECE düzenlenmiş metni döndür — açıklama, başlık, ön söz ekleme.`,
+  paraphrase:
+    `Sen bir parafraz uzmanısın. Verilen metni özgün anlamını koruyarak yeniden yaz:
+• Aynı anlamı farklı kelime ve cümle yapısıyla ifade et (intihalden kaçınacak şekilde).
+• Bilgi ekleme/çıkarma; tonu makul ölçüde koru.
+• SADECE parafraz edilmiş metni döndür — başka hiçbir şey yazma.`,
+  grammar:
+    `Sen bir Türkçe dil bilgisi ve yazım denetmenisin. Verilen metni düzelt:
+• Yazım, noktalama, dil bilgisi ve anlatım bozukluklarını gider.
+• Üslubu ve anlamı OLABILDIĞINCE koru; gereksiz yere yeniden yazma.
+• SADECE düzeltilmiş metni döndür — değişiklik listesi/açıklama ekleme.`,
+  shorten:
+    `Sen bir editörsün. Verilen metni özünü kaybetmeden kısalt:
+• Temel fikirleri ve önemli ayrıntıları koru; tekrar ve dolgu ifadeleri at.
+• Yaklaşık %40-60 daha kısa, akıcı ve net bir metin üret.
+• SADECE kısaltılmış metni döndür.`,
+  expand:
+    `Sen bir akademik yazım asistanısın. Verilen metni geliştirerek genişlet:
+• Mevcut fikirleri açıklamalar, geçiş cümleleri ve uygun ayrıntılarla derinleştir.
+• Anlamı koru; UYDURMA bilgi/iddia ekleme, yalnızca var olanı netleştir/zenginleştir.
+• SADECE genişletilmiş metni döndür.`,
+};
+
+/**
+ * Akademik yazım asistanı: verilen metni seçilen moda göre yeniden yazar (streaming).
+ * Kredi akışı çağıran tarafta useAiOperation ile sarılır; operationId taşınır.
+ */
+export async function rewriteText(
+  text: string,
+  mode: WriteMode,
+  opts: RewriteOptions = {},
+): Promise<string> {
+  const { operationId, signal, onChunk } = opts;
+  const truncated = text.slice(0, 24_000);
+  const contents: AIMessage[] = [{
+    role: 'user',
+    parts: [{ text: `Aşağıdaki metni işle:\n\n${truncated}` }],
+  }];
+  return streamOrFallback({
+    contents,
+    systemInstruction: WRITE_PROMPTS[mode],
+    maxOutputTokens: 4096,
+    onChunk,
+    signal,
+    operationId,
+  });
+}
+
 // ─── Flashcard üretimi (F1 — Aralıklı Tekrar) ────────────────────────────────
 
 /** Kart tipleri: klasik çevir-kart, çoktan seçmeli, doğru/yanlış. */

@@ -15,6 +15,12 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
  *   { needsCode: true }            → şifre gerekli (kod ekranı göster)
  *   { wrongCode: true, remaining } → yanlış kod, kalan deneme
  *   { blocked: true }              → çok fazla yanlış, erişim engellendi
+ *   { expired: true }              → paylaşım süresi dolmuş
+ *   { notFound: true }             → link yok / iptal edilmiş
+ *
+ * NOT: Kontrol yanıtları (needsCode/wrongCode/blocked/expired/notFound) HTTP 200 ile
+ * döner — supabase-js `functions.invoke` non-2xx gövdesini istemciye düzgün taşımıyor;
+ * akış flag'lerle (ok/needsCode/...) yönetilir. İçerik yalnız `ok:true`'da verilir.
  */
 
 const corsHeaders: Record<string, string> = {
@@ -72,12 +78,17 @@ Deno.serve(async (req) => {
   // ── Çeviri satırını çek (RLS bypass: service_role) ──────────────────────
   const { data: row } = await admin
     .from('translations')
-    .select('id, translated_text, shared_pdf_url, target_language, share_password_hash, document_id')
+    .select('id, translated_text, shared_pdf_url, target_language, share_password_hash, share_expires_at, document_id')
     .eq('share_token', token)
     .maybeSingle();
 
   if (!row || !row.shared_pdf_url) {
-    return json({ notFound: true }, 404);
+    return json({ notFound: true });
+  }
+
+  // ── Süre dolumu ─────────────────────────────────────────────────────────
+  if (row.share_expires_at && new Date(row.share_expires_at).getTime() < Date.now()) {
+    return json({ expired: true });
   }
 
   // ── Lockout durumu ──────────────────────────────────────────────────────
@@ -89,7 +100,7 @@ Deno.serve(async (req) => {
     .maybeSingle();
 
   if (attempt?.blocked) {
-    return json({ blocked: true }, 403);
+    return json({ blocked: true });
   }
 
   const requiresCode = !!row.share_password_hash;
@@ -97,7 +108,7 @@ Deno.serve(async (req) => {
   // ── Şifre doğrulaması ───────────────────────────────────────────────────
   if (requiresCode) {
     if (!code) {
-      return json({ needsCode: true }, 401);
+      return json({ needsCode: true });
     }
     const codeHash = await sha256(`${token}:${code.toUpperCase()}`);
     if (codeHash !== row.share_password_hash) {
@@ -111,8 +122,8 @@ Deno.serve(async (req) => {
         last_attempt: new Date().toISOString(),
       });
       return blocked
-        ? json({ blocked: true }, 403)
-        : json({ wrongCode: true, remaining: MAX_ATTEMPTS - newCount }, 401);
+        ? json({ blocked: true })
+        : json({ wrongCode: true, remaining: MAX_ATTEMPTS - newCount });
     }
     // Doğru kod → bu IP için sayacı temizle
     if (attempt) {

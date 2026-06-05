@@ -2,14 +2,15 @@ import { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Menu, X, LogOut, Settings, LayoutDashboard, Languages, FolderOpen,
-  MessageSquare, BookOpen, Shield, ChevronDown, User, ScrollText, Sun, Moon,
-  ShoppingCart, Trash2, ArrowRight, Brain,
+  Menu, X, LogOut, Settings, Shield, ChevronDown, User, Sun, Moon,
+  ShoppingCart, Trash2, ArrowRight, Star,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/auth';
 import { useThemeContext } from '../../context/ThemeContext';
 import { useCart } from '../../context/CartContext';
+import { useToolPrefs, NAV_PINNED_COUNT } from '../../hooks/useToolPrefs';
+import { buildNavLinks, slugsToLinks, ALL_TOOL_LINKS, DASHBOARD_LINK, TOOLS_LINK } from '../../lib/navItems';
 import styles from '../../styles/components/navbar.module.css';
 
 // Smooth scroll to anchor
@@ -35,6 +36,11 @@ export default function Navbar() {
   const [activeSection, setActiveSection] = useState('');
   const profileRef = useRef<HTMLDivElement>(null);
   const lastScrollY = useRef(0);
+
+  // Favoriler (modüler navbar): ilk N favori üst sırada, tamamı drawer'da
+  const { pinned } = useToolPrefs();
+  const navLinks = buildNavLinks(pinned.slice(0, NAV_PINNED_COUNT));
+  const favLinks = slugsToLinks(pinned, true);
 
   // Sepet
   const { item: cartItem, clear: clearCart } = useCart();
@@ -89,20 +95,11 @@ export default function Navbar() {
 
   const isLanding = location.pathname === '/';
 
-  const authLinks = [
-    { to: '/dashboard',   label: 'Dashboard',   icon: <LayoutDashboard size={16} /> },
-    { to: '/translate',   label: 'Çeviri',       icon: <Languages size={16} /> },
-    { to: '/documents',   label: 'Dokümanlar',   icon: <FolderOpen size={16} /> },
-    { to: '/glossary',    label: 'Sözlük',        icon: <ScrollText size={16} /> },
-    { to: '/study-notes', label: 'Ders Notu',    icon: <BookOpen size={16} /> },
-    { to: '/study',       label: 'Çalış',         icon: <Brain size={16} /> },
-    { to: '/chat',        label: 'AI Chat',       icon: <MessageSquare size={16} /> },
-  ];
-
   const guestLinks = [
     { id: 'features', label: 'Özellikler' },
     { id: 'how-it-works', label: 'Nasıl Çalışır' },
     { id: 'pricing', label: 'Fiyatlandırma' },
+    { id: 'contact', label: 'İletişim' },
   ];
 
   return (
@@ -157,6 +154,27 @@ export default function Navbar() {
           <div className={styles.navLinks}>
             {isLanding ? (
               guestLinks.map(link => {
+                if (link.id === 'contact') {
+                  const active = location.pathname === '/contact';
+                  return (
+                    <Link
+                      key={link.id}
+                      to="/contact"
+                      className={`${styles.navLink} ${active ? styles.navLinkActive : ''}`}
+                    >
+                      {active && (
+                        <motion.div
+                          className={styles.navLinkIndicator}
+                          layoutId="nav-indicator"
+                          transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                        />
+                      )}
+                      <span className={styles.navLinkContent}>
+                        {link.label}
+                      </span>
+                    </Link>
+                  );
+                }
                 const active = activeSection === link.id;
                 return (
                   <a
@@ -179,8 +197,9 @@ export default function Navbar() {
                 );
               })
             ) : (
-              user && authLinks.map(link => {
+              user && navLinks.map(link => {
                 const active = isActive(link.to);
+                const Icon = link.Icon;
                 return (
                   <Link
                     key={link.to}
@@ -195,8 +214,9 @@ export default function Navbar() {
                       />
                     )}
                     <span className={styles.navLinkContent}>
-                      {link.icon}
+                      <Icon size={16} />
                       <span>{link.label}</span>
+                      {link.isFavorite && <Star size={11} fill="#f59e0b" color="#f59e0b" style={{ marginLeft: 1 }} aria-hidden />}
                     </span>
                   </Link>
                 );
@@ -409,33 +429,72 @@ export default function Navbar() {
               <div className={styles.mobileLinks}>
                 {isLanding && (
                   <>
-                    {guestLinks.map(link => (
-                      <a
-                        key={link.id}
-                        href={`#${link.id}`}
-                        className={styles.mobileLink}
-                        onClick={(e) => { handleAnchorClick(link.id)(e); setMobileOpen(false); }}
-                      >
-                        <span>{link.label}</span>
-                      </a>
-                    ))}
+                    {guestLinks.map(link => {
+                      if (link.id === 'contact') {
+                        return (
+                          <Link
+                            key={link.id}
+                            to="/contact"
+                            className={styles.mobileLink}
+                            onClick={() => setMobileOpen(false)}
+                          >
+                            <span>{link.label}</span>
+                          </Link>
+                        );
+                      }
+                      return (
+                        <a
+                          key={link.id}
+                          href={`#${link.id}`}
+                          className={styles.mobileLink}
+                          onClick={(e) => { handleAnchorClick(link.id)(e); setMobileOpen(false); }}
+                        >
+                          <span>{link.label}</span>
+                        </a>
+                      );
+                    })}
                     <div className={styles.mobileDivider} />
                   </>
                 )}
 
                 {user ? (
                   <>
-                    {authLinks.map(link => (
-                      <Link
-                        key={link.to}
-                        to={link.to}
-                        className={`${styles.mobileLink} ${isActive(link.to) ? styles.mobileLinkActive : ''}`}
-                        onClick={() => setMobileOpen(false)}
-                      >
-                        {link.icon}
-                        <span>{link.label}</span>
-                      </Link>
-                    ))}
+                    {favLinks.length > 0 && (
+                      <>
+                        <div className={styles.mobileSectionLabel} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--color-text-tertiary)', padding: '4px 4px 8px' }}>
+                          <Star size={12} fill="#f59e0b" color="#f59e0b" /> Favoriler
+                        </div>
+                        {favLinks.map(link => {
+                          const Icon = link.Icon;
+                          return (
+                            <Link
+                              key={`fav-${link.to}`}
+                              to={link.to}
+                              className={`${styles.mobileLink} ${isActive(link.to) ? styles.mobileLinkActive : ''}`}
+                              onClick={() => setMobileOpen(false)}
+                            >
+                              <Icon size={16} />
+                              <span>{link.label}</span>
+                            </Link>
+                          );
+                        })}
+                        <div className={styles.mobileDivider} />
+                      </>
+                    )}
+                    {[DASHBOARD_LINK, ...ALL_TOOL_LINKS, TOOLS_LINK].map(link => {
+                      const Icon = link.Icon;
+                      return (
+                        <Link
+                          key={link.to}
+                          to={link.to}
+                          className={`${styles.mobileLink} ${isActive(link.to) ? styles.mobileLinkActive : ''}`}
+                          onClick={() => setMobileOpen(false)}
+                        >
+                          <Icon size={16} />
+                          <span>{link.label}</span>
+                        </Link>
+                      );
+                    })}
                     <div className={styles.mobileDivider} />
                     <Link to="/settings" className={styles.mobileLink} onClick={() => setMobileOpen(false)}>
                       <Settings size={16} />

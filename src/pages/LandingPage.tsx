@@ -5,7 +5,7 @@ import {
   Languages, FileText, Brain, ArrowRight, Check,
   Shield, BookOpen, Star, Zap, FileType, MessageSquare,
   Globe, FileCode, Loader, RotateCcw, Layers, Sparkles,
-  Image as ImageIcon, Send, Download,
+  Image as ImageIcon, Send, Download, Mail, MapPin,
 } from 'lucide-react';
 import { PRICING_PLANS, CREDIT_COSTS, pdfPerCredits, fmtCredit } from '../lib/constants';
 import { supabase } from '../lib/supabase';
@@ -1125,7 +1125,7 @@ export default function LandingPage() {
                 className={`${styles.pricingCta} ${plan.popular ? styles.pricingCtaPrimary : ''}`}
                 onClick={() => {
                   if (plan.price === 0) navigate('/auth?mode=register');
-                  else if (plan.price === -1) navigate('/auth?mode=register');
+                  else if (plan.price === -1) navigate('/contact');
                   else {
                     addToCart({ planId: plan.id, planName: plan.name, student: isStudent, price: plan.displayedPrice });
                     toast.success(`${plan.name} planı sepete eklendi`, { icon: '🛒' });
@@ -1179,10 +1179,21 @@ export default function LandingPage() {
             </div>
             <span className={styles.footerBrandName}>TransWordly</span>
           </div>
+          {/* İletişim */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 7, fontSize: '13px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text4)' }}>İletişim</span>
+            <a href="mailto:cadeftdev@gmail.com" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, color: 'var(--text3)', textDecoration: 'none' }}>
+              <Mail size={13} /> cadeftdev@gmail.com
+            </a>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, color: 'var(--text3)' }}>
+              <MapPin size={13} /> Ankara, Türkiye
+            </span>
+          </div>
           <nav className={styles.footerLinks}>
             <a href="#features"  onClick={scrollTo('features')}>Özellikler</a>
             <a href="#pricing"   onClick={scrollTo('pricing')}>Fiyatlar</a>
             <a href="#how-it-works" onClick={scrollTo('how-it-works')}>Nasıl Çalışır</a>
+            <Link to="/contact">İletişim</Link>
             <Link to="/auth">Giriş Yap</Link>
           </nav>
           <p className={styles.footerCopy}>© {new Date().getFullYear()} TransWordly · Akademisyenler için ❤️ ile</p>

@@ -17,6 +17,7 @@ export interface CreditCosts {
   studyNotes: number;
   glossary: number;
   flashcards: number;
+  write: number;
 }
 
 const FALLBACK: CreditCosts = {
@@ -25,6 +26,7 @@ const FALLBACK: CreditCosts = {
   studyNotes: CREDIT_COSTS.STUDY_NOTES_PER_SOURCE,
   glossary: CREDIT_COSTS.GLOSSARY_SUGGEST,
   flashcards: CREDIT_COSTS.FLASHCARDS,
+  write: CREDIT_COSTS.WRITE,
 };
 
 let cache: CreditCosts | null = null;
@@ -50,6 +52,7 @@ export async function getCreditCosts(force = false): Promise<CreditCosts> {
           studyNotes: map['credit_cost.study_notes'] ?? FALLBACK.studyNotes,
           glossary: map['credit_cost.glossary'] ?? FALLBACK.glossary,
           flashcards: map['credit_cost.flashcards'] ?? FALLBACK.flashcards,
+          write: map['credit_cost.write'] ?? FALLBACK.write,
         };
       } else {
         cache = FALLBACK;

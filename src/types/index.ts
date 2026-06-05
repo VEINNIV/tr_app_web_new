@@ -22,8 +22,19 @@ export interface User {
   native_language: string;
   onboarding_completed: boolean;
   glossary_generated: boolean;
+  /** Moderasyon: yasak bitiş zamanı (null = yasaksız · 'infinity' = kalıcı). */
+  banned_until: string | null;
+  ban_reason: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** banned_until aktif bir yasak mı? ('infinity' kalıcı; ISO ts geçmişte değilse aktif). */
+export function isBanActive(bannedUntil: string | null | undefined): boolean {
+  if (!bannedUntil) return false;
+  if (bannedUntil === 'infinity') return true;
+  const t = Date.parse(bannedUntil);
+  return Number.isFinite(t) && t > Date.now();
 }
 
 export type Plan = 'free' | 'starter' | 'pro' | 'enterprise';

@@ -42,14 +42,11 @@ export default function SharedDocumentPage() {
   const inputs = useRef<(HTMLInputElement | null)[]>([]);
 
   const request = async (codeStr?: string) => {
-    const { data: res, error } = await supabase.functions.invoke('shared-access', {
+    // Edge artık tüm kontrol yanıtlarını HTTP 200 + flag ile döner; gerçek hatada res null olur.
+    const { data: res } = await supabase.functions.invoke('shared-access', {
       body: { token, code: codeStr },
     });
-    // functions.invoke non-2xx'te error döndürür ama body'yi de taşır
-    const payload = (res ?? (error as { context?: { body?: unknown } })?.context?.body ?? null) as
-      | Record<string, unknown>
-      | null;
-    return payload;
+    return (res ?? null) as Record<string, unknown> | null;
   };
 
   useEffect(() => {
@@ -62,7 +59,7 @@ export default function SharedDocumentPage() {
         if (p?.ok) { setData(p.data as SharedData); setPhase('ready'); setViewerOpen(true); }
         else if (p?.needsCode) setPhase('needsCode');
         else if (p?.blocked) setPhase('blocked');
-        else if (p?.notFound) setPhase('notFound');
+        else if (p?.notFound || p?.expired) setPhase('notFound');
         else setPhase('error');
       } catch {
         if (active) setPhase('error');

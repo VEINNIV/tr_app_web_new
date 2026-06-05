@@ -6,8 +6,10 @@
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Session, User as SupabaseUser } from '@supabase/supabase-js';
+import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
 import type { User } from '../types';
+import { isBanActive } from '../types';
 import { AuthContext } from './auth';
 export { useAuth } from './auth';
 
@@ -42,6 +44,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (data) {
+        // Yasaklı kullanıcı: profili yükleme, oturumu kapat. (Sunucu tarafı zaten
+        // begin_ai_operation içinde AI'yı engeller; bu UX katmanıdır.)
+        if (isBanActive((data as User).banned_until)) {
+          await supabase.auth.signOut();
+          setSession(null);
+          setUser(null);
+          setProfile(null);
+          toast.error('Hesabınız askıya alındı. Lütfen destek ile iletişime geçin.', { duration: 6000 });
+          return;
+        }
         setProfile(data as User);
       } else {
         // Profil yok — trigger çalışmamış olabilir, elle oluştur
