@@ -7,10 +7,11 @@ import { motion, useReducedMotion } from 'framer-motion';
 import {
   FileText, Languages, MessageSquare, Clock,
   Zap, BookOpen, Shield, ArrowRight, ChevronRight,
-  Activity, Coins, CheckCircle2, Sunrise, Sun, Sunset, Moon,
+  Activity, Coins, CheckCircle2, Sunrise, Sun, Sunset, Moon, Brain, Play,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import { countDueTotal } from '../lib/decks';
 import { STATUS_LABELS, CREDIT_COSTS, pdfPerCredits } from '../lib/constants';
 import { getCreditCosts } from '../lib/creditConfig';
 import { formatTrDate } from '../lib/utils';
@@ -37,6 +38,7 @@ export default function DashboardPage() {
   const { runTour, finishTour } = useOnboardingTour(profile?.onboarding_completed === true);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [totalTranslations, setTotalTranslations] = useState(0);
+  const [dueCards, setDueCards] = useState(0);
   const [loading, setLoading] = useState(true);
   // Sayfa başı çeviri maliyeti (canlı app_config) → "≈ X PDF" gösterimi için
   const [perPage, setPerPage] = useState<number>(CREDIT_COSTS.TRANSLATION_PER_PAGE);
@@ -58,6 +60,7 @@ export default function DashboardPage() {
       const { count } = await supabase.from('translations').select('*', { count: 'exact', head: true }).eq('user_id', profile.id).eq('status', 'completed');
       if (docs) setDocuments(docs as Document[]);
       if (count !== null) setTotalTranslations(count);
+      countDueTotal(profile.id).then(setDueCards).catch(() => {});
       setLoading(false);
     };
     fetch();
@@ -119,6 +122,7 @@ export default function DashboardPage() {
     { to: '/translate', Icon: Languages, label: 'Yeni Çeviri', desc: 'PDF yükle, dil seç', accent: '#6366f1' },
     { to: '/documents', Icon: FileText, label: 'Belgelerim', desc: 'Tüm dosyalarım', accent: '#10b981' },
     { to: '/study-notes', Icon: BookOpen, label: 'Ders Notu', desc: 'Görsellerden not', accent: '#8b5cf6' },
+    { to: '/study', Icon: Brain, label: 'Çalış', desc: 'Aralıklı tekrar (SRS)', accent: '#14b8a6' },
     { to: '/chat', Icon: MessageSquare, label: 'AI Chat', desc: 'Belgeye soru sor', accent: '#0ea5e9' },
     ...(isAdmin ? [{ to: '/admin', Icon: Shield, label: 'Admin', desc: 'Kullanıcı yönet', accent: '#f43f5e' }] : []),
   ];
@@ -261,6 +265,43 @@ export default function DashboardPage() {
           )}
         </div>
       </motion.div>
+
+      {/* ── Bugün tekrar (SRS) banner ── */}
+      {dueCards > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.22, duration: 0.4 }}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+            padding: '16px 20px', marginBottom: 'var(--space-5, 20px)', borderRadius: 16,
+            background: 'linear-gradient(135deg, rgba(20,184,166,0.12), rgba(14,165,233,0.12))',
+            border: '1px solid var(--color-border)',
+          }}
+        >
+          <div style={{ width: 40, height: 40, display: 'grid', placeItems: 'center', borderRadius: 11, background: 'rgba(20,184,166,0.18)', flexShrink: 0 }}>
+            <Brain size={20} color="#14b8a6" />
+          </div>
+          <div style={{ flex: 1, minWidth: 160 }}>
+            <div style={{ fontWeight: 800, fontSize: '0.98rem', color: 'var(--color-text-primary)' }}>
+              Bugün {dueCards} kart tekrar edilecek
+            </div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)' }}>
+              Aralıklı tekrar serini sürdür 🔥
+            </div>
+          </div>
+          <Link
+            to="/study"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 7, padding: '10px 20px',
+              background: '#14b8a6', color: '#fff', borderRadius: 12,
+              fontSize: '0.85rem', fontWeight: 700, textDecoration: 'none',
+            }}
+          >
+            <Play size={15} /> Çalış
+          </Link>
+        </motion.div>
+      )}
 
       {/* ── Two column layout ── */}
       <div className={styles.gridTwo}>

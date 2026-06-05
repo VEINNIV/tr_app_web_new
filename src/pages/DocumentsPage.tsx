@@ -1,14 +1,16 @@
 import { useEffect, useState, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
-import { FileText, MessageSquare, Trash2, FolderOpen, Eye, X, DownloadCloud, Download, FileType, FileCode, Layers, Loader, BookOpen, Share2, Archive, CheckSquare, Square, Lock, MoreVertical, LayoutGrid, Search } from 'lucide-react';
+import { FileText, MessageSquare, Trash2, FolderOpen, Eye, X, DownloadCloud, Download, FileType, FileCode, Layers, Loader, BookOpen, Share2, Archive, CheckSquare, Square, Lock, MoreVertical, LayoutGrid, Search, Brain } from 'lucide-react';
 import toast from 'react-hot-toast';
 import JSZip from 'jszip';
 import { SPRING_TIGHT } from '../components/ui/motion';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { summarizeDocument } from '../lib/ai';
-import { getCreditCosts } from '../lib/creditConfig';
+import { summarizeDocument, generateFlashcards, type FlashcardGenType } from '../lib/ai';
+import { createDeckWithCards } from '../lib/decks';
+import { getCreditCosts, getCachedCreditCosts } from '../lib/creditConfig';
+import CardGenDialog from '../components/study/CardGenDialog';
 import { STATUS_LABELS } from '../lib/constants';
 import { formatTrDate, getQualityScore } from '../lib/utils';
 import { useExportDoc } from '../hooks/useExportDoc';
@@ -31,7 +33,11 @@ interface DocumentWithTranslation extends Document {
 export default function DocumentsPage() {
   const { profile } = useAuth();
   const { run: runAiOp } = useAiOperation();
+  const navigate = useNavigate();
   const reduced = useReducedMotion();
+  const [makingCardsId, setMakingCardsId] = useState<string | null>(null);
+  const [cardGenDoc, setCardGenDoc] = useState<DocumentWithTranslation | null>(null);
+  const [cardCost] = useState<number>(getCachedCreditCosts().flashcards);
   const [documents, setDocuments] = useState<DocumentWithTranslation[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDoc, setSelectedDoc] = useState<DocumentWithTranslation | null>(null);
@@ -249,6 +255,42 @@ export default function DocumentsPage() {
       });
     } finally {
       setSummaryLoading(false);
+    }
+  };
+
+  /** Belgeden seçili tipte flashcard üret → yeni deste (belgeye bağlı) → /study */
+  const createCards = async (opts: { cardType: FlashcardGenType; count: number }) => {
+    const doc = cardGenDoc;
+    if (!doc) return;
+    const text = doc.translation?.translated_text?.pages.join('\n\n');
+    if (!text) { toast.error('Çeviri metni bulunamadı.'); return; }
+    if (!profile?.id) return;
+    const cost = (await getCreditCosts()).flashcards;
+    setMakingCardsId(doc.id);
+    toast.loading('Kartlar üretiliyor…', { id: 'mk-cards' });
+    try {
+      await runAiOp({
+        action: 'flashcards',
+        amount: cost,
+        calls: 1,
+        reference: doc.id,
+        toastId: 'mk-cards',
+        messages: {
+          insufficient: `Yetersiz kredi — kart üretimi için ${cost} kredi gerekiyor.`,
+          rate_limit: 'Çok fazla istek — biraz bekleyin.',
+          error: 'Kart üretimi başlatılamadı.',
+        },
+        run: async (operationId) => {
+          const cards = await generateFlashcards(text, { operationId, cardType: opts.cardType, count: opts.count });
+          if (!cards.length) throw new Error('Karta dönüştürülecek içerik bulunamadı.');
+          await createDeckWithCards(profile.id, doc.original_name, { type: 'document', ref: doc.id, cardType: opts.cardType }, cards);
+          setCardGenDoc(null);
+          toast.success(`${cards.length} kart üretildi! 🎉`, { id: 'mk-cards' });
+          navigate('/study');
+        },
+      });
+    } finally {
+      setMakingCardsId(null);
     }
   };
 
@@ -574,10 +616,18 @@ export default function DocumentsPage() {
                         </div>
 
                         <div className={styles.overlaySecondaryRow}>
+                          {doc.translation?.translated_text && (
+                            <button className={styles.overlaySecBtn} onClick={() => { setActiveOverlayId(null); setCardGenDoc(doc); }} title="Flashcard Üret">
+                              <Brain size={14} /> <span>Kart Üret</span>
+                            </button>
+                          )}
+
                           <Link to="/chat" state={{ documentId: doc.id }} className={styles.overlaySecBtn} onClick={() => setActiveOverlayId(null)} title="AI ile Konuş">
                             <MessageSquare size={14} /> <span>AI Sor</span>
                           </Link>
+                        </div>
 
+                        <div className={styles.overlaySecondaryRow}>
                           {doc.status === 'completed' && doc.translation?.id && (
                             <button className={styles.overlaySecBtn} onClick={() => { setActiveOverlayId(null); openShareModal(doc); }} title="Belgeyi Paylaş">
                               <Share2 size={14} /> <span>Paylaş</span>
@@ -714,6 +764,11 @@ export default function DocumentsPage() {
                                 {doc.translation?.translated_text && (
                                   <button onClick={() => { setActiveMenuId(null); openSummary(doc); }}>
                                     <BookOpen size={13} /> Özet Çıkar
+                                  </button>
+                                )}
+                                {doc.translation?.translated_text && (
+                                  <button onClick={() => { setActiveMenuId(null); setCardGenDoc(doc); }} disabled={makingCardsId === doc.id}>
+                                    <Brain size={13} /> Kart Üret
                                   </button>
                                 )}
                                 <Link to="/chat" state={{ documentId: doc.id }} onClick={() => setActiveMenuId(null)}>
@@ -1065,6 +1120,16 @@ export default function DocumentsPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ── Kart üretim diyaloğu (tip + adet) ── */}
+      <CardGenDialog
+        open={!!cardGenDoc}
+        title={cardGenDoc?.original_name}
+        cost={cardCost}
+        busy={!!makingCardsId}
+        onClose={() => setCardGenDoc(null)}
+        onConfirm={createCards}
+      />
     </div>
   );
 }

@@ -1159,6 +1159,157 @@ export async function summarizeDocument(
   return streamOrFallback({ contents, systemInstruction: systemPrompt, maxOutputTokens: 2048, onChunk, signal, operationId });
 }
 
+// ─── Flashcard üretimi (F1 — Aralıklı Tekrar) ────────────────────────────────
+
+/** Kart tipleri: klasik çevir-kart, çoktan seçmeli, doğru/yanlış. */
+export type FlashcardType = 'classic' | 'mcq' | 'truefalse';
+/** Üretim isteği: tek bir tip ya da karışık ('mixed'). */
+export type FlashcardGenType = FlashcardType | 'mixed';
+
+export interface GeneratedCard {
+  /** Kart tipi — reviewer buna göre render eder. */
+  type: FlashcardType;
+  /** Soru / kavram (mcq+tf için: soru veya önerme). */
+  front: string;
+  /** Cevap (classic) ya da açıklama (mcq/tf). */
+  back: string;
+  hint?: string;
+  tag?: string;
+  /** mcq: 2-5 şık (doğru şık dahil, karışık sırada). */
+  options?: string[];
+  /** mcq: doğru şıkkın metni · truefalse: 'true' | 'false'. */
+  answer?: string;
+}
+
+export interface GenerateFlashcardsOptions {
+  /** Üretilecek hedef kart sayısı (model yaklaşık uyar). Varsayılan 12. */
+  count?: number;
+  /** Üretilecek kart tipi. Varsayılan 'classic'. */
+  cardType?: FlashcardGenType;
+  operationId?: string;
+  signal?: AbortSignal;
+}
+
+/** Diziyi yerinde olmayan kopyayla karıştırır (Fisher-Yates) — doğru şık hep başta olmasın. */
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function typeInstruction(cardType: FlashcardGenType): string {
+  const classic =
+    `• "classic" kart: {"type":"classic","front":"kısa soru/kavram","back":"net kısa cevap","hint":"(opsiyonel)","tag":"(opsiyonel tek kelime)"}`;
+  const mcq =
+    `• "mcq" (çoktan seçmeli): {"type":"mcq","front":"soru","options":["A","B","C","D"],"answer":"doğru şıkkın TAM metni (options içinden biri)","back":"doğru cevabın kısa açıklaması","tag":"(opsiyonel)"}
+  - Tam 4 şık üret. Şıklar kısa ve birbirinden net ayrılsın; yalnızca biri doğru olsun. "answer" değeri options dizisindeki bir elemanla birebir aynı olmalı.`;
+  const tf =
+    `• "truefalse" (doğru/yanlış): {"type":"truefalse","front":"doğru ya da yanlış olabilecek bir önerme","answer":"true" veya "false","back":"neden doğru/yanlış olduğunun kısa açıklaması","tag":"(opsiyonel)"}
+  - Önermelerin yarısı doğru yarısı yanlış olsun. "answer" sadece "true" ya da "false".`;
+
+  if (cardType === 'classic') return `TÜM kartlar "classic" tipinde olsun.\n${classic}`;
+  if (cardType === 'mcq') return `TÜM kartlar "mcq" tipinde olsun.\n${mcq}`;
+  if (cardType === 'truefalse') return `TÜM kartlar "truefalse" tipinde olsun.\n${tf}`;
+  // mixed
+  return `Kartları üç tipten KARIŞIK üret (yaklaşık dengeli dağıt): classic, mcq, truefalse.\n${classic}\n${mcq}\n${tf}`;
+}
+
+/**
+ * Verilen metinden Türkçe flashcard kartları üretir (klasik / çoktan seçmeli / doğru-yanlış / karma).
+ * JSON protokolü (detectImageText/translateTextBlocks deseni): model SADECE geçerli JSON döndürür.
+ */
+export async function generateFlashcards(
+  text: string,
+  opts: GenerateFlashcardsOptions = {},
+): Promise<GeneratedCard[]> {
+  const { count = 12, cardType = 'classic', operationId, signal } = opts;
+  const truncated = text.slice(0, 48_000);
+  if (truncated.trim().length < 40) return [];
+
+  const systemPrompt =
+    `Sen bir öğrenme asistanısın ve verilen materyalden aralıklı tekrar (flashcard) kartları üretiyorsun.
+KURALLAR:
+• Türkçe üret. Materyalin dili farklı olsa bile kartlar Türkçe olsun.
+• Her kart önemli bir kavramı/olguyu test etsin; bağlama bağımlı ("yukarıdaki", "bu metinde") ifade kullanma.
+• En önemli ${count} civarı kavrama odaklan. Önemsiz ayrıntıdan kart üretme.
+• SADECE geçerli JSON döndür. Markdown, açıklama, kod bloğu YOK.
+
+KART TİPLERİ:
+${typeInstruction(cardType)}
+
+ÇIKTI FORMATI:
+{"cards":[ ...yukarıdaki şemalara uygun kart nesneleri... ]}
+Kart üretilemiyorsa: {"cards":[]}`;
+
+  const contents: AIMessage[] = [{
+    role: 'user',
+    parts: [{ text: `Şu materyalden flashcard kartları üret:\n\n${truncated}` }],
+  }];
+
+  const result = await callGemini({
+    contents,
+    systemInstruction: systemPrompt,
+    temperature: 0.3,
+    maxOutputTokens: 8192,
+    operationId,
+    signal,
+  });
+
+  const jsonMatch = result.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) return [];
+
+  let parsed: { cards?: unknown[] };
+  try {
+    parsed = JSON.parse(jsonMatch[0]);
+  } catch {
+    return [];
+  }
+
+  const cards: GeneratedCard[] = [];
+  for (const item of parsed.cards ?? []) {
+    if (!item || typeof item !== 'object') continue;
+    const rec = item as Record<string, unknown>;
+    const front = typeof rec.front === 'string' ? rec.front.trim() : '';
+    if (!front) continue;
+    const rawType = typeof rec.type === 'string' ? rec.type.toLowerCase() : 'classic';
+    const hint = typeof rec.hint === 'string' && rec.hint.trim() ? rec.hint.trim() : undefined;
+    const tag = typeof rec.tag === 'string' && rec.tag.trim() ? rec.tag.trim().slice(0, 40) : undefined;
+    const common = { front, ...(hint ? { hint } : {}), ...(tag ? { tag } : {}) };
+
+    if (rawType === 'mcq') {
+      const opts = Array.isArray(rec.options)
+        ? rec.options.filter((o): o is string => typeof o === 'string' && o.trim().length > 0).map(o => o.trim())
+        : [];
+      const answer = typeof rec.answer === 'string' ? rec.answer.trim() : '';
+      // Geçersiz mcq (yetersiz şık / cevap şıklarda yok) → atla.
+      if (opts.length < 2 || !answer) continue;
+      const uniq = Array.from(new Set(opts));
+      const correct = uniq.find(o => o === answer) ?? uniq.find(o => o.toLowerCase() === answer.toLowerCase());
+      if (!correct) continue;
+      const back = typeof rec.back === 'string' && rec.back.trim() ? rec.back.trim() : `Doğru cevap: ${correct}`;
+      cards.push({ ...common, type: 'mcq', options: shuffle(uniq), answer: correct, back });
+    } else if (rawType === 'truefalse') {
+      const a = typeof rec.answer === 'string' ? rec.answer.trim().toLowerCase() : '';
+      const isTrue = ['true', 'doğru', 'dogru', 'd', 'evet'].includes(a);
+      const isFalse = ['false', 'yanlış', 'yanlis', 'y', 'hayır', 'hayir'].includes(a);
+      if (!isTrue && !isFalse) continue;
+      const ans = isTrue ? 'true' : 'false';
+      const back = typeof rec.back === 'string' && rec.back.trim()
+        ? rec.back.trim()
+        : (ans === 'true' ? 'Bu önerme doğru.' : 'Bu önerme yanlış.');
+      cards.push({ ...common, type: 'truefalse', answer: ans, back });
+    } else {
+      const back = typeof rec.back === 'string' ? rec.back.trim() : '';
+      if (!back) continue;
+      cards.push({ ...common, type: 'classic', back });
+    }
+  }
+  return cards;
+}
+
 // ─── 6) Ders Notu Üretimi (multimodal + metin kaynak birleştirme) ────────────
 
 export type StudyNoteLang = 'tr' | 'en';

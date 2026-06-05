@@ -9,7 +9,7 @@
  */
 import { supabase } from './supabase';
 
-export type AiAction = 'chat' | 'translation' | 'study_notes' | 'glossary' | (string & {});
+export type AiAction = 'chat' | 'translation' | 'study_notes' | 'glossary' | 'flashcards' | (string & {});
 
 export type CreditErrorReason = 'insufficient' | 'rate_limit' | 'error';
 

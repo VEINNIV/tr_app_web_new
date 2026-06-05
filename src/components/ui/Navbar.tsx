@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Menu, X, LogOut, Settings, LayoutDashboard, Languages, FolderOpen,
   MessageSquare, BookOpen, Shield, ChevronDown, User, ScrollText, Sun, Moon,
-  ShoppingCart, Trash2, ArrowRight,
+  ShoppingCart, Trash2, ArrowRight, Brain,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/auth';
@@ -95,6 +95,7 @@ export default function Navbar() {
     { to: '/documents',   label: 'Dokümanlar',   icon: <FolderOpen size={16} /> },
     { to: '/glossary',    label: 'Sözlük',        icon: <ScrollText size={16} /> },
     { to: '/study-notes', label: 'Ders Notu',    icon: <BookOpen size={16} /> },
+    { to: '/study',       label: 'Çalış',         icon: <Brain size={16} /> },
     { to: '/chat',        label: 'AI Chat',       icon: <MessageSquare size={16} /> },
   ];
 

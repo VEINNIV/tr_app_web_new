@@ -22,6 +22,7 @@ const DocumentsPage      = lazy(() => import('./pages/DocumentsPage'));
 const ChatPage           = lazy(() => import('./pages/ChatPage'));
 const SettingsPage       = lazy(() => import('./pages/SettingsPage'));
 const StudyNotesPage     = lazy(() => import('./pages/StudyNotesPage'));
+const StudyDeckPage      = lazy(() => import('./pages/StudyDeckPage'));
 const AdminDashboardPage  = lazy(() => import('./pages/AdminDashboardPage'));
 const CheckoutPage        = lazy(() => import('./pages/CheckoutPage'));
 const GlossaryPage        = lazy(() => import('./pages/GlossaryPage'));
@@ -91,6 +92,7 @@ function AppLayout() {
               <Route path="/chat" element={<ProtectedRoute><PageTransition><ChatPage /></PageTransition></ProtectedRoute>} />
               <Route path="/settings" element={<ProtectedRoute><PageTransition><SettingsPage /></PageTransition></ProtectedRoute>} />
               <Route path="/study-notes" element={<ProtectedRoute><PageTransition><StudyNotesPage /></PageTransition></ProtectedRoute>} />
+              <Route path="/study" element={<ProtectedRoute><PageTransition><StudyDeckPage /></PageTransition></ProtectedRoute>} />
               <Route path="/admin" element={<AdminRoute><PageTransition><AdminDashboardPage /></PageTransition></AdminRoute>} />
               <Route path="/glossary" element={<ProtectedRoute><PageTransition><GlossaryPage /></PageTransition></ProtectedRoute>} />
               <Route path="/shared/:token" element={<PageTransition><SharedDocumentPage /></PageTransition>} />
