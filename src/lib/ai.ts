@@ -35,6 +35,40 @@ async function authHeaders(): Promise<Record<string, string>> {
   };
 }
 
+/**
+ * Ağ-seviyesi hata tespiti (HTTP hatası DEĞİL — bağlantının hiç kurulamaması).
+ * Chrome'un HTTP/3 (QUIC) bağlantısı koptuğunda fetch bir `TypeError` fırlatır
+ * (ör. "Failed to fetch", net::ERR_QUIC_PROTOCOL_ERROR.QUIC_TOO_MANY_RTOS).
+ * Bu tür hatalar sunucuya ulaşmadan oluştuğu için kredi harcanmaz → güvenle
+ * tekrar denenebilir.
+ */
+function isNetworkError(e: unknown): boolean {
+  if (e instanceof DOMException && e.name === 'AbortError') return false;
+  if (e instanceof TypeError) return true; // fetch ağ hataları TypeError olarak gelir
+  const msg = ((e as Error)?.message ?? '').toLowerCase();
+  return /failed to fetch|network|quic|err_|load failed|connection|stream/.test(msg);
+}
+
+/**
+ * fetch + ağ hatasına dayanıklılık. Yalnızca AĞ hatalarında (bağlantı kurulamadı)
+ * üstel beklemeyle tekrar dener; HTTP 4xx/5xx yanıtları olduğu gibi döner.
+ * Abort (kullanıcı iptali) asla yeniden denenmez.
+ */
+async function fetchWithRetry(url: string, init: RequestInit, retries = 2): Promise<Response> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fetch(url, init);
+    } catch (e) {
+      if ((init.signal as AbortSignal | undefined)?.aborted) throw e;
+      if (!isNetworkError(e) || attempt === retries) throw e;
+      lastErr = e;
+      await new Promise(r => setTimeout(r, 600 * Math.pow(2, attempt)));
+    }
+  }
+  throw lastErr;
+}
+
 // Multimodal için boyut sınırı: 15 MB altı PDF'ler doğrudan Gemini'ye gönderilir
 const MULTIMODAL_PDF_LIMIT = 15 * 1024 * 1024; // 15 MB
 
@@ -115,6 +149,8 @@ interface CallOpts {
   thinkingLevel?: ThinkingLevel;
   /** begin_ai_operation ile alınan operasyon jetonu — proxy kredi/limit zorlaması için zorunlu. */
   operationId?: string;
+  /** Kullanıcı iptali — fetch'e iletilir (non-streaming çağrılar da iptal edilebilir). */
+  signal?: AbortSignal;
 }
 
 async function callGemini({
@@ -124,6 +160,7 @@ async function callGemini({
   maxOutputTokens = 16384,
   thinkingLevel = 'minimal',
   operationId,
+  signal,
   _useProModel = false,
 }: CallOpts & { _useProModel?: boolean }): Promise<string> {
   if (!isAIAvailable()) return demoResponse(contents);
@@ -139,10 +176,11 @@ async function callGemini({
     body.systemInstruction = { parts: [{ text: systemInstruction }] };
   }
 
-  const res = await fetch(PROXY_URL, {
+  const res = await fetchWithRetry(PROXY_URL, {
     method: 'POST',
     headers: await authHeaders(),
     body: JSON.stringify(body),
+    signal,
   });
 
   if (!res.ok) {
@@ -201,7 +239,7 @@ export async function streamGemini(
     body.systemInstruction = { parts: [{ text: opts.systemInstruction }] };
   }
 
-  const res = await fetch(PROXY_URL, {
+  const res = await fetchWithRetry(PROXY_URL, {
     method: 'POST',
     headers: await authHeaders(),
     body: JSON.stringify(body),
@@ -257,6 +295,34 @@ export async function streamGemini(
 
   if (!full) throw new Error('Model yanıt üretemedi. Lütfen soruyu farklı bir şekilde deneyin.');
   return full;
+}
+
+/**
+ * Streaming dene; ağ/boş-yanıt hatalarında non-streaming `callGemini`'ye düş.
+ * QUIC (HTTP/3) bağlantısı uzun streaming isteklerinde sık koptuğu için bu
+ * fallback, kullanıcıya hata göstermek yerine yanıtı tek seferde getirir.
+ * Kullanıcı iptali ve güvenlik/alıntı filtreleri yeniden denenmez — fırlatılır.
+ */
+async function streamOrFallback(
+  opts: CallOpts & {
+    onChunk?: (delta: string, full: string) => void;
+    _useProModel?: boolean;
+  },
+): Promise<string> {
+  if (opts.onChunk) {
+    try {
+      const result = await streamGemini(opts);
+      if (result) return result;
+    } catch (err) {
+      const msg = (err as Error)?.message ?? '';
+      if (
+        opts.signal?.aborted || err instanceof DOMException ||
+        msg.includes('İptal') || msg.includes('filtresi') || msg.includes('kısıtlama')
+      ) throw err;
+      // Ağ hatası / boş yanıt → non-streaming fallback'e geç (kredi bütçesi kapsar).
+    }
+  }
+  return callGemini(opts);
 }
 
 // ─── Demo modu ──────────────────────────────────────────────────────────────
@@ -608,10 +674,7 @@ export async function processFilesMultimodal(
     role: 'user',
     parts: [...inlineParts, { text: prompt }],
   }];
-  if (onChunk) {
-    return streamGemini({ contents, systemInstruction, onChunk, maxOutputTokens, operationId });
-  }
-  return callGemini({ contents, systemInstruction, maxOutputTokens, operationId });
+  return streamOrFallback({ contents, systemInstruction, onChunk, maxOutputTokens, operationId });
 }
 
 // ─── 5) AI Sohbet (multi-turn, streaming) ───────────────────────────────────
@@ -674,34 +737,13 @@ Kesin kurallar:
   newParts.push({ text: newMessage });
   contents.push({ role: 'user', parts: newParts });
 
-  // Streaming dene; başarısız veya boş yanıt alırsa non-streaming'e düş
-  if (onChunk) {
-    try {
-      const result = await streamGemini({
-        contents,
-        systemInstruction: systemPrompt,
-        maxOutputTokens: 8192,
-        onChunk,
-        signal,
-        operationId,
-      });
-      if (result) return result;
-    } catch (err) {
-      const msg = (err as Error)?.message ?? '';
-      // Kullanıcı iptali veya kesin hata → yeniden fırlat
-      if (
-        msg.includes('İptal') || err instanceof DOMException ||
-        msg.includes('filtresi') || msg.includes('kısıtlama')
-      ) throw err;
-      // Diğer stream hataları → non-streaming fallback'e geç
-    }
-  }
-
-  // Non-streaming fallback (streaming çalışmıyorsa veya boş yanıt geldiyse)
-  return callGemini({
+  // Streaming dene; ağ/boş-yanıt hatalarında non-streaming'e düş (streamOrFallback).
+  return streamOrFallback({
     contents,
     systemInstruction: systemPrompt,
     maxOutputTokens: 8192,
+    onChunk,
+    signal,
     operationId,
   });
 }
@@ -1114,10 +1156,7 @@ export async function summarizeDocument(
     parts: [{ text: `Şu belgeyi özetle:\n\n${truncated}` }],
   }];
 
-  if (onChunk) {
-    return streamGemini({ contents, systemInstruction: systemPrompt, maxOutputTokens: 2048, onChunk, signal, operationId });
-  }
-  return callGemini({ contents, systemInstruction: systemPrompt, maxOutputTokens: 2048, operationId });
+  return streamOrFallback({ contents, systemInstruction: systemPrompt, maxOutputTokens: 2048, onChunk, signal, operationId });
 }
 
 // ─── 6) Ders Notu Üretimi (multimodal + metin kaynak birleştirme) ────────────
@@ -1217,10 +1256,7 @@ ${langName} yaz. Birden fazla kaynak varsa bilgileri TEK bütünleşik nota harm
   // Dosya yoksa (sadece metin kaynak) düz metin çağrısı; varsa multimodal.
   if (files.length === 0) {
     const contents: AIMessage[] = [{ role: 'user', parts: [{ text: prompt }] }];
-    if (onChunk) {
-      return streamGemini({ contents, systemInstruction: systemPrompt, onChunk, maxOutputTokens: maxOut, operationId });
-    }
-    return callGemini({ contents, systemInstruction: systemPrompt, maxOutputTokens: maxOut, operationId });
+    return streamOrFallback({ contents, systemInstruction: systemPrompt, onChunk, maxOutputTokens: maxOut, operationId });
   }
   return processFilesMultimodal(files, prompt, systemPrompt, onChunk, operationId, maxOut);
 }
@@ -1245,10 +1281,7 @@ KURALLAR:
 - Kod, değişken adları, özel adlar ve sayılar olduğu gibi kalsın.
 - Sadece çevrilmiş Markdown'ı döndür; açıklama ekleme.`;
   const contents: AIMessage[] = [{ role: 'user', parts: [{ text: markdown }] }];
-  if (onChunk) {
-    return streamGemini({ contents, systemInstruction: systemPrompt, onChunk, maxOutputTokens: 32768, temperature: 0.1, operationId });
-  }
-  return callGemini({ contents, systemInstruction: systemPrompt, maxOutputTokens: 32768, temperature: 0.1, operationId });
+  return streamOrFallback({ contents, systemInstruction: systemPrompt, onChunk, maxOutputTokens: 32768, temperature: 0.1, operationId });
 }
 
 // ─── 7) Profil tabanlı otomatik sözlük üretimi ───────────────────────────────

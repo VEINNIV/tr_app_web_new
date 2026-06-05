@@ -8,11 +8,11 @@
  * Mod 1: overlayData mevcut → otomatik translated PDF build + göster
  * Mod 2: overlayData yok (eski belge) → "Oluştur" → build + göster
  */
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChevronLeft, ChevronRight, X, Eye, EyeOff, Loader,
-  ZoomIn, ZoomOut, Download, Sparkles, AlertCircle, CheckCircle2,
+  ZoomIn, ZoomOut, Maximize2, Download, Sparkles, AlertCircle, CheckCircle2,
   Columns2, SquareStack, Pencil, Zap, Sparkles as Stars,
 } from 'lucide-react';
 import { loadPDFFromURL, renderPageToDataURL, type PDFProxy } from '../lib/pdfRenderer';
@@ -23,6 +23,11 @@ import type { RenderMode } from '../lib/pdfExtractorService';
 import TranslationEditor from './TranslationEditor';
 import type { OverlayData } from '../types';
 import styles from '../styles/components/overlayViewer.module.css';
+
+const MIN_SCALE = 0.5;
+const MAX_SCALE = 4;
+const BASE_PAGE_WIDTH = 760;
+const clampScale = (s: number) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.round(s * 100) / 100));
 
 export interface PDFOverlayViewerProps {
   pdfUrl: string;
@@ -61,6 +66,75 @@ export default function PDFOverlayViewer({
   const [scale, setScale] = useState(1);
   const [isPanning, setIsPanning] = useState(false);
   const pageAreaRef = useRef<HTMLDivElement>(null);
+
+  // ── Zoom (imleç-merkezli ctrl+tekerlek + sığdır/%100) ────────────────────
+  const scaleRef = useRef(1);
+  useEffect(() => { scaleRef.current = scale; }, [scale]);
+  // setScale sonrası uygulanacak scroll hedefi (cursor altındaki noktayı sabit tutar)
+  const pendingZoom = useRef<{ cx: number; cy: number; contentX: number; contentY: number; ratio: number } | null>(null);
+
+  const applyZoomAt = useCallback((factor: number, clientX: number, clientY: number) => {
+    const area = pageAreaRef.current;
+    if (!area) { setScale(s => clampScale(s * factor)); return; }
+    const prev = scaleRef.current;
+    const next = clampScale(prev * factor);
+    if (next === prev) return;
+    const rect = area.getBoundingClientRect();
+    const cx = clientX - rect.left;
+    const cy = clientY - rect.top;
+    pendingZoom.current = {
+      cx, cy,
+      contentX: area.scrollLeft + cx,
+      contentY: area.scrollTop + cy,
+      ratio: next / prev,
+    };
+    setScale(next);
+  }, []);
+
+  const zoomByButton = useCallback((factor: number) => {
+    const area = pageAreaRef.current;
+    if (!area) { setScale(s => clampScale(s * factor)); return; }
+    const rect = area.getBoundingClientRect();
+    applyZoomAt(factor, rect.left + rect.width / 2, rect.top + rect.height / 2);
+  }, [applyZoomAt]);
+
+  const resetZoom = useCallback(() => {
+    pendingZoom.current = null;
+    setScale(1);
+    const area = pageAreaRef.current;
+    if (area) requestAnimationFrame(() => { area.scrollTop = 0; area.scrollLeft = 0; });
+  }, []);
+
+  const fitToWidth = useCallback(() => {
+    const area = pageAreaRef.current;
+    if (!area) return;
+    pendingZoom.current = null;
+    setScale(clampScale((area.clientWidth - 40) / BASE_PAGE_WIDTH));
+    requestAnimationFrame(() => { area.scrollTop = 0; area.scrollLeft = 0; });
+  }, []);
+
+  // Scale değişince cursor-merkezli scroll'u uygula
+  useLayoutEffect(() => {
+    const area = pageAreaRef.current;
+    const pz = pendingZoom.current;
+    if (!area || !pz) return;
+    pendingZoom.current = null;
+    area.scrollLeft = Math.max(0, pz.contentX * pz.ratio - pz.cx);
+    area.scrollTop = Math.max(0, pz.contentY * pz.ratio - pz.cy);
+  }, [scale]);
+
+  // Ctrl/Cmd + tekerlek ile zoom (trackpad pinch dahil); düz tekerlek normal kaydırır
+  useEffect(() => {
+    const area = pageAreaRef.current;
+    if (!area) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault();
+      applyZoomAt(e.deltaY < 0 ? 1.1 : 1 / 1.1, e.clientX, e.clientY);
+    };
+    area.addEventListener('wheel', onWheel, { passive: false });
+    return () => area.removeEventListener('wheel', onWheel);
+  }, [applyZoomAt]);
 
   // Drag-to-pan scrolling mechanism
   useEffect(() => {
@@ -269,13 +343,18 @@ export default function PDFOverlayViewer({
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement) return;
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === '=' || e.key === '+') { e.preventDefault(); zoomByButton(1.15); return; }
+        if (e.key === '-') { e.preventDefault(); zoomByButton(1 / 1.15); return; }
+        if (e.key === '0') { e.preventDefault(); resetZoom(); return; }
+      }
       if (e.key === 'ArrowRight' || e.key === 'PageDown') goToPage(currentPage + 1);
       if (e.key === 'ArrowLeft'  || e.key === 'PageUp')   goToPage(currentPage - 1);
       if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [currentPage, goToPage, onClose]);
+  }, [currentPage, goToPage, onClose, zoomByButton, resetZoom]);
 
   // ── Overlay üretimi (eski belgeler) ────────────────────────────────────
   const generateOverlay = async () => {
@@ -367,13 +446,20 @@ export default function PDFOverlayViewer({
               </button>
             )}
 
-            <button className={styles.iconBtn} onClick={() => setScale(s => Math.max(0.5, s - 0.15))} title="Küçült">
-              <ZoomOut size={14} />
-            </button>
-            <span className={styles.zoomLabel}>{Math.round(scale * 100)}%</span>
-            <button className={styles.iconBtn} onClick={() => setScale(s => Math.min(3, s + 0.15))} title="Büyüt">
-              <ZoomIn size={14} />
-            </button>
+            <div className={styles.zoomCluster}>
+              <button className={styles.zoomBtn} onClick={() => zoomByButton(1 / 1.15)} title="Uzaklaştır (Ctrl −)">
+                <ZoomOut size={14} />
+              </button>
+              <button className={styles.zoomReset} onClick={resetZoom} title="Gerçek boyut (Ctrl 0)">
+                {Math.round(scale * 100)}%
+              </button>
+              <button className={styles.zoomBtn} onClick={() => zoomByButton(1.15)} title="Yakınlaştır (Ctrl +)">
+                <ZoomIn size={14} />
+              </button>
+              <button className={styles.zoomBtn} onClick={fitToWidth} title="Genişliğe sığdır">
+                <Maximize2 size={13} />
+              </button>
+            </div>
 
             {localOverlay && translatedProxy && (
               <button

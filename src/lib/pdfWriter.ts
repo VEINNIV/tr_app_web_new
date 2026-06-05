@@ -350,6 +350,85 @@ export async function buildTranslatedPDF(opts: WriteOptions): Promise<Uint8Array
   return out;
 }
 
+/**
+ * Overlay verisi olmayan (eski) belgeler için basit, Unicode-güvenli metin PDF'i.
+ * Orijinal sayfa düzenini korumaz; çeviri metnini temiz A4 sayfalara döker.
+ * Markdown başlık (#) ve madde (-/*) işaretlerini hafifçe biçimlendirir.
+ */
+export async function buildTextPDF(text: string, title?: string): Promise<Uint8Array> {
+  const pdfDoc = await PDFDocument.create();
+  pdfDoc.registerFontkit(fontkit);
+
+  let font: import('pdf-lib').PDFFont;
+  let bold: import('pdf-lib').PDFFont;
+  try {
+    const [r, b] = await Promise.all([getUnicodeFont(), getUnicodeBoldFont()]);
+    font = await pdfDoc.embedFont(r, { subset: true });
+    bold = await pdfDoc.embedFont(b, { subset: true });
+  } catch {
+    font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  }
+
+  const PAGE_W = 595.28, PAGE_H = 841.89; // A4 (pt)
+  const MARGIN = 56;
+  const maxW = PAGE_W - MARGIN * 2;
+  const baseSize = 11;
+
+  let page = pdfDoc.addPage([PAGE_W, PAGE_H]);
+  let y = PAGE_H - MARGIN;
+  const newPage = () => { page = pdfDoc.addPage([PAGE_W, PAGE_H]); y = PAGE_H - MARGIN; };
+  const ensure = (h: number) => { if (y - h < MARGIN) newPage(); };
+
+  const wrap = (line: string, f: import('pdf-lib').PDFFont, size: number): string[] => {
+    const words = line.split(/\s+/).filter(Boolean);
+    if (words.length === 0) return [''];
+    const out: string[] = [];
+    let cur = '';
+    for (const w of words) {
+      const test = cur ? `${cur} ${w}` : w;
+      let width: number;
+      try { width = f.widthOfTextAtSize(test, size); } catch { width = test.length * size * 0.5; }
+      if (width > maxW && cur) { out.push(cur); cur = w; }
+      else { cur = test; }
+    }
+    if (cur) out.push(cur);
+    return out;
+  };
+
+  if (title) {
+    const ts = 18;
+    ensure(ts * 1.5);
+    page.drawText(title, { x: MARGIN, y: y - ts, size: ts, font: bold, color: BLACK });
+    y -= ts * 2;
+  }
+
+  for (const rawLine of text.replace(/\r\n/g, '\n').split('\n')) {
+    const headed = rawLine.match(/^(#{1,4})\s+(.*)$/);
+    const isBullet = /^\s*[-*]\s+/.test(rawLine);
+
+    let content = rawLine;
+    let f = font;
+    let size = baseSize;
+    if (headed) { content = headed[2]; f = bold; size = headed[1].length <= 2 ? 15 : 13; }
+    else if (isBullet) { content = '• ' + rawLine.replace(/^\s*[-*]\s+/, ''); }
+    // basit inline markdown temizliği
+    content = content.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1').replace(/`(.+?)`/g, '$1');
+
+    if (!content.trim()) { y -= baseSize * 0.8; continue; }
+    if (headed) y -= size * 0.4; // başlık öncesi nefes
+
+    for (const wl of wrap(content, f, size)) {
+      const lh = size * 1.5;
+      ensure(lh);
+      page.drawText(wl, { x: MARGIN, y: y - size, size, font: f, color: BLACK });
+      y -= lh;
+    }
+  }
+
+  return pdfDoc.save({ useObjectStreams: true });
+}
+
 export function downloadBytes(bytes: Uint8Array, filename: string, mime = 'application/pdf') {
   const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
   const blob = new Blob([buffer as ArrayBuffer], { type: mime });

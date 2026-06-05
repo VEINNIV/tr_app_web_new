@@ -109,6 +109,49 @@
   text-align: center;
 }
 
+/* ── Zoom kontrol kümesi (gruplu pill) ───────────────────── */
+.zoomCluster {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  background: var(--color-bg-alt);
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+}
+
+.zoomBtn {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  padding: 0;
+  transition: color 0.12s, background 0.12s;
+}
+.zoomBtn:hover { color: var(--color-accent); background: var(--color-accent-light); }
+
+.zoomReset {
+  min-width: 46px;
+  height: 26px;
+  padding: 0 6px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s;
+}
+.zoomReset:hover { color: var(--color-accent); background: var(--color-accent-light); }
+
 .navBtn {
   width: 30px;
   height: 30px;
@@ -158,9 +201,10 @@
   scrollbar-width: thin;
   scrollbar-color: #444 transparent;
   display: flex;
-  justify-content: center;
+  /* center yerine flex-start + child margin:auto — zoom'da sol kenar kırpılmadan
+     kaydırılabilsin (flexbox overflow centering bug'ı). */
+  justify-content: flex-start;
   align-items: flex-start;
-  transition: all 0.2s ease;
 }
 
 .grabCursor {
@@ -178,7 +222,7 @@
 
 .pageWrapper {
   display: inline-block;
-  transition: width 0.2s ease, max-width 0.2s ease;
+  margin: 0 auto; /* flex item olarak yatayda ortalar; taşınca sol kenar erişilebilir kalır */
 }
 
 /* Sayfa container — translated PDF doğrudan render edilir, overlay yok */

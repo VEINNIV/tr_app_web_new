@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
-import { FileText, MessageSquare, Trash2, FolderOpen, Eye, X, DownloadCloud, FileType, FileCode, Layers, Loader, BookOpen, Share2, Archive, CheckSquare, Square, Lock, MoreVertical, LayoutGrid, Search } from 'lucide-react';
+import { FileText, MessageSquare, Trash2, FolderOpen, Eye, X, DownloadCloud, Download, FileType, FileCode, Layers, Loader, BookOpen, Share2, Archive, CheckSquare, Square, Lock, MoreVertical, LayoutGrid, Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import JSZip from 'jszip';
 import { SPRING_TIGHT } from '../components/ui/motion';
@@ -13,6 +13,7 @@ import { STATUS_LABELS } from '../lib/constants';
 import { formatTrDate, getQualityScore } from '../lib/utils';
 import { useExportDoc } from '../hooks/useExportDoc';
 import type { ExportFormat } from '../hooks/useExportDoc';
+import { buildDocTranslatedPDF, translatedPdfName, hasDownloadableTranslation } from '../lib/translatedPdfDownload';
 import type { Document, Translation } from '../types';
 import styles from '../styles/components/documents.module.css';
 import ReactMarkdown from 'react-markdown';
@@ -38,6 +39,7 @@ export default function DocumentsPage() {
   const [sharing, setSharing] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [zipping, setZipping] = useState(false);
+  const [pdfBusyId, setPdfBusyId] = useState<string | null>(null);
 
   // New UI/UX states
   const [searchQuery, setSearchQuery] = useState('');
@@ -239,12 +241,14 @@ export default function DocumentsPage() {
     setSummaryLoading(true);
     summaryAbortRef.current = new AbortController();
     try {
-      await summarizeDocument(
+      const summary = await summarizeDocument(
         text,
         summaryAbortRef.current.signal,
         (_delta, full) => setSummaryText(full),
         operationId,
       );
+      // Non-streaming fallback'te onChunk çağrılmaz; nihai özeti dönüş değerinden al.
+      if (summary) setSummaryText(summary);
     } catch (e) {
       // Erken hata/iptal → kredi iadesi (yalnızca hiç çağrı yapılmadıysa)
       try { await supabase.rpc('refund_ai_operation', { p_op_id: operationId }); } catch { /* yut */ }
@@ -256,28 +260,65 @@ export default function DocumentsPage() {
   };
 
   const downloadZip = async () => {
-    const targets = documents.filter(d => selected.has(d.id) && d.translation?.translated_text);
+    const targets = documents.filter(d => selected.has(d.id) && hasDownloadableTranslation(d));
     if (targets.length === 0) { toast.error('Seçili çeviri bulunamadı.'); return; }
     setZipping(true);
     const zip = new JSZip();
+    const usedNames = new Set<string>();
+    let ok = 0, fail = 0;
+
     for (const doc of targets) {
-      const md = doc.translation!.translated_text!.pages.join('\n\n');
-      const name = doc.original_name.replace(/\.pdf$/i, '') + '_ceviri.txt';
-      zip.file(name, md);
+      try {
+        const bytes = await buildDocTranslatedPDF(doc);
+        // Çakışan dosya adlarını benzersizleştir
+        let name = translatedPdfName(doc.original_name);
+        if (usedNames.has(name)) {
+          const base = name.replace(/\.pdf$/i, '');
+          let i = 2;
+          while (usedNames.has(`${base} (${i}).pdf`)) i++;
+          name = `${base} (${i}).pdf`;
+        }
+        usedNames.add(name);
+        zip.file(name, bytes);
+        ok++;
+      } catch (e) {
+        console.warn('PDF üretilemedi:', doc.original_name, e);
+        fail++;
+      }
     }
+
+    if (ok === 0) { toast.error('Hiçbir PDF üretilemedi.'); setZipping(false); return; }
+
     try {
       const blob = await zip.generateAsync({ type: 'blob' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a'); a.href = url;
       a.download = `TransWordly_Ceviriler_${new Date().toISOString().slice(0,10)}.zip`;
       a.click(); URL.revokeObjectURL(url);
-      toast.success(`${targets.length} çeviri ZIP olarak indirildi`);
+      toast.success(fail ? `${ok} PDF indirildi · ${fail} belge atlandı` : `${ok} çeviri PDF olarak indirildi`);
       clearSelect();
     } catch {
       toast.error('ZIP oluşturulamadı');
     } finally {
       setZipping(false);
     }
+  };
+
+  /** Tek belgenin çevirisini gerçek PDF olarak indir (modalı açmadan). */
+  const downloadSinglePdf = async (doc: DocumentWithTranslation) => {
+    if (!hasDownloadableTranslation(doc)) { toast.error('İndirilecek çeviri bulunamadı.'); return; }
+    if (pdfBusyId) return;
+    setPdfBusyId(doc.id);
+    const promise = (async () => {
+      const bytes = await buildDocTranslatedPDF(doc);
+      const { downloadBytes } = await import('../lib/pdfWriter');
+      downloadBytes(bytes, translatedPdfName(doc.original_name));
+    })();
+    toast.promise(promise, {
+      loading: 'PDF hazırlanıyor…',
+      success: 'PDF indirildi',
+      error: 'PDF oluşturulamadı',
+    }).finally(() => setPdfBusyId(null));
   };
 
   const downloadAs = (format: ExportFormat) => {
@@ -551,6 +592,20 @@ export default function DocumentsPage() {
                           )}
                         </div>
 
+                        {hasDownloadableTranslation(doc) && (
+                          <button
+                            className={styles.overlayPrimaryBtn}
+                            onClick={() => { setActiveOverlayId(null); downloadSinglePdf(doc); }}
+                            disabled={pdfBusyId === doc.id}
+                            title="Çeviriyi PDF olarak indir"
+                          >
+                            {pdfBusyId === doc.id
+                              ? <><Loader size={14} style={{ animation: 'spin 0.8s linear infinite' }} /> <span>Hazırlanıyor…</span></>
+                              : <><Download size={14} /> <span>PDF İndir</span></>
+                            }
+                          </button>
+                        )}
+
                         <div className={styles.overlayDivider} />
 
                         <button className={styles.overlayDeleteBtn} onClick={() => { setActiveOverlayId(null); handleDelete(doc.id); }}>
@@ -717,7 +772,7 @@ export default function DocumentsPage() {
             <div className={styles.bulkActionsRow}>
               <button className={styles.bulkZipBtn} onClick={downloadZip} disabled={zipping}>
                 {zipping ? <Loader size={14} style={{ animation: 'spin 0.8s linear infinite' }} /> : <Archive size={14} />}
-                {zipping ? 'Hazırlanıyor…' : `${selected.size} Seçili ZIP İndir`}
+                {zipping ? 'PDF’ler hazırlanıyor…' : `${selected.size} Çeviriyi PDF (ZIP) İndir`}
               </button>
               <button className={styles.bulkCancelBtn} onClick={clearSelect}>
                 İptal Et

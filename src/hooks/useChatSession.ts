@@ -203,7 +203,7 @@ export function useChatSession({ profile, initDocId, refreshProfile }: UseChatSe
 
     try {
       let final = '';
-      await streamDocumentChat(
+      const result = await streamDocumentChat(
         historySnapshot,
         text || 'Eklenen dosyaları incele ve ne yapabileceğini açıkla.',
         docContext,
@@ -216,6 +216,8 @@ export function useChatSession({ profile, initDocId, refreshProfile }: UseChatSe
         abortRef.current.signal,
         operationId,
       );
+      // Non-streaming fallback'te onChunk çağrılmaz; nihai metni dönüş değerinden al.
+      if (result) final = result;
       if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
       setMessages(prev => prev.map(m => m.id === asstId ? { ...m, content: final, pending: false } : m));
       void supabase.from('chat_messages').insert({
