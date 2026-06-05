@@ -87,11 +87,14 @@ export function useChatSession({ profile, initDocId, refreshProfile }: UseChatSe
   useEffect(() => {
     if (!profileId) return;
     setMessages([]);
+    // Son 80 mesajı çek (en yeni → en eski), sonra kronolojik sıraya çevir.
+    // ascending+limit eski 80'i getiriyordu → 80'i geçen sohbetlerde yeni
+    // mesajlar (yani güncel geçmiş) hiç görünmüyordu.
     const base = supabase
       .from('chat_messages')
       .select('*')
       .eq('user_id', profileId)
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: false })
       .limit(80);
 
     const scoped = selectedDocId
@@ -101,7 +104,8 @@ export function useChatSession({ profile, initDocId, refreshProfile }: UseChatSe
     scoped.then(({ data, error }) => {
       if (error) console.error('[Chat] history load error', error);
       if (data && data.length > 0) {
-        setMessages(data.map((m: Record<string, unknown>) => ({
+        const ordered = [...data].reverse(); // en yeni→eski geldi, kronolojiğe çevir
+        setMessages(ordered.map((m: Record<string, unknown>) => ({
           id: m.id as string,
           role: m.role as 'user' | 'assistant',
           content: (m.content as string) || '',
