@@ -51,7 +51,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setSession(null);
           setUser(null);
           setProfile(null);
-          toast.error('Hesabınız askıya alındı. Lütfen destek ile iletişime geçin.', { duration: 6000 });
+          const reason = (data as User).ban_reason;
+          toast.error(
+            reason
+              ? `Hesabınız askıya alındı: ${reason}`
+              : 'Hesabınız askıya alındı. Lütfen destek ile iletişime geçin.',
+            { duration: 6000 },
+          );
           return;
         }
         setProfile(data as User);

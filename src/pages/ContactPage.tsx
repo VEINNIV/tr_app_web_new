@@ -6,9 +6,10 @@
  * Sade ama markalı: gradient hero + iletişim kartları (e-posta, adres) + mailto CTA.
  */
 import { motion, useReducedMotion } from 'framer-motion';
-import { Mail, MapPin, Send, Clock, Building2 } from 'lucide-react';
+import { Mail, MapPin, Send, Clock, Building2, Phone } from 'lucide-react';
+import { COMPANY } from '../content/legal';
 
-const EMAIL = 'cadeftdev@gmail.com';
+const EMAIL = COMPANY.email;
 const fade = {
   hidden: { opacity: 0, y: 16 },
   visible: (i: number) => ({ opacity: 1, y: 0, transition: { delay: i * 0.08, duration: 0.5, ease: [0.22, 1, 0.36, 1] as const } }),
@@ -90,14 +91,34 @@ export default function ContactPage() {
             </span>
             <div>
               <div style={{ fontSize: '0.76rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--color-text-tertiary)' }}>Adres</div>
-              <div style={{ fontSize: '1.02rem', fontWeight: 700, color: 'var(--color-text-primary)', marginTop: 3 }}>Ankara, Türkiye</div>
-              <div style={{ fontSize: '0.82rem', color: 'var(--color-text-secondary)', marginTop: 4 }}>Uzaktan çalışan ekip 🇹🇷</div>
+              <div style={{ fontSize: '1.02rem', fontWeight: 700, color: 'var(--color-text-primary)', marginTop: 3 }}>Saimekadın Mah. Görgülü Cad. No:45</div>
+              <div style={{ fontSize: '0.82rem', color: 'var(--color-text-secondary)', marginTop: 4 }}>Mamak / Ankara · Türkiye 🇹🇷</div>
             </div>
           </motion.div>
 
+          {/* Telefon */}
+          <motion.a
+            href={`tel:${COMPANY.phoneHref}`}
+            variants={fade} custom={3} initial="hidden" animate="visible"
+            whileHover={reduced ? undefined : { y: -4 }}
+            style={{
+              display: 'flex', flexDirection: 'column', gap: 12, padding: 24, borderRadius: 20, textDecoration: 'none',
+              background: 'var(--color-surface)', border: '1px solid var(--color-border)', boxShadow: 'var(--shadow-sm)',
+            }}
+          >
+            <span style={{ width: 46, height: 46, borderRadius: 14, display: 'grid', placeItems: 'center', background: 'rgba(99,102,241,0.12)', color: '#6366f1' }}>
+              <Phone size={22} />
+            </span>
+            <div>
+              <div style={{ fontSize: '0.76rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--color-text-tertiary)' }}>Telefon</div>
+              <div style={{ fontSize: '1.02rem', fontWeight: 700, color: 'var(--color-text-primary)', marginTop: 3 }}>{COMPANY.phone}</div>
+              <div style={{ fontSize: '0.82rem', color: 'var(--color-text-secondary)', marginTop: 4 }}>Tıkla, hemen ara →</div>
+            </div>
+          </motion.a>
+
           {/* Yanıt süresi */}
           <motion.div
-            variants={fade} custom={3} initial="hidden" animate="visible"
+            variants={fade} custom={4} initial="hidden" animate="visible"
             style={{
               display: 'flex', flexDirection: 'column', gap: 12, padding: 24, borderRadius: 20,
               background: 'var(--color-surface)', border: '1px solid var(--color-border)', boxShadow: 'var(--shadow-sm)',
@@ -116,7 +137,7 @@ export default function ContactPage() {
 
         {/* ── Kurumsal şeridi ──────────────────────────────────── */}
         <motion.div
-          variants={fade} custom={4} initial="hidden" animate="visible"
+          variants={fade} custom={5} initial="hidden" animate="visible"
           style={{
             display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', marginTop: 24,
             padding: '20px 24px', borderRadius: 20,

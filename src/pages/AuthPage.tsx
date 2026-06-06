@@ -67,6 +67,23 @@ export default function AuthPage() {
       }
     } catch (err: unknown) {
       const raw = err instanceof Error ? err.message : 'Bir hata oluştu';
+      // Kayıt: e-posta yönetici tarafından silinmiş/engellenmiş olabilir → dostça mesaj.
+      // (auth.users trigger'ı GoTrue tarafından "Database error..." olarak maskelenebilir;
+      //  bu yüzden tombstone'u public RPC ile doğrudan sorgulayıp sebebi gösteriyoruz.)
+      if (isRegister) {
+        try {
+          const { data } = await supabase.rpc('check_blocked_email', { p_email: email });
+          const row = Array.isArray(data) ? data[0] : data;
+          if (row?.blocked) {
+            setError(
+              row.reason
+                ? `Hesabınız kaldırıldı: ${row.reason}`
+                : 'Bu hesap kaldırılmıştır. Aynı bilgilerle yeniden kayıt olamazsınız.',
+            );
+            return;
+          }
+        } catch { /* RPC erişilemezse normal hata akışına düş */ }
+      }
       // Supabase: e-posta onaylanmamışsa giriş reddedilir
       if (/email not confirmed|not confirmed|email_not_confirmed/i.test(raw)) {
         setNeedsConfirm(true);

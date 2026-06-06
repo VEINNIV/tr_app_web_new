@@ -39,7 +39,19 @@ interface ConfigRow {
   category: string | null;
 }
 
-type Tab = 'overview' | 'credits' | 'users' | 'security';
+type Tab = 'overview' | 'credits' | 'users' | 'moderation' | 'security';
+
+/** Silinen hesap kaydı (admin_deleted_accounts RPC çıktısı). */
+interface DeletedAccount {
+  id: string;
+  email: string;
+  full_name: string | null;
+  original_user_id: string | null;
+  reason: string | null;
+  deleted_by: string | null;
+  deleted_by_email: string | null;
+  created_at: string;
+}
 
 /** Yasak süresi seçenekleri. */
 type BanDuration = 'day' | 'week' | 'month' | 'perm';
@@ -63,7 +75,7 @@ interface Ledger {
   monthly_reset: number;
   spent_total: number;
   spent_by_action: Record<string, number>;
-  recent: { amount: number; action: string; created_at: string }[];
+  recent: { amount: number; action: string; created_at: string; actor_email?: string | null }[];
 }
 
 /** Gelir/maliyet/kâr özeti (admin_revenue_summary RPC çıktısı). */
@@ -175,7 +187,13 @@ export default function AdminDashboardPage() {
   const [banReason, setBanReason] = useState('');
   const [deleteModal, setDeleteModal] = useState<{ users: User[] } | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleteReason, setDeleteReason] = useState('');
   const [busy, setBusy] = useState(false);
+
+  // ── Moderasyon sekmesi: yasaklı kullanıcılar + silinen hesaplar ─────────────
+  const [bannedUsers, setBannedUsers] = useState<User[] | null>(null);
+  const [deletedAccounts, setDeletedAccounts] = useState<DeletedAccount[] | null>(null);
+  const [modSearch, setModSearch] = useState('');
 
   /** Bu kullanıcı korunuyor mu? (kendisi veya admin → silinemez/yasaklanamaz) */
   const isProtected = (u: User) => u.id === me?.id || u.role === 'admin';
@@ -361,14 +379,53 @@ export default function AdminDashboardPage() {
     if (!deleteModal) return;
     const ids = deleteModal.users.map(u => u.id);
     setBusy(true);
-    const { data, error } = await supabase.rpc('admin_delete_users', { p_user_ids: ids });
+    const { data, error } = await supabase.rpc('admin_delete_users', { p_user_ids: ids, p_reason: deleteReason.trim() || null });
     setBusy(false);
     if (error) { toast.error('Silinemedi: ' + error.message); return; }
     toast.success(`${data ?? ids.length} kullanıcı kalıcı olarak silindi`);
-    setDeleteModal(null); setDeleteConfirmText('');
+    setDeleteModal(null); setDeleteConfirmText(''); setDeleteReason('');
     clearSelection();
     setExpandedUserId(null);
     fetchData();
+    if (deletedAccounts) loadModeration(); // moderasyon listesi açıksa tazele
+  };
+
+  // ── Moderasyon verisi (yasaklı + silinmiş) ─────────────────────────────────
+  const loadModeration = async () => {
+    const s = modSearch.trim().replace(/[%_]/g, '');
+    const [banRes, delRes] = await Promise.all([
+      supabase
+        .from('profiles')
+        .select('*')
+        .not('banned_until', 'is', null)
+        .order('banned_until', { ascending: false })
+        .limit(200),
+      supabase.rpc('admin_deleted_accounts', { p_limit: 200, p_search: s || null }),
+    ]);
+    const active = ((banRes.data as User[] | null) ?? []).filter(u => isBanActive(u.banned_until));
+    const bySearch = s
+      ? active.filter(u =>
+          (u.email || '').toLowerCase().includes(s.toLowerCase()) ||
+          (u.full_name || '').toLowerCase().includes(s.toLowerCase()) ||
+          (u.nickname || '').toLowerCase().includes(s.toLowerCase()))
+      : active;
+    setBannedUsers(bySearch);
+    setDeletedAccounts(delRes.error ? [] : ((delRes.data as DeletedAccount[]) ?? []));
+  };
+
+  // Moderasyon sekmesi açıldığında / aramada veriyi çek (300ms debounce)
+  useEffect(() => {
+    if (tab !== 'moderation') return;
+    const t = setTimeout(() => { loadModeration(); }, modSearch ? 300 : 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, modSearch]);
+
+  const unblockEmail = async (id: string) => {
+    const { error } = await supabase.rpc('admin_unblock_email', { p_id: id });
+    if (error) { toast.error('İşlem başarısız: ' + error.message); return; }
+    toast.success('Yeniden kayda izin verildi');
+    setDeletedAccounts(prev => (prev ? prev.filter(d => d.id !== id) : prev));
   };
 
   const filteredUsers = users;
@@ -394,10 +451,11 @@ export default function AdminDashboardPage() {
     { id: 'overview', label: 'Genel Bakış', icon: <LayoutGrid size={15} /> },
     { id: 'credits', label: 'Kredi & Maliyet', icon: <Calculator size={15} /> },
     { id: 'users', label: 'Kullanıcılar', icon: <Users size={15} /> },
+    { id: 'moderation', label: 'Moderasyon', icon: <ShieldOff size={15} /> },
     { id: 'security', label: 'Güvenlik', icon: <ShieldCheck size={15} /> },
   ];
 
-  if (loading && tab !== 'security') {
+  if (loading && tab !== 'security' && tab !== 'moderation') {
     return (
       <div className={styles.page}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '50vh' }}>
@@ -580,7 +638,7 @@ export default function AdminDashboardPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => { setDeleteConfirmText(''); setDeleteModal({ users: selectedUsers }); }}
+                      onClick={() => { setDeleteConfirmText(''); setDeleteReason(''); setDeleteModal({ users: selectedUsers }); }}
                       style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, background: '#dc2626', border: 'none', cursor: 'pointer', color: '#fff', font: 'inherit', fontSize: '0.8rem', fontWeight: 700 }}
                     >
                       <Trash2 size={14} /> Seçilenleri sil
@@ -747,7 +805,7 @@ export default function AdminDashboardPage() {
                               )}
                               <button
                                 type="button"
-                                onClick={() => { setDeleteConfirmText(''); setDeleteModal({ users: [user] }); }}
+                                onClick={() => { setDeleteConfirmText(''); setDeleteReason(''); setDeleteModal({ users: [user] }); }}
                                 style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, background: 'rgba(220,38,38,0.1)', color: '#dc2626', border: '1px solid rgba(220,38,38,0.28)', cursor: 'pointer', font: 'inherit', fontSize: '0.8rem', fontWeight: 600 }}
                               >
                                 <Trash2 size={14} /> Hesabı sil
@@ -786,7 +844,12 @@ export default function AdminDashboardPage() {
                                     return (
                                       <div key={idx} className={styles.ledgerRow}>
                                         <span className={styles.ledgerRowIcon}>{actionMeta(t.action).icon}</span>
-                                        <span className={styles.ledgerRowLabel}>{actionMeta(t.action).label}</span>
+                                        <span className={styles.ledgerRowLabel}>
+                                          {actionMeta(t.action).label}
+                                          {t.action === 'admin_grant' && t.actor_email && (
+                                            <span style={{ color: 'var(--color-text-tertiary)', fontWeight: 400 }}> · {t.actor_email}</span>
+                                          )}
+                                        </span>
                                         <span className={styles.ledgerRowDate}>
                                           {new Date(t.created_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: '2-digit' })}
                                         </span>
@@ -843,6 +906,110 @@ export default function AdminDashboardPage() {
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ══ MODERASYON ═══════════════════════════════════════════ */}
+      {tab === 'moderation' && (
+        <div style={{ display: 'grid', gap: 24 }}>
+          {/* Arama */}
+          <div className={styles.searchWrapper} style={{ maxWidth: 360 }}>
+            <Search size={15} className={styles.searchIcon} />
+            <input
+              className={styles.searchInput}
+              type="text"
+              placeholder="Yasaklı/silinmiş içinde ara (e-posta, isim)..."
+              value={modSearch}
+              onChange={e => setModSearch(e.target.value)}
+            />
+          </div>
+
+          {/* ── Yasaklı kullanıcılar ── */}
+          <div className={styles.section}>
+            <div className={styles.sectionHeader}>
+              <h2 className={styles.sectionTitle}><Ban size={18} style={{ color: '#d97706' }} /> Yasaklı Kullanıcılar</h2>
+              <span style={{ fontSize: '0.78rem', color: 'var(--color-text-tertiary)' }}>{bannedUsers ? bannedUsers.length : '…'}</span>
+            </div>
+            <div className={styles.sectionBody} style={{ display: 'grid', gap: 10 }}>
+              {!bannedUsers ? (
+                <p style={{ fontSize: '0.82rem', color: 'var(--color-text-tertiary)' }}>Yükleniyor…</p>
+              ) : bannedUsers.length === 0 ? (
+                <p style={{ fontSize: '0.82rem', color: 'var(--color-text-tertiary)' }}>Aktif yasaklı kullanıcı yok.</p>
+              ) : bannedUsers.map(u => (
+                <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '12px 14px', borderRadius: 12, background: 'var(--color-bg-alt)', border: '1px solid var(--color-border)' }}>
+                  <div style={{ width: 30, height: 30, borderRadius: 9, flexShrink: 0, display: 'grid', placeItems: 'center', background: 'rgba(245,158,11,0.14)', color: '#b45309' }}>
+                    <Ban size={15} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 180 }}>
+                    <div style={{ fontSize: '0.86rem', fontWeight: 700, color: 'var(--color-text-primary)' }}>{u.nickname || u.full_name || 'İsimsiz'}</div>
+                    <div style={{ fontSize: '0.76rem', color: 'var(--color-text-secondary)' }}>{u.email}</div>
+                    {u.ban_reason && (
+                      <div style={{ fontSize: '0.74rem', color: 'var(--color-text-tertiary)', marginTop: 3 }}>Sebep: {u.ban_reason}</div>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '0.74rem', color: 'var(--color-text-tertiary)', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                    <Clock3 size={13} />
+                    {u.banned_until === 'infinity'
+                      ? 'Kalıcı'
+                      : `${new Date(u.banned_until as string).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: '2-digit' })}'e kadar`}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => unbanUser(u).then(() => loadModeration())}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--color-success-bg)', color: 'var(--color-success)', border: '1px solid', borderColor: 'color-mix(in srgb, var(--color-success) 30%, transparent)', cursor: 'pointer', font: 'inherit', fontSize: '0.78rem', fontWeight: 600 }}
+                  >
+                    <Check size={13} /> Yasağı kaldır
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* ── Silinen hesaplar ── */}
+          <div className={styles.section}>
+            <div className={styles.sectionHeader}>
+              <h2 className={styles.sectionTitle}><UserX size={18} style={{ color: '#dc2626' }} /> Silinen Hesaplar</h2>
+              <span style={{ fontSize: '0.78rem', color: 'var(--color-text-tertiary)' }}>{deletedAccounts ? deletedAccounts.length : '…'}</span>
+            </div>
+            <div className={styles.sectionBody} style={{ display: 'grid', gap: 10 }}>
+              <p style={{ fontSize: '0.74rem', color: 'var(--color-text-tertiary)', marginBottom: 2 }}>
+                Bu e-postalarla yeniden kayıt engellenir. “Yeniden kayda izin ver” ile engeli kaldırabilirsin.
+              </p>
+              {!deletedAccounts ? (
+                <p style={{ fontSize: '0.82rem', color: 'var(--color-text-tertiary)' }}>Yükleniyor…</p>
+              ) : deletedAccounts.length === 0 ? (
+                <p style={{ fontSize: '0.82rem', color: 'var(--color-text-tertiary)' }}>Henüz silinmiş hesap yok.</p>
+              ) : deletedAccounts.map(d => (
+                <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '12px 14px', borderRadius: 12, background: 'var(--color-bg-alt)', border: '1px solid var(--color-border)' }}>
+                  <div style={{ width: 30, height: 30, borderRadius: 9, flexShrink: 0, display: 'grid', placeItems: 'center', background: 'rgba(220,38,38,0.12)', color: '#dc2626' }}>
+                    <UserX size={15} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 200 }}>
+                    <div style={{ fontSize: '0.86rem', fontWeight: 700, color: 'var(--color-text-primary)' }}>{d.full_name || 'İsimsiz'}</div>
+                    <div style={{ fontSize: '0.76rem', color: 'var(--color-text-secondary)' }}>{d.email}</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 12px', marginTop: 4, fontSize: '0.73rem', color: 'var(--color-text-tertiary)' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <Shield size={12} /> {d.deleted_by_email || 'admin'}
+                      </span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <Clock3 size={12} /> {new Date(d.created_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: '2-digit' })}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '0.74rem', marginTop: 4, color: d.reason ? 'var(--color-text-secondary)' : 'var(--color-text-tertiary)' }}>
+                      {d.reason ? <>Sebep: <strong style={{ color: 'var(--color-text-primary)', fontWeight: 600 }}>{d.reason}</strong></> : 'Sebep belirtilmedi (genel mesaj gösterilir)'}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => unblockEmail(d.id)}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--color-surface)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', cursor: 'pointer', font: 'inherit', fontSize: '0.78rem', fontWeight: 600 }}
+                  >
+                    <RefreshCw size={13} /> Yeniden kayda izin ver
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
@@ -999,7 +1166,7 @@ export default function AdminDashboardPage() {
                   ))}
                 </div>
 
-                <label className={styles.modalLabel}>Sebep (opsiyonel — kullanıcıya gösterilmez)</label>
+                <label className={styles.modalLabel}>Sebep (opsiyonel — kullanıcıya gösterilir)</label>
                 <input
                   autoFocus
                   className={styles.modalInput}
@@ -1067,6 +1234,19 @@ export default function AdminDashboardPage() {
                     ))}
                   </div>
                 )}
+
+                <label className={styles.modalLabel}>Silme sebebi (opsiyonel — kullanıcıya gösterilir)</label>
+                <input
+                  className={styles.modalInput}
+                  value={deleteReason}
+                  onChange={e => setDeleteReason(e.target.value)}
+                  placeholder="örn. tekrarlanan kötüye kullanım / spam"
+                  style={{ marginBottom: 14 }}
+                />
+                <p style={{ fontSize: '0.72rem', color: 'var(--color-text-tertiary)', margin: '-8px 0 14px' }}>
+                  Sebep girersen kullanıcı, aynı e-posta ile yeniden kayıt olmaya çalıştığında bu mesajı görür.
+                  Boş bırakırsan genel bir “hesap kaldırıldı” mesajı gösterilir.
+                </p>
 
                 <label className={styles.modalLabel}>
                   Onaylamak için {single ? 'kullanıcının e-postasını' : <>büyük harfle <code className={styles.modalEmail}>{expected}</code></>} yaz:

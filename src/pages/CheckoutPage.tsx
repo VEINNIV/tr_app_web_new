@@ -287,8 +287,8 @@ export default function CheckoutPage() {
                 required
               />
               <span>
-                <Link to="/terms" target="_blank">Kullanım koşullarını</Link> ve{' '}
-                <Link to="/privacy" target="_blank">gizlilik politikasını</Link> okudum, kabul ediyorum.
+                <Link to="/legal/mesafeli-satis" target="_blank">Mesafeli Satış Sözleşmesi</Link>’ni ve{' '}
+                <Link to="/legal/gizlilik-kvkk" target="_blank">Gizlilik Politikası</Link>’nı okudum, onaylıyorum.
               </span>
             </label>
 

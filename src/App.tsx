@@ -9,6 +9,7 @@ import { CartProvider } from './context/CartContext';
 import Navbar from './components/ui/Navbar';
 import BottomNav from './components/ui/BottomNav';
 import TranslationStatusBar from './components/TranslationStatusBar';
+import CookieConsent from './components/ui/CookieConsent';
 import EnvErrorPage from './components/EnvErrorPage';
 import OnboardingModal from './components/OnboardingModal';
 import { checkEnv } from './lib/env';
@@ -29,6 +30,7 @@ const GlossaryPage        = lazy(() => import('./pages/GlossaryPage'));
 const SharedDocumentPage  = lazy(() => import('./pages/SharedDocumentPage'));
 const ToolsPage           = lazy(() => import('./pages/ToolsPage'));
 const ContactPage         = lazy(() => import('./pages/ContactPage'));
+const LegalPage           = lazy(() => import('./pages/LegalPage'));
 const WritePage           = lazy(() => import('./pages/WritePage'));
 const UnderConstructionPage = lazy(() => import('./pages/UnderConstructionPage'));
 const NotFoundPage        = lazy(() => import('./pages/NotFoundPage'));
@@ -111,12 +113,15 @@ function AppLayout() {
               <Route path="/checkout" element={<PageTransition><CheckoutPage /></PageTransition>} />
               <Route path="/pricing" element={<PageTransition><LandingPage /></PageTransition>} />
               <Route path="/contact" element={<PageTransition><ContactPage /></PageTransition>} />
+              <Route path="/legal" element={<PageTransition><LegalPage /></PageTransition>} />
+              <Route path="/legal/:slug" element={<PageTransition><LegalPage /></PageTransition>} />
               <Route path="*" element={<PageTransition><NotFoundPage /></PageTransition>} />
             </Routes>
           </AnimatePresence>
         </Suspense>
       </main>
       <TranslationStatusBar />
+      <CookieConsent />
       {showBottomNav && <BottomNav />}
       {showOnboarding && (
         <OnboardingModal userId={user!.id} onComplete={refreshProfile} />

@@ -5,8 +5,9 @@ import {
   Languages, FileText, Brain, ArrowRight, Check,
   Shield, BookOpen, Star, Zap, FileType, MessageSquare,
   Globe, FileCode, Loader, RotateCcw, Layers, Sparkles,
-  Image as ImageIcon, Send, Download, Mail, MapPin,
+  Image as ImageIcon, Send, Download, Mail, MapPin, Phone,
 } from 'lucide-react';
+import { COMPANY } from '../content/legal';
 import { PRICING_PLANS, CREDIT_COSTS, pdfPerCredits, fmtCredit } from '../lib/constants';
 import { supabase } from '../lib/supabase';
 import { Magnetic } from '../components/ui/motion';
@@ -1182,12 +1183,23 @@ export default function LandingPage() {
           {/* İletişim */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 7, fontSize: '13px' }}>
             <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text4)' }}>İletişim</span>
-            <a href="mailto:cadeftdev@gmail.com" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, color: 'var(--text3)', textDecoration: 'none' }}>
-              <Mail size={13} /> cadeftdev@gmail.com
+            <a href={`mailto:${COMPANY.email}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, color: 'var(--text3)', textDecoration: 'none' }}>
+              <Mail size={13} /> {COMPANY.email}
             </a>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, color: 'var(--text3)' }}>
-              <MapPin size={13} /> Ankara, Türkiye
+            <a href={`tel:${COMPANY.phoneHref}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, color: 'var(--text3)', textDecoration: 'none' }}>
+              <Phone size={13} /> {COMPANY.phone}
+            </a>
+            <span style={{ display: 'inline-flex', alignItems: 'flex-start', gap: 7, color: 'var(--text3)' }}>
+              <MapPin size={13} style={{ marginTop: 2, flexShrink: 0 }} /> Saimekadın Mah. Görgülü Cad. No:45, Mamak / Ankara
             </span>
+          </div>
+          {/* Yasal */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 7, fontSize: '13px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text4)' }}>Yasal</span>
+            <Link to="/legal/mesafeli-satis" style={{ color: 'var(--text3)', textDecoration: 'none' }}>Mesafeli Satış Sözleşmesi</Link>
+            <Link to="/legal/gizlilik-kvkk" style={{ color: 'var(--text3)', textDecoration: 'none' }}>Gizlilik & KVKK</Link>
+            <Link to="/legal/iptal-iade" style={{ color: 'var(--text3)', textDecoration: 'none' }}>İptal & İade</Link>
+            <Link to="/legal" style={{ color: 'var(--text3)', textDecoration: 'none' }}>Tüm yasal belgeler →</Link>
           </div>
           <nav className={styles.footerLinks}>
             <a href="#features"  onClick={scrollTo('features')}>Özellikler</a>
@@ -1196,7 +1208,7 @@ export default function LandingPage() {
             <Link to="/contact">İletişim</Link>
             <Link to="/auth">Giriş Yap</Link>
           </nav>
-          <p className={styles.footerCopy}>© {new Date().getFullYear()} TransWordly · Akademisyenler için ❤️ ile</p>
+          <p className={styles.footerCopy}>© {new Date().getFullYear()} TransWordly · {COMPANY.sellerShort} · Akademisyenler için ❤️ ile</p>
         </div>
       </footer>
     </div>
