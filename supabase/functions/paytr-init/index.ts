@@ -96,6 +96,9 @@ Deno.serve(async (req) => {
   const plan = String(body.plan ?? '');
   if (!ALLOWED_PLANS.has(plan)) return json({ error: 'Geçersiz plan' }, 400);
 
+  const phone = String(body.phone ?? '').trim();
+  if (!phone) return json({ error: 'Telefon numarası zorunludur.' }, 400);
+
   const admin = createClient(supabaseUrl, serviceKey);
 
   // ── Tutarı SERVER-SIDE hesapla (app_config) ───────────────────────────────
@@ -131,7 +134,7 @@ Deno.serve(async (req) => {
     email,
     user_ip: ip,
   });
-  if (insErr) return json({ error: 'Sipariş oluşturulamadı: ' + insErr.message }, 500);
+  if (insErr) return json({ error: 'Sipariş oluşturulamadı.' }, 500);
 
   // ── PayTR token ───────────────────────────────────────────────────────────
   const userBasket = btoa(JSON.stringify([[`${plan} plan`, String(finalTl), 1]]));
@@ -161,7 +164,7 @@ Deno.serve(async (req) => {
     max_installment: maxInstallment,
     user_name: (body.name ?? user.email ?? 'Kullanıcı').slice(0, 60),
     user_address: 'TransWordly',
-    user_phone: (body.phone ?? '').slice(0, 20),
+    user_phone: phone.slice(0, 20),
     merchant_ok_url: okUrl,
     merchant_fail_url: failUrl,
     timeout_limit: '30',
@@ -178,7 +181,7 @@ Deno.serve(async (req) => {
       body: form.toString(),
     });
   } catch (e) {
-    return json({ error: 'PayTR erişilemedi: ' + (e as Error).message }, 503);
+    return json({ error: 'Ödeme sistemiyle bağlantı kurulamadı.' }, 503);
   }
 
   const result = await paytrRes.json().catch(() => null) as
@@ -188,7 +191,7 @@ Deno.serve(async (req) => {
       p_merchant_oid: merchantOid,
       p_reason: result?.reason ?? 'token alınamadı',
     });
-    return json({ error: 'PayTR token alınamadı: ' + (result?.reason ?? 'bilinmeyen') }, 502);
+    return json({ error: 'Ödeme başlatılamadı.' }, 502);
   }
 
   return json({

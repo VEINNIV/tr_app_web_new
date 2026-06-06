@@ -106,7 +106,14 @@ export default function CheckoutPage() {
       });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.iframeUrl) {
-        throw new Error(data?.error ?? 'Ödeme başlatılamadı.');
+        const friendlyErrors: Record<number, string> = {
+          400: data?.error?.includes('Telefon') ? 'Lütfen telefon numaranızı girin.' : 'Bilgilerinizi kontrol edip tekrar deneyin.',
+          401: 'Oturumunuz sona erdi, lütfen tekrar giriş yapın.',
+          500: 'Sunucuda bir hata oluştu. Lütfen daha sonra tekrar deneyin.',
+          502: 'Ödeme sistemiyle bağlantı kurulamadı. Lütfen birkaç dakika bekleyip tekrar deneyin.',
+          503: 'Ödeme sistemi şu an kullanılamıyor. Lütfen daha sonra tekrar deneyin.',
+        };
+        throw new Error(friendlyErrors[res.status] ?? 'Ödeme başlatılamadı. Lütfen tekrar deneyin.');
       }
       // PayTR güvenli ödeme sayfasına yönlendir
       window.location.href = data.iframeUrl as string;
@@ -252,13 +259,14 @@ export default function CheckoutPage() {
                 </div>
               </div>
               <div className={styles.formGroup}>
-                <label className={styles.label}>Telefon <span className={styles.optional}>(isteğe bağlı)</span></label>
+                <label className={styles.label}>Telefon</label>
                 <div className={styles.inputWrap}>
                   <Phone size={15} className={styles.inputIcon} />
                   <input
                     className={styles.input}
                     type="tel"
-                    placeholder="+90 5xx xxx xx xx"
+                    required
+                    placeholder="05xx xxx xx xx"
                     value={phone}
                     onChange={e => setPhone(e.target.value)}
                   />
