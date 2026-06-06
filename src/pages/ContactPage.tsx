@@ -8,8 +8,37 @@
 import { motion, useReducedMotion } from 'framer-motion';
 import { Mail, MapPin, Send, Clock, Building2, Phone } from 'lucide-react';
 import { COMPANY } from '../content/legal';
+import Seo, { SITE_URL } from '../components/Seo';
 
 const EMAIL = COMPANY.email;
+
+/** İletişim sayfası yapısal verisi — ContactPage + Organization contactPoint. */
+const CONTACT_JSONLD = {
+  '@context': 'https://schema.org',
+  '@type': 'ContactPage',
+  name: 'TransWordly İletişim',
+  url: `${SITE_URL}/contact`,
+  mainEntity: {
+    '@type': 'Organization',
+    name: COMPANY.brand,
+    email: COMPANY.email,
+    telephone: COMPANY.phoneHref,
+    address: {
+      '@type': 'PostalAddress',
+      streetAddress: COMPANY.address,
+      addressLocality: 'Ankara',
+      addressCountry: 'TR',
+    },
+    contactPoint: {
+      '@type': 'ContactPoint',
+      contactType: 'customer support',
+      email: COMPANY.email,
+      telephone: COMPANY.phoneHref,
+      areaServed: 'TR',
+      availableLanguage: ['Turkish'],
+    },
+  },
+};
 const fade = {
   hidden: { opacity: 0, y: 16 },
   visible: (i: number) => ({ opacity: 1, y: 0, transition: { delay: i * 0.08, duration: 0.5, ease: [0.22, 1, 0.36, 1] as const } }),
@@ -21,6 +50,12 @@ export default function ContactPage() {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--color-bg)', color: 'var(--color-text-primary)' }}>
       <div style={{ maxWidth: 920, margin: '0 auto', padding: 'calc(var(--navbar-height, 72px) + 24px) 22px 100px' }}>
+        <Seo
+          title="İletişim — TransWordly | Destek & Kurumsal Teklif"
+          description="TransWordly ekibine ulaşın. Sorularınız, kurumsal teklif talepleri ve geri bildirimler için e-posta veya telefon — genellikle 1 iş günü içinde yanıt."
+          canonical="/contact"
+          jsonLd={CONTACT_JSONLD}
+        />
         {/* ── Hero ─────────────────────────────────────────────── */}
         <motion.header
           variants={fade} custom={0} initial="hidden" animate="visible"

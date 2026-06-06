@@ -5,6 +5,7 @@ import { Mail, Lock, User, ArrowLeft, Eye, EyeOff, MailCheck } from 'lucide-reac
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { SPRING_TIGHT } from '../components/ui/motion';
+import Seo from '../components/Seo';
 import styles from '../styles/components/auth.module.css';
 
 const FEATURES = [
@@ -102,6 +103,11 @@ export default function AuthPage() {
 
   return (
     <div className={styles.authPage}>
+      <Seo
+        title={isRegister ? 'Ücretsiz Kayıt Ol — TransWordly' : 'Giriş Yap — TransWordly'}
+        description="TransWordly hesabınıza giriş yapın veya ücretsiz kayıt olun. 12 dilden Türkçeye AI destekli belge çevirisi, ders notu çıkarma ve AI soru-cevap."
+        canonical="/auth"
+      />
 
       {/* ── Left Panel ─── */}
       <div className={styles.authLeft}>

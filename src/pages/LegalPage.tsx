@@ -10,6 +10,7 @@ import { Link, useParams } from 'react-router-dom';
 import { motion, useReducedMotion } from 'framer-motion';
 import { ChevronLeft, ChevronRight, ScrollText, Clock, Mail } from 'lucide-react';
 import { LEGAL_DOCS, getLegalDoc, COMPANY, LEGAL_UPDATED, type Block } from '../content/legal';
+import Seo, { SITE_URL } from '../components/Seo';
 
 const fade = {
   hidden: { opacity: 0, y: 16 },
@@ -32,6 +33,11 @@ function LegalHubView() {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--color-bg)', color: 'var(--color-text-primary)' }}>
       <div style={wrap}>
+        <Seo
+          title="Yasal Bilgiler & Sözleşmeler — TransWordly"
+          description="TransWordly kullanım şartları, üyelik ve mesafeli satış sözleşmesi, teslimat, iptal-iade, gizlilik (KVKK) ve çerez politikası. Tüm yasal metinler tek sayfada."
+          canonical="/legal"
+        />
         <motion.header variants={fade} custom={0} initial="hidden" animate="visible" style={{ marginBottom: 28 }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '5px 13px', borderRadius: 999, fontSize: '0.74rem', fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--color-accent)', background: 'var(--color-accent-light)', border: '1px solid var(--color-accent-medium)' }}>
             <ScrollText size={13} /> Yasal
@@ -98,6 +104,7 @@ function LegalDocView({ slug }: { slug: string }) {
     return (
       <div style={{ minHeight: '100vh', background: 'var(--color-bg)', color: 'var(--color-text-primary)' }}>
         <div style={wrap}>
+          <Seo title="Belge Bulunamadı — TransWordly" noindex />
           <h1 style={{ fontSize: '1.6rem', fontWeight: 800 }}>Belge bulunamadı</h1>
           <p style={{ color: 'var(--color-text-secondary)', marginTop: 8 }}>Aradığınız yasal belge mevcut değil.</p>
           <Link to="/legal" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 16, color: 'var(--color-accent)', textDecoration: 'none', fontWeight: 600 }}>
@@ -111,6 +118,21 @@ function LegalDocView({ slug }: { slug: string }) {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--color-bg)', color: 'var(--color-text-primary)' }}>
       <div style={wrap}>
+        <Seo
+          title={`${doc.title} — TransWordly`}
+          description={doc.summary}
+          canonical={`/legal/${doc.slug}`}
+          ogType="article"
+          jsonLd={{
+            '@context': 'https://schema.org',
+            '@type': 'BreadcrumbList',
+            itemListElement: [
+              { '@type': 'ListItem', position: 1, name: 'Ana Sayfa', item: `${SITE_URL}/` },
+              { '@type': 'ListItem', position: 2, name: 'Yasal', item: `${SITE_URL}/legal` },
+              { '@type': 'ListItem', position: 3, name: doc.title, item: `${SITE_URL}/legal/${doc.slug}` },
+            ],
+          }}
+        />
         <motion.div variants={fade} custom={0} initial="hidden" animate="visible">
           <Link to="/legal" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--color-accent)', textDecoration: 'none', fontWeight: 600, fontSize: '0.86rem' }}>
             <ChevronLeft size={16} /> Tüm yasal belgeler

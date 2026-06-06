@@ -18,6 +18,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/auth';
 import { useCart } from '../context/CartContext';
 import { PRICING_PLANS, CREDIT_COSTS, pdfPerCredits } from '../lib/constants';
+import Seo from '../components/Seo';
 import styles from '../styles/components/checkout.module.css';
 
 /* ── Yardımcı ── */
@@ -125,6 +126,8 @@ export default function CheckoutPage() {
 
   return (
     <div className={styles.page}>
+      {/* Ödeme akışı — indekslenmemeli (işlemsel, kişiye özel). */}
+      <Seo title="Güvenli Ödeme — TransWordly" noindex />
       {/* Geri butonu */}
       <div className={styles.topBar}>
         <button className={styles.backBtn} onClick={() => navigate(-1)}>

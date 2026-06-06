@@ -1,22 +1,48 @@
+# TransWordly — robots.txt
+# Tüm botlar için tek kural seti. İndeks değeri olan herkese açık sayfalar
+# taranabilir; giriş gerektiren, işlemsel ve placeholder sayfalar engellenir.
+
 User-agent: *
 
-# Public routes — indexable
+# ── Herkese açık, indekslenebilir ──
 Allow: /$
-Allow: /auth$
+Allow: /auth
+Allow: /contact
+Allow: /legal
 
-# App routes — require login, no index value
+# ── Giriş gerektiren uygulama sayfaları (indeks değeri yok) ──
 Disallow: /dashboard
 Disallow: /translate
 Disallow: /documents
 Disallow: /chat
+Disallow: /study
 Disallow: /study-notes
 Disallow: /glossary
+Disallow: /tools
+Disallow: /write
 Disallow: /settings
+Disallow: /achievements
 
-# Admin
+# ── Yapım aşamasındaki özellikler (placeholder içerik) ──
+Disallow: /listen
+Disallow: /projects
+Disallow: /highlight
+Disallow: /mindmap
+Disallow: /cite
+
+# ── Yönetim ──
 Disallow: /admin
 
-# Shared document links (user-generated, no crawl value)
+# ── İşlemsel / kişiye özel ──
+Disallow: /checkout
+# /pricing, anasayfanın kopyasını render eder → canonical zaten /'e işaret eder;
+# yine de mükerrer taramayı önlemek için engelliyoruz.
+Disallow: /pricing
+
+# ── Kullanıcı tarafından üretilen paylaşım linkleri ──
 Disallow: /shared/
+
+# Yaygın "kötü niyetli" AI/SEO scraper'larını kibarca dışarıda tut (opsiyonel).
+# Arama motorları (Googlebot, Bingbot) yukarıdaki * kuralından etkilenir.
 
 Sitemap: https://transwordly.com/sitemap.xml

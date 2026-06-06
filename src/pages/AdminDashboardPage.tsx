@@ -23,6 +23,7 @@ import { useAuth } from '../context/auth';
 import { invalidateCreditCosts } from '../lib/creditConfig';
 import toast from 'react-hot-toast';
 import { isBanActive, type User, type Plan, type UserRole } from '../types';
+import ReviewModeration from '../components/admin/ReviewModeration';
 import styles from '../styles/components/admin.module.css';
 
 interface PlatformStats {
@@ -923,6 +924,9 @@ export default function AdminDashboardPage() {
               onChange={e => setModSearch(e.target.value)}
             />
           </div>
+
+          {/* ── Yorum moderasyonu ── */}
+          <ReviewModeration />
 
           {/* ── Yasaklı kullanıcılar ── */}
           <div className={styles.section}>

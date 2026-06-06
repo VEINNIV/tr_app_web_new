@@ -12,7 +12,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="shortcut icon" href="/favicon.ico" />
     <meta name="theme-color" content="#0057FF" />
-    <meta name="color-scheme" content="light" />
+    <meta name="color-scheme" content="light dark" />
     <meta name="apple-mobile-web-app-title" content="TransWordly" />
     <meta name="application-name" content="TransWordly" />
 
@@ -49,7 +49,23 @@
           "@id": "https://transwordly.com/#org",
           "name": "TransWordly",
           "url": "https://transwordly.com/",
-          "logo": "https://transwordly.com/trans_wordly.png"
+          "logo": "https://transwordly.com/trans_wordly.png",
+          "email": "cadeftdev@gmail.com",
+          "telephone": "+905443274396",
+          "address": {
+            "@type": "PostalAddress",
+            "streetAddress": "Saimekadın Mah. Görgülü Cad. No:45, Mamak",
+            "addressLocality": "Ankara",
+            "addressCountry": "TR"
+          },
+          "contactPoint": {
+            "@type": "ContactPoint",
+            "contactType": "customer support",
+            "email": "cadeftdev@gmail.com",
+            "telephone": "+905443274396",
+            "areaServed": "TR",
+            "availableLanguage": ["Turkish"]
+          }
         },
         {
           "@type": "WebSite",
@@ -68,9 +84,16 @@
           "url": "https://transwordly.com/",
           "description": "AI destekli belge çevirisi: PDF, Word ve slaytlarınızı 12 dilden Türkçe'ye çevirin, ders notu çıkarın, belgelerinize AI ile soru sorun.",
           "offers": {
-            "@type": "Offer",
-            "price": "0",
-            "priceCurrency": "TRY"
+            "@type": "AggregateOffer",
+            "priceCurrency": "TRY",
+            "lowPrice": "0",
+            "highPrice": "149",
+            "offerCount": "4",
+            "offers": [
+              { "@type": "Offer", "name": "Ücretsiz", "price": "0", "priceCurrency": "TRY" },
+              { "@type": "Offer", "name": "Öğrenci", "price": "49", "priceCurrency": "TRY" },
+              { "@type": "Offer", "name": "Profesyonel", "price": "149", "priceCurrency": "TRY" }
+            ]
           },
           "featureList": [
             "PDF ve belge çevirisi (12 dilden Türkçe'ye)",
@@ -87,7 +110,11 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.css" crossorigin="anonymous" />
+    <!-- KaTeX CSS yalnızca çeviri/çalışma sayfalarında gerekir (giriş arkası, indekslenmez).
+         Anasayfa LCP'sini bloklamasın diye render-blocking olmaktan çıkarıldı: önce media=print
+         ile yüklenir, yüklenince all'a çevrilir. JS kapalıysa noscript fallback devreye girer. -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.css" crossorigin="anonymous" media="print" onload="this.media='all'" />
+    <noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.css" crossorigin="anonymous" /></noscript>
 
     <title>TransWordly — AI Belge Çevirisi</title>
   </head>

@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, useReducedMotion, type Variants } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
+import ReviewForm from '../components/ReviewForm';
 import { supabase } from '../lib/supabase';
 import { User, CreditCard, LogOut, HelpCircle, Sparkles, AtSign, KeyRound, Mail } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -193,6 +194,11 @@ export default function SettingsPage() {
         >
           {saving ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
         </motion.button>
+      </motion.div>
+
+      {/* ── Deneyimini paylaş (yorum) ────────────────────────── */}
+      <motion.div variants={cardVariants}>
+        <ReviewForm />
       </motion.div>
 
       {/* ── Abonelik Kartı ───────────────────────────────────── */}

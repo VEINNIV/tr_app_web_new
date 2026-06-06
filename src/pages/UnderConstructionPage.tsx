@@ -10,6 +10,7 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { Bell, Hammer, Sparkles, Check } from 'lucide-react';
 import { getFeatureBySlug, STATUS_META } from '../lib/upcomingFeatures';
 import BackToTools from '../components/ui/BackToTools';
+import Seo from '../components/Seo';
 
 export default function UnderConstructionPage({ slug }: { slug: string }) {
   const reduced = useReducedMotion();
@@ -27,6 +28,8 @@ export default function UnderConstructionPage({ slug }: { slug: string }) {
 
   return (
     <div style={{ maxWidth: 720, margin: '0 auto', padding: 'calc(var(--navbar-height) + 24px) 20px 80px' }}>
+      {/* Henüz hazır olmayan özellik — indeksleme yok (thin/placeholder içerik). */}
+      <Seo title={`${f.title} — Yakında · TransWordly`} noindex />
       <BackToTools style={{ marginBottom: 28 }} />
 
 

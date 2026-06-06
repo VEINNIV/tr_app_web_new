@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence as AP, useReducedMotion } from 'framer-motion';
 import {
   Languages, FileText, Brain, ArrowRight, Check,
-  Shield, BookOpen, Star, Zap, FileType, MessageSquare,
+  Shield, BookOpen, Zap, FileType, MessageSquare,
   Globe, FileCode, Loader, RotateCcw, Layers, Sparkles,
   Image as ImageIcon, Send, Download, Mail, MapPin, Phone,
 } from 'lucide-react';
@@ -12,6 +12,9 @@ import { PRICING_PLANS, CREDIT_COSTS, pdfPerCredits, fmtCredit } from '../lib/co
 import { supabase } from '../lib/supabase';
 import { Magnetic } from '../components/ui/motion';
 import { useCart } from '../context/CartContext';
+import Seo, { SITE_URL } from '../components/Seo';
+import LandingReviews from '../components/landing/LandingReviews';
+import LandingFaq from '../components/landing/LandingFaq';
 import toast from 'react-hot-toast';
 import styles from '../styles/components/landing.module.css';
 
@@ -79,27 +82,6 @@ function useTypewriter(texts: string[], speed = 28, pause = 2800) {
 }
 
 /* ── Data ─────────────────────────────────────────────────── */
-const TESTIMONIALS = [
-  {
-    quote: 'Bir haftada 3 makale okudum — hepsini TransWordly ile çevirdim. Normalde birkaç günümü alırdı.',
-    name: 'Zeynep A.',
-    role: 'Tıp Fakültesi, 4. Sınıf',
-    stars: 5,
-  },
-  {
-    quote: 'İngilizce slaytlarımı yükleyip ders notuna dönüştürdüm. Sınavda çok işe yaradı.',
-    name: 'Emre K.',
-    role: 'Makine Mühendisliği, Y.Lisans',
-    stars: 5,
-  },
-  {
-    quote: 'Almanca kaynaklarla araştırma yapıyorum. Artık sözlüğe gerek kalmıyor, bağlamı da anlıyor.',
-    name: 'Selin T.',
-    role: 'Hukuk Fakültesi, 3. Sınıf',
-    stars: 5,
-  },
-];
-
 const FEATURES = [
   {
     icon: <Languages size={22} />,
@@ -372,6 +354,13 @@ export default function LandingPage() {
 
   return (
     <div className={styles.page}>
+      {/* /pricing de bu sayfayı render eder → canonical her zaman ana sayfaya işaret eder (duplicate önlenir). */}
+      <Seo
+        title="TransWordly — Akademik PDF & Belge Çevirisi (12 Dil → Türkçe)"
+        description="Akademik makale, PDF, Word ve slaytlarınızı 12 dilden Türkçe'ye AI ile dakikalar içinde çevirin. Format korunur; ders notu çıkarın, belgelerinize AI ile soru sorun."
+        canonical={`${SITE_URL}/`}
+        ogType="website"
+      />
 
       {/* ══════════════════════════════════════════════════════
           HERO
@@ -984,43 +973,9 @@ export default function LandingPage() {
       </section>
 
       {/* ══════════════════════════════════════════════════════
-          TESTIMONIALS
+          TESTIMONIALS — gerçek, admin onaylı 5 yıldız yorumlar (yoksa gizli)
       ══════════════════════════════════════════════════════ */}
-      <section className={styles.testimonialsSection}>
-        <div className={styles.sectionHeader}>
-          <span className={styles.sectionLabel}>Kullanıcı Yorumları</span>
-          <h2 className={styles.sectionTitle}>Öğrenciler ne diyor?</h2>
-        </div>
-        <div className={styles.testimonialsGrid}>
-          {TESTIMONIALS.map((t, i) => (
-            <motion.div
-              key={i}
-              className={styles.testimonialCard}
-              variants={fadeUp}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true }}
-              custom={i}
-              whileHover={reduced ? undefined : { y: -3 }}
-              transition={{ type: 'spring', stiffness: 400, damping: 28 }}
-            >
-              <div className={styles.testimonialStars}>
-                {Array.from({ length: t.stars }).map((_, si) => (
-                  <Star key={si} size={13} fill="currentColor" />
-                ))}
-              </div>
-              <p className={styles.testimonialText}>"{t.quote}"</p>
-              <div className={styles.testimonialAuthor}>
-                <div className={styles.testimonialAvatar}>{t.name[0]}</div>
-                <div>
-                  <div className={styles.testimonialName}>{t.name}</div>
-                  <div className={styles.testimonialRole}>{t.role}</div>
-                </div>
-              </div>
-            </motion.div>
-          ))}
-        </div>
-      </section>
+      <LandingReviews />
 
       {/* ══════════════════════════════════════════════════════
           PRICING
@@ -1139,6 +1094,11 @@ export default function LandingPage() {
           ))}
         </div>
       </section>
+
+      {/* ══════════════════════════════════════════════════════
+          SSS — gerçek içerik + FAQPage schema
+      ══════════════════════════════════════════════════════ */}
+      <LandingFaq />
 
       {/* ══════════════════════════════════════════════════════
           CTA BAND

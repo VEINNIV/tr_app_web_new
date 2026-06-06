@@ -2,12 +2,68 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://transwordly.com/</loc>
+    <lastmod>2026-06-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
     <loc>https://transwordly.com/auth</loc>
+    <lastmod>2026-06-06</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://transwordly.com/contact</loc>
+    <lastmod>2026-06-06</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://transwordly.com/legal</loc>
+    <lastmod>2026-06-06</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>https://transwordly.com/legal/kullanim-sartlari</loc>
+    <lastmod>2026-06-06</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://transwordly.com/legal/uyelik-sozlesmesi</loc>
+    <lastmod>2026-06-06</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://transwordly.com/legal/mesafeli-satis</loc>
+    <lastmod>2026-06-06</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://transwordly.com/legal/teslimat</loc>
+    <lastmod>2026-06-06</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://transwordly.com/legal/iptal-iade</loc>
+    <lastmod>2026-06-06</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://transwordly.com/legal/gizlilik-kvkk</loc>
+    <lastmod>2026-06-06</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://transwordly.com/legal/cerez-politikasi</loc>
+    <lastmod>2026-06-06</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
   </url>
 </urlset>

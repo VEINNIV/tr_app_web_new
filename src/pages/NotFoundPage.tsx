@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { motion, useReducedMotion } from 'framer-motion';
 import { Home, ArrowLeft, Compass } from 'lucide-react';
+import Seo from '../components/Seo';
 
 export default function NotFoundPage() {
   const reduced = useReducedMotion();
@@ -20,6 +21,8 @@ export default function NotFoundPage() {
           'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(0,87,255,0.10) 0%, transparent 70%), var(--color-bg)',
       }}
     >
+      {/* Soft-404 önleme: arama motorlarına bu sayfayı indekslememesini söyle. */}
+      <Seo title="Sayfa Bulunamadı — TransWordly" noindex />
       {/* Floating orbs */}
       <motion.div
         aria-hidden
