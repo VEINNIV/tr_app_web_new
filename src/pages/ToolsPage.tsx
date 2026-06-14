@@ -78,6 +78,24 @@ const styleSheet = `
 .twtool-up:hover .twtool-tile { transform: scale(1.05); }
 `;
 
+/** Elle çizilmiş kıvrık ok — kağıt-craft aksanı (renk currentColor'dan gelir). */
+function DoodleArrow({ dir = 'down' }: { dir?: 'down' | 'downRight' }) {
+  if (dir === 'downRight') {
+    return (
+      <svg viewBox="0 0 40 32" width={26} height={21} fill="none" aria-hidden="true" style={{ flexShrink: 0 }}>
+        <path d="M3 4C6 19 16 27 34 24" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+        <path d="M25 28l9-4-2-9" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 30 30" width={22} height={22} fill="none" aria-hidden="true" style={{ flexShrink: 0 }}>
+      <path d="M21 2C9 4 3 12 8 26" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+      <path d="M2 18l6 9 9-3" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 /** Araç-başı app-icon görünümlü ikon karesi (accent gradyanı + iç parlama). */
 function IconTile({ f, size = 48, muted }: { f: FeatureDef; size?: number; muted?: boolean }) {
   const Icon = f.Icon;
@@ -207,6 +225,12 @@ function FlagshipCard({ f }: { f: FeatureDef }) {
           >
             Hemen çevir <ArrowRight size={17} />
           </span>
+          <span
+            aria-hidden="true"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 7, marginTop: 14, fontFamily: 'var(--font-hand)', fontWeight: 700, fontSize: '1.18rem', lineHeight: 1, color: `color-mix(in srgb, ${f.accent} 78%, var(--color-text-secondary))`, transform: 'rotate(-1.5deg)' }}
+          >
+            ✦ tablolar, formüller ve düzen korunur
+          </span>
         </div>
 
         {/* pin (sağ üst) */}
@@ -293,8 +317,8 @@ function UpcomingCard({ f }: { f: FeatureDef }) {
   );
 }
 
-/** Editöryel bölüm başlığı — etiket + sayaç + ince ayraç çizgisi. */
-function SectionHeader({ label, count, hint }: { label: string; count: number; hint?: string }) {
+/** Editöryel bölüm başlığı — etiket + sayaç + ince ayraç çizgisi + el yazısı not. */
+function SectionHeader({ label, count, hint, note }: { label: string; count: number; hint?: string; note?: string }) {
   return (
     <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, margin: '0 0 18px' }}>
       <h2 style={{ fontSize: '1.18rem', fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--color-text-primary)', margin: 0, whiteSpace: 'nowrap' }}>
@@ -305,6 +329,11 @@ function SectionHeader({ label, count, hint }: { label: string; count: number; h
       </span>
       {hint && <span style={{ fontSize: '0.8rem', color: 'var(--color-text-tertiary)', whiteSpace: 'nowrap' }}>{hint}</span>}
       <span aria-hidden style={{ flex: 1, height: 1, background: 'var(--color-divider)' }} />
+      {note && (
+        <span aria-hidden style={{ fontFamily: 'var(--font-hand)', fontWeight: 700, fontSize: '1.2rem', lineHeight: 1, color: 'var(--color-accent)', transform: 'rotate(-2deg)', whiteSpace: 'nowrap' }}>
+          {note}
+        </span>
+      )}
     </div>
   );
 }
@@ -340,6 +369,15 @@ export default function ToolsPage() {
         <p style={{ fontSize: 'clamp(0.98rem, 1.8vw, 1.14rem)', color: 'var(--color-text-secondary)', lineHeight: 1.5, margin: '10px 0 0', maxWidth: 540 }}>
           Çevir, çalış, öğren — {READY_FEATURES.length} hazır araç, {UPCOMING_FEATURES.length} tanesi yolda.
         </p>
+        <motion.span
+          initial={reduced ? false : { opacity: 0, rotate: -14, scale: 0.7 }}
+          animate={{ opacity: 1, rotate: -1.5, scale: 1 }}
+          transition={{ type: 'spring', stiffness: 230, damping: 15, delay: 0.5 }}
+          aria-hidden="true"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginTop: 14, fontFamily: 'var(--font-hand)', fontWeight: 700, fontSize: '1.32rem', lineHeight: 1, color: 'var(--color-accent)' }}
+        >
+          favorini ⭐ ile üst menüye sabitle <DoodleArrow dir="downRight" />
+        </motion.span>
       </motion.header>
 
       {/* Sık Kullandıkların (favoriler) — yalnızca pin varsa */}
@@ -356,7 +394,7 @@ export default function ToolsPage() {
 
       {/* ── Yolda ─────────────────────────────────────────────── */}
       <div style={{ marginTop: 48 }}>
-        <SectionHeader label="Yolda" count={UPCOMING_FEATURES.length} hint="yakında geliyor" />
+        <SectionHeader label="Yolda" count={UPCOMING_FEATURES.length} hint="yakında geliyor" note="çok yakında ✦" />
         <motion.div variants={stagger} initial="hidden" animate="visible" style={gridStyle}>
           {UPCOMING_FEATURES.map(f => <UpcomingCard key={f.slug} f={f} />)}
         </motion.div>

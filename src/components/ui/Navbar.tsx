@@ -94,6 +94,8 @@ export default function Navbar() {
     : user?.email?.[0]?.toUpperCase() || '?';
 
   const isLanding = location.pathname === '/';
+  // Pazarlama görünümü (Marginalia): landing rotalarında navbar farklı giyinir
+  const isMarketing = isLanding || location.pathname === '/pricing';
 
   const guestLinks = [
     { id: 'features', label: 'Özellikler' },
@@ -104,8 +106,8 @@ export default function Navbar() {
 
   return (
     <>
-      <nav 
-        className={`${styles.navbarWrapper} ${scrolled ? styles.navbarScrolled : ''}`}
+      <nav
+        className={`${styles.navbarWrapper} ${scrolled ? styles.navbarScrolled : ''} ${isMarketing ? styles.navMarketing : ''}`}
       >
         <motion.div 
           className={styles.navbarInner}
@@ -230,7 +232,9 @@ export default function Navbar() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                 {isLanding && (
                   <motion.div whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }} transition={{ type: 'spring', stiffness: 520, damping: 28 }}>
-                    <Link to="/dashboard" className={styles.navLinkAuth} style={{ padding: '0.4rem 0.8rem', borderRadius: '8px', background: 'var(--color-surface)', border: '1px solid var(--color-border)', fontSize: '0.8125rem' }}>
+                    <Link to="/dashboard" className={styles.navLinkAuth} style={isMarketing
+                      ? { padding: '0.4rem 0.9rem', borderRadius: '999px', background: 'rgba(255, 255, 255, 0.85)', border: '1px solid rgba(18, 22, 33, 0.1)', fontSize: '0.8125rem', color: '#13151C', boxShadow: '0 1px 2px rgba(16, 24, 40, 0.05)' }
+                      : { padding: '0.4rem 0.8rem', borderRadius: '8px', background: 'var(--color-surface)', border: '1px solid var(--color-border)', fontSize: '0.8125rem' }}>
                       Dashboard'a Dön
                     </Link>
                   </motion.div>

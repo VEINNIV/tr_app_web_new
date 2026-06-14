@@ -1,46 +1,164 @@
 /* ================================================================
-   TransLingua — Dashboard
+   TransWordly — Dashboard · "Çalışma Stüdyosu"
+   Uygulama tema token'larını kullanır → açık/koyu temada çalışır.
    ================================================================ */
 
 .dashboard {
   padding: calc(var(--navbar-height) + var(--space-8)) var(--space-6) var(--space-16);
-  max-width: 1120px;
+  max-width: 1180px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
 }
 
-/* ── Header ───────────────────────────────────────────────────── */
-.header {
+/* ── Yükleniyor / hata durumu ─────────────────────────────────── */
+.centerWrap {
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+}
+.centerBox { text-align: center; }
+.spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto var(--space-4);
+}
+.centerText {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  margin-bottom: var(--space-4);
+}
+.retryBtn {
+  padding: 0.5rem 1.25rem;
+  background: var(--color-accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-weight: var(--font-weight-semibold);
+}
+
+/* ── KOMUTA PANELİ (hero) ─────────────────────────────────────── */
+.hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-2xl);
+  border: 1px solid var(--color-border);
+  background:
+    radial-gradient(120% 140% at 100% 0%, color-mix(in srgb, var(--color-accent) 5%, transparent), transparent 55%),
+    var(--color-surface);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-10) var(--space-10);
+}
+
+/* Yumuşakça süzülen renk lekeleri — atmosfer */
+.heroGlowA,
+.heroGlowB {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(70px);
+  pointer-events: none;
+}
+.heroGlowA {
+  width: 420px;
+  height: 420px;
+  top: -240px;
+  right: -80px;
+  background: radial-gradient(circle, rgba(0, 87, 255, 0.16), transparent 65%);
+  animation: heroDrift 14s ease-in-out infinite alternate;
+}
+.heroGlowB {
+  width: 340px;
+  height: 340px;
+  bottom: -220px;
+  left: -60px;
+  background: radial-gradient(circle, rgba(90, 200, 250, 0.14), transparent 65%);
+  animation: heroDrift 18s ease-in-out infinite alternate-reverse;
+}
+@keyframes heroDrift {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(36px, 22px, 0); }
+}
+
+.heroBody {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-4);
+  gap: var(--space-8);
   flex-wrap: wrap;
-  padding-bottom: var(--space-6);
-  border-bottom: 1px solid var(--color-border);
 }
 
-.headerLeft {
+.heroLeft { flex: 1 1 360px; min-width: 0; }
+
+/* ── Kredi paneli (komuta panelinin sağ bloğu) ────────────────── */
+.heroCredit {
+  flex: 0 0 auto;
+  width: 244px;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-5) var(--space-6);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-alt);
+}
+
+.heroCreditTop {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
 }
 
-.headerIcon {
-  width: 48px;
-  height: 48px;
-  border-radius: var(--radius-lg);
-  background: linear-gradient(140deg, #ffffff 0%, #f3f6ff 100%);
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  box-shadow: 0 1px 2px rgba(0, 87, 255, 0.10), 0 8px 22px rgba(0, 87, 255, 0.14), inset 0 0 0 1px rgba(0, 87, 255, 0.08);
-  overflow: hidden;
+.heroCreditLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
 }
-.headerIcon img { width: 30px; height: 30px; object-fit: contain; display: block; }
-.headerName {
+.heroCreditLabel svg { color: var(--color-accent); }
+
+/* Hero içindeki halka biraz daha kompakt */
+.heroCredit .ringWrap { width: 124px; height: 124px; margin: var(--space-1) 0; }
+.heroCredit .ringNum { font-size: 1.7rem; }
+
+.heroKicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+  margin-bottom: var(--space-3);
+}
+
+.heroTitle {
+  font-family: var(--font-heading);
+  font-size: clamp(1.8rem, 3.4vw, 2.4rem);
+  font-weight: var(--font-weight-black);
+  letter-spacing: var(--letter-spacing-tight);
+  line-height: 1.12;
+  margin: 0 0 var(--space-3);
+  color: var(--color-text-primary);
+}
+
+.heroName {
   background: linear-gradient(120deg, var(--color-accent) 0%, #5AC8FA 100%);
   -webkit-background-clip: text;
   background-clip: text;
@@ -48,31 +166,100 @@
   color: transparent;
 }
 
-.headerTitle {
-  font-family: var(--font-heading);
-  font-size: var(--font-size-2xl);
-  font-weight: var(--font-weight-black);
-  letter-spacing: var(--letter-spacing-tight);
-  line-height: 1.15;
-  margin: 0;
-  color: var(--color-text-primary);
+.heroSub {
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-relaxed);
+  color: var(--color-text-secondary);
+  margin: 0 0 var(--space-6);
+  max-width: 520px;
 }
 
-.headerSub {
+.heroCtas {
+  position: relative;
+  margin-top: var(--space-4);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+/* El yazısı not + elle çizilmiş ok — birincil CTA'yı işaret eder.
+   Kağıt-craft aksanı; landing'deki "üstüne not düşülmüş" hissini taşır. */
+.ctaDoodle {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 14px;
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 3px;
+  font-family: var(--font-hand);
+  font-weight: 700;
+  font-size: 1.3rem;
+  line-height: 1;
+  color: var(--color-accent);
+  transform: rotate(-4deg);
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 2;
+}
+.ctaDoodle svg {
+  width: 28px;
+  height: 26px;
+  color: #38B6FF;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+@media (max-width: 760px) { .ctaDoodle { display: none; } }
+
+.heroPrimary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 11px var(--space-6);
+  background: var(--color-accent);
+  color: #fff;
+  border-radius: var(--radius-full);
   font-size: var(--font-size-sm);
-  color: var(--color-text-tertiary);
-  margin: 2px 0 0;
-  font-weight: var(--font-weight-normal);
+  font-weight: var(--font-weight-bold);
+  text-decoration: none;
+  letter-spacing: -0.01em;
+  box-shadow: 0 2px 10px rgba(0, 87, 255, 0.28);
+  transition: background-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
+}
+.heroPrimary:hover {
+  background: var(--color-accent-hover);
+  color: #fff;
+  box-shadow: 0 6px 22px rgba(0, 87, 255, 0.38);
 }
 
-.headerRight {
+.heroGhost {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 11px var(--space-5);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  color: var(--color-text-primary);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  text-decoration: none;
+  transition: border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
+}
+.heroGhost:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  box-shadow: var(--shadow-sm);
+}
+
+.heroRight {
   display: flex;
   align-items: center;
   gap: var(--space-3);
 }
 
 .planBadge {
-  padding: 5px 12px;
+  padding: 6px 14px;
   border-radius: var(--radius-full);
   border: 1px solid var(--color-accent-medium);
   background: var(--color-accent-light);
@@ -81,194 +268,257 @@
   letter-spacing: 0.08em;
   color: var(--color-accent);
   font-family: var(--font-heading);
+  white-space: nowrap;
 }
 
-.primaryBtn {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 10px var(--space-5);
-  background: var(--color-accent);
-  color: #fff;
-  border-radius: var(--radius-full);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
-  text-decoration: none;
-  transition: background-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
-  box-shadow: 0 2px 10px rgba(0, 87, 255, 0.28);
-  letter-spacing: -0.01em;
-}
-
-.primaryBtn:hover {
-  background: var(--color-accent-hover);
-  color: #fff;
-  box-shadow: 0 6px 22px rgba(0, 87, 255, 0.38);
-}
-
-/* ── Stats Row ────────────────────────────────────────────────── */
-.statsRow {
+/* ── İstatistik şeridi ────────────────────────────────────────── */
+.statsGrid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: var(--space-4);
 }
 
+/* Komuta panelinin alt bandı — hero yüzeyinin içinde, ince çizgiyle ayrık */
+.heroStats {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3);
+  margin-top: var(--space-6);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--color-border);
+}
+/* Panel içindeki tile'lar daha sessiz — yüzey üstünde yüzey gibi durmasın */
+.heroStats .statCard {
+  background: var(--color-bg-alt);
+  border-color: transparent;
+}
+.heroStats .statCard:hover { border-color: var(--color-border); }
+
 .statCard {
+  --c: var(--color-accent);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
-  padding: var(--space-5) var(--space-6);
-  transition: box-shadow var(--duration-normal) var(--ease-out), border-color var(--duration-normal) var(--ease-out);
+  padding: var(--space-4) var(--space-5);
   position: relative;
   overflow: hidden;
+  transition: box-shadow var(--duration-normal) var(--ease-out), border-color var(--duration-normal) var(--ease-out);
 }
-
-.statCard::before {
-  content: '';
-  position: absolute;
-  top: 0; left: var(--space-6); right: var(--space-6);
-  height: 2px;
-  background: currentColor;
-  opacity: 0.18;
-  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
-}
-
 .statCard:hover {
   box-shadow: var(--shadow-md);
   border-color: var(--color-border-strong);
 }
 
-.statTop {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--space-3);
-}
-
-.statIconWrap {
-  width: 36px;
-  height: 36px;
+.statIcon {
+  width: 40px;
+  height: 40px;
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, currentColor 10%, transparent);
+  background: color-mix(in srgb, var(--c) 11%, transparent);
+  color: var(--c);
   display: grid;
   place-items: center;
+  flex-shrink: 0;
 }
 
-.statLabel {
-  font-size: 10px;
-  font-weight: var(--font-weight-bold);
-  letter-spacing: 0.07em;
-  color: var(--color-text-tertiary);
-  text-transform: uppercase;
+.statBody {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
 }
 
 .statNum {
   font-family: var(--font-heading);
-  font-size: 2.5rem;
-  font-weight: var(--font-weight-black);
+  font-size: 1.5rem;
+  font-weight: var(--font-weight-heavy);
   letter-spacing: -0.04em;
-  line-height: 1;
+  line-height: 1.05;
   font-variant-numeric: tabular-nums;
   color: var(--color-text-primary);
 }
 
-/* ── Credit Card ──────────────────────────────────────────────── */
-.creditCard {
-  background: var(--color-surface);
+.statLabel {
+  font-size: 10.5px;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.06em;
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* ── SRS bandı ────────────────────────────────────────────────── */
+.srsBand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-xl);
+  border: 1px solid color-mix(in srgb, #14b8a6 22%, transparent);
+  background: linear-gradient(135deg, rgba(20, 184, 166, 0.10), rgba(14, 165, 233, 0.10));
+}
+
+.srsIcon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-md);
+  background: rgba(20, 184, 166, 0.16);
+  color: #14b8a6;
+  flex-shrink: 0;
+}
+
+.srsText {
+  flex: 1;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.srsTitle {
+  font-weight: var(--font-weight-heavy);
+  font-size: var(--font-size-base);
+  color: var(--color-text-primary);
+}
+.srsSub {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.srsBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px var(--space-6);
+  background: #14b8a6;
+  color: #fff;
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  text-decoration: none;
+  transition: filter var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+}
+.srsBtn:hover { filter: brightness(1.07); transform: translateY(-1px); color: #fff; }
+
+/* ── Başlangıç rehberi ────────────────────────────────────────── */
+/* Temiz kart — defter kağıdı dokusu kaldırıldı; köşede belli belirsiz
+   bir accent parıltı, başlıkta sıcak el yazısı. */
+.guide {
+  position: relative;
+  background:
+    radial-gradient(420px 140px at 0% 0%, color-mix(in srgb, var(--color-accent) 7%, transparent), transparent 70%),
+    var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
   padding: var(--space-5) var(--space-6);
+  overflow: hidden;
 }
 
-/* Üst satır: başlık + sayı yan yana */
-.creditTop {
+.guideHead {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  margin-bottom: var(--space-2);
+  margin-bottom: var(--space-3);
 }
 
-.creditTitle {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-secondary);
-  letter-spacing: -0.01em;
-}
-
-.creditNum {
-  display: flex;
-  align-items: baseline;
-  gap: 2px;
-  white-space: nowrap;
-}
-
-.creditRemain {
-  font-family: var(--font-heading);
-  font-size: 1.1rem;
-  font-weight: var(--font-weight-black);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.03em;
+.guideTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-hand);
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  line-height: 1;
   color: var(--color-text-primary);
-  line-height: 1;
+}
+.guideTitle svg { color: var(--color-accent); }
+
+.guideCount {
+  font-family: var(--font-heading);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-heavy);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-accent);
 }
 
-.creditTotal {
-  font-size: 0.8rem;
-  color: var(--color-text-tertiary);
-  font-weight: var(--font-weight-normal);
-  line-height: 1;
-}
-
-/* Alt satır: yenileme tarihi */
-.creditSub {
-  font-size: 11px;
-  color: var(--color-text-tertiary);
+.guideTrack {
+  height: 5px;
+  border-radius: var(--radius-full);
+  background: var(--color-bg-alt);
+  overflow: hidden;
   margin-bottom: var(--space-4);
 }
-
-.creditTrack {
-  height: 7px;
-  background: var(--color-bg-alt);
-  border-radius: var(--radius-full);
-  overflow: hidden;
-}
-
-.creditFill {
+.guideFill {
   height: 100%;
   border-radius: var(--radius-full);
-  background: linear-gradient(90deg, #0057FF, #0EA5E9);
-  position: relative;
+  background: linear-gradient(90deg, #38B6FF, #0057FF);
 }
 
-.creditFill::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.35) 50%, transparent 100%);
-  background-size: 200% 100%;
-  animation: shimmer 2.2s ease-in-out infinite;
-}
-
-.creditFooter {
+.guideItems {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--space-1);
-  margin-top: var(--space-2);
-  font-size: 11px;
-  color: var(--color-text-tertiary);
-  font-weight: var(--font-weight-medium);
+  flex-wrap: wrap;
+  gap: var(--space-2);
 }
 
-/* ── Two-column grid ──────────────────────────────────────────── */
-.gridTwo {
+.guideItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px 8px 9px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-alt);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  text-decoration: none;
+  transition: border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+}
+.guideItem:hover {
+  border-color: var(--color-accent);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.guideDot {
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  border: 1.5px dashed var(--color-border-strong);
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  place-items: center;
+  flex-shrink: 0;
+  color: transparent;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.guideItemDone {
+  color: var(--color-text-tertiary);
+  text-decoration: line-through;
+  text-decoration-color: var(--color-border-strong);
+}
+.guideItemDone .guideDot {
+  border: none;
+  background: var(--color-success);
+  color: #fff;
+}
+
+/* ── Ana ızgara ───────────────────────────────────────────────── */
+.gridMain {
+  display: grid;
+  grid-template-columns: 1.55fr 1fr;
   gap: var(--space-6);
   align-items: start;
 }
 
-/* ── Section label ────────────────────────────────────────────── */
 .sectionLabel {
   display: inline-flex;
   align-items: center;
@@ -281,47 +531,157 @@
   margin: 0 0 var(--space-4);
 }
 
-/* ── Actions List ─────────────────────────────────────────────── */
-.actionsList {
+/* ── Galeri: amiral gemisi + araç karoları ────────────────────── */
+.gallery {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.flagCard {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: var(--space-6);
+  align-items: center;
+  padding: var(--space-6) var(--space-8);
+  border-radius: var(--radius-xl);
+  background:
+    radial-gradient(420px 200px at 100% 0%, rgba(56, 182, 255, 0.16), transparent 60%),
+    linear-gradient(150deg, #0B2E72 0%, #0A47B8 70%, #0058E0 120%);
+  color: #fff;
+  text-decoration: none;
+  box-shadow: 0 18px 44px -14px rgba(7, 41, 104, 0.45);
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.3s var(--ease-out), box-shadow 0.3s var(--ease-out);
+}
+.flagCard:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 26px 56px -14px rgba(7, 41, 104, 0.55);
+  color: #fff;
+}
+
+.flagText {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  padding: var(--space-2);
-  overflow: hidden;
+  min-width: 0;
 }
 
-.actionRow {
+.flagKicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10.5px;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.flagTitle {
+  font-family: var(--font-heading);
+  font-size: 1.35rem;
+  font-weight: var(--font-weight-black);
+  letter-spacing: -0.02em;
+}
+
+.flagDesc {
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.flagCta {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: var(--space-2);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  color: #fff;
+}
+.flagCta svg { transition: transform var(--duration-fast) var(--ease-out); }
+.flagCard:hover .flagCta svg { transform: translateX(4px); }
+
+/* Mini EN→TR görselleştirme */
+.flagViz {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  background: transparent;
-  border: none;
+  padding: var(--space-4);
   border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(6px);
+}
+
+.flagVizCol {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.flagVizTag {
+  font-size: 9.5px;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.6);
+  margin-bottom: 2px;
+}
+.flagVizTagTR { color: #7DD3FC; }
+
+.flagVizLine {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.22);
+}
+.flagVizLineTR { background: rgba(125, 211, 252, 0.65); }
+
+.flagVizArrow { color: rgba(255, 255, 255, 0.55); flex-shrink: 0; }
+
+/* Araç karoları */
+.toolGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-3);
+}
+
+.toolCard {
+  --ac: var(--color-accent);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: 100%;
+  padding: var(--space-4) var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   text-decoration: none;
-  color: var(--color-text-primary);
-  transition: background var(--duration-fast) var(--ease-out);
+  transition: transform 0.25s var(--ease-out), border-color 0.25s var(--ease-out), box-shadow 0.25s var(--ease-out);
+}
+.toolCard:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--ac) 36%, transparent);
+  box-shadow: var(--shadow-md);
 }
 
-.actionRow:hover {
-  background: var(--color-surface-hover);
-}
-
-.actionIcon {
-  width: 36px;
-  height: 36px;
+.toolIcon {
+  width: 42px;
+  height: 42px;
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-  color: var(--accent);
+  background: color-mix(in srgb, var(--ac) 11%, transparent);
+  color: var(--ac);
   display: grid;
   place-items: center;
   flex-shrink: 0;
+  transition: transform 0.25s var(--ease-spring);
 }
+.toolCard:hover .toolIcon { transform: scale(1.08) rotate(-4deg); }
 
-.actionText {
+.toolText {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -329,29 +689,183 @@
   min-width: 0;
 }
 
-.actionLabel {
+.toolTitle {
   font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
+  font-weight: var(--font-weight-bold);
   color: var(--color-text-primary);
 }
 
-.actionDesc {
+.toolDesc {
+  font-size: 11.5px;
+  color: var(--color-text-tertiary);
+  line-height: 1.45;
+}
+
+.toolChev {
+  color: var(--color-text-tertiary);
+  flex-shrink: 0;
+  transition: transform var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+.toolCard:hover .toolChev {
+  transform: translateX(3px);
+  color: var(--ac);
+}
+
+/* ── Yakında rayı ─────────────────────────────────────────────── */
+.upcomingWrap { margin-top: var(--space-6); }
+
+.upcomingRail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.upcomingChip {
+  --ac: var(--color-accent);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 13px;
+  border-radius: var(--radius-full);
+  border: 1px dashed var(--color-border-strong);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-decoration: none;
+  transition: border-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+}
+.upcomingChip svg { color: var(--ac); }
+.upcomingChip:hover {
+  border-color: color-mix(in srgb, var(--ac) 45%, transparent);
+  color: var(--color-text-primary);
+  transform: translateY(-1px);
+}
+
+.upcomingTag {
+  font-size: 9.5px;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--ac) 12%, transparent);
+  color: var(--ac);
+}
+
+/* ── Sağ kolon ────────────────────────────────────────────────── */
+.sideCol {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+/* Kredi halkası */
+.ringCard {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5) var(--space-6) var(--space-6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+}
+.ringCard .sectionLabel { align-self: flex-start; }
+
+.ringWrap {
+  position: relative;
+  width: 158px;
+  height: 158px;
+}
+
+.ringSvg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.ringTrack {
+  fill: none;
+  stroke: var(--color-bg-alt);
+  stroke-width: 11;
+}
+
+.ringFill {
+  fill: none;
+  stroke-width: 11;
+  stroke-linecap: round;
+}
+
+.ringCenter {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+}
+
+.ringNum {
+  font-family: var(--font-heading);
+  font-size: 2rem;
+  font-weight: var(--font-weight-black);
+  letter-spacing: -0.04em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-primary);
+}
+
+.ringTotal {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+  font-weight: var(--font-weight-medium);
+}
+
+.ringMeta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.ringMetaLine {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+.ringMetaLine svg { color: var(--color-accent); flex-shrink: 0; }
+.ringMetaLine strong { color: var(--color-text-primary); }
+
+.ringReset {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 11px;
   color: var(--color-text-tertiary);
 }
 
-.actionChev {
-  color: var(--color-text-tertiary);
-  transition: transform var(--duration-fast), color var(--duration-fast);
-  flex-shrink: 0;
+.ringUpgrade {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px;
+  border-radius: var(--radius-full);
+  background: var(--color-accent);
+  color: #fff;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  text-decoration: none;
+  box-shadow: 0 2px 10px rgba(0, 87, 255, 0.28);
+  transition: background-color var(--duration-fast) var(--ease-out);
 }
+.ringUpgrade:hover { background: var(--color-accent-hover); color: #fff; }
 
-.actionRow:hover .actionChev {
-  transform: translateX(3px);
-  color: var(--color-text-secondary);
-}
-
-/* ── Doc List ─────────────────────────────────────────────────── */
+/* ── Son belgeler ─────────────────────────────────────────────── */
 .docList {
   display: flex;
   flex-direction: column;
@@ -369,16 +883,9 @@
   transition: background var(--duration-fast);
   border-bottom: 1px solid var(--color-border);
 }
+.docRow:hover { background: var(--color-surface-hover); }
 
-.docRow:last-of-type {
-  border-bottom: none;
-}
-
-.docRow:hover {
-  background: var(--color-surface-hover);
-}
-
-.docIconWrap {
+.docIcon {
   width: 32px;
   height: 32px;
   border-radius: var(--radius-md);
@@ -436,17 +943,15 @@
   color: var(--color-text-secondary);
   text-decoration: none;
   transition: color var(--duration-fast);
-  border-top: 1px solid var(--color-border);
 }
-
 .viewAll:hover { color: var(--color-accent); }
 
-/* ── Empty state ──────────────────────────────────────────────── */
+/* ── Boş durum ────────────────────────────────────────────────── */
 .emptyState {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
-  padding: var(--space-10) var(--space-8);
+  padding: var(--space-8) var(--space-6);
   text-align: center;
 }
 
@@ -472,7 +977,7 @@
 .emptyDesc {
   font-size: var(--font-size-sm);
   color: var(--color-text-tertiary);
-  margin: 0 0 var(--space-6);
+  margin: 0 0 var(--space-5);
   line-height: var(--line-height-relaxed);
 }
 
@@ -490,7 +995,6 @@
   transition: all var(--duration-fast);
   box-shadow: 0 2px 10px rgba(0, 87, 255, 0.25);
 }
-
 .emptyBtn:hover {
   background: var(--color-accent-hover);
   color: #fff;
@@ -498,19 +1002,152 @@
   box-shadow: 0 6px 20px rgba(0, 87, 255, 0.35);
 }
 
+/* ── Günün ipucu · "Yapışkan Not" ─────────────────────────────────
+   Masaya iliştirilmiş sarı not kağıdı. Renkler kasıtlı olarak temadan
+   bağımsız — koyu temada da kağıt gibi kalsın. */
+.tipCard {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-5) var(--space-5);
+  border-radius: 2px 2px 12px 2px;
+  background: linear-gradient(168deg, #FFFCEF 0%, #FBF3D8 100%);
+  border: 1px solid rgba(150, 120, 40, 0.12);
+  color: #4A3F1C;
+  transform: rotate(-1.2deg);
+  box-shadow: 0 1px 1px rgba(80, 60, 10, 0.10), 0 12px 24px -12px rgba(80, 60, 10, 0.26);
+  transition: transform var(--duration-normal) var(--ease-spring), box-shadow var(--duration-normal) var(--ease-out);
+}
+.tipCard:hover {
+  transform: rotate(0deg) translateY(-3px);
+  box-shadow: 0 1px 1px rgba(80, 60, 10, 0.16), 0 18px 34px -10px rgba(80, 60, 10, 0.4);
+}
+/* Washi bant */
+.tipCard::before {
+  content: '';
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  transform: translateX(-50%) rotate(-2deg);
+  width: 88px;
+  height: 20px;
+  background: repeating-linear-gradient(45deg, rgba(180, 140, 40, 0.16) 0 6px, rgba(180, 140, 40, 0.28) 6px 12px);
+  box-shadow: 0 2px 4px rgba(80, 60, 10, 0.10);
+}
+
+.tipIcon {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  background: rgba(180, 83, 9, 0.14);
+  color: #B45309;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.tipText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tipTitle {
+  font-family: var(--font-hand);
+  font-size: 1.55rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.4px;
+  color: #3F360F;
+}
+
+.tipBody {
+  font-size: var(--font-size-sm);
+  line-height: 1.55;
+  color: #6B5C32;
+}
+
+/* ── El yazısı kenar notları (kağıt-craft aksan katmanı) ───────────
+   Landing'in "Porselen & kağıt" diliyle uyumlu: Caveat el yazısı +
+   elle çizilmiş kıvrık oklar + dalgalı alt çizgiler. Seyrek, kasıtlı. */
+.sectionHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin: 0 0 var(--space-4);
+}
+.sectionHead .sectionLabel { margin: 0; }
+
+/* Bölüm başlığının yanına iliştirilen eğik el yazısı not (+ küçük ok) */
+.handAside {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-hand);
+  font-weight: 700;
+  font-size: 1.15rem;
+  line-height: 1;
+  color: var(--color-accent);
+  transform: rotate(-2.5deg);
+}
+.handAside svg { width: 26px; height: 20px; color: #38B6FF; flex-shrink: 0; }
+@media (max-width: 640px) { .handAside { display: none; } }
+
+/* Amiral gemisi kartı üzerinde açık tonlu el yazısı alt başlık */
+.flagHand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: var(--space-3);
+  font-family: var(--font-hand);
+  font-weight: 700;
+  font-size: 1.18rem;
+  line-height: 1;
+  color: #BFE3FF;
+  transform: rotate(-1.5deg);
+}
+.flagHand svg { width: 24px; height: 18px; color: #7DD3FC; flex-shrink: 0; }
+
+/* SRS bandındaki el yazısı teşvik notu */
+.srsHand {
+  font-family: var(--font-hand);
+  font-weight: 700;
+  font-size: 1.15rem;
+  line-height: 1;
+  color: #0F766E;
+  transform: rotate(-2deg);
+  white-space: nowrap;
+}
+@media (max-width: 760px) { .srsHand { display: none; } }
+
 /* ── Responsive ───────────────────────────────────────────────── */
 @media (max-width: 1024px) {
-  .statsRow { grid-template-columns: repeat(2, 1fr); }
-  .gridTwo { grid-template-columns: 1fr; }
+  .statsGrid { grid-template-columns: repeat(2, 1fr); }
+  .gridMain { grid-template-columns: 1fr; }
+  .flagCard { grid-template-columns: 1fr; gap: var(--space-4); }
+}
+
+@media (max-width: 760px) {
+  /* Kredi paneli karşılamanın altına geçer, tam genişlik */
+  .heroBody { justify-content: center; }
+  .heroCredit { width: 100%; }
 }
 
 @media (max-width: 640px) {
   .dashboard { padding: calc(var(--navbar-height) + var(--space-4)) var(--space-4) var(--space-20); }
-  .statsRow { grid-template-columns: repeat(2, 1fr); gap: var(--space-3); }
-  .statNum { font-size: 2rem; }
-  .header { flex-direction: column; align-items: flex-start; gap: var(--space-3); }
-  .headerRight { width: 100%; justify-content: space-between; }
-  .primaryBtn { flex: 1; justify-content: center; }
-  .creditCard { padding: var(--space-4) var(--space-5); }
-  .gridTwo { gap: var(--space-4); }
+  .hero { padding: var(--space-6) var(--space-5); }
+  .heroCtas { width: 100%; }
+  .heroPrimary, .heroGhost { flex: 1; justify-content: center; }
+  .statsGrid { grid-template-columns: repeat(2, 1fr); gap: var(--space-3); }
+  .heroStats { gap: var(--space-2); margin-top: var(--space-5); padding-top: var(--space-5); }
+  .statNum { font-size: 1.4rem; }
+  .statCard { padding: var(--space-3); gap: var(--space-2); }
+  .statIcon { width: 34px; height: 34px; }
+  .toolGrid { grid-template-columns: 1fr; }
+  .flagCard { padding: var(--space-5); }
+  .gridMain { gap: var(--space-4); }
+  .guide { padding: var(--space-4) var(--space-5); }
 }

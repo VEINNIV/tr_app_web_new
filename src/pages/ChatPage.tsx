@@ -26,6 +26,16 @@ import { SPRING_TIGHT } from '../components/ui/motion';
 
 const LOGO = '/trans_wordly.png';
 
+/** Elle çizilmiş kıvrık ok — kağıt-craft aksanı (renk currentColor'dan gelir). */
+function DoodleArrow() {
+  return (
+    <svg viewBox="0 0 30 30" width={22} height={22} fill="none" aria-hidden="true" style={{ flexShrink: 0 }}>
+      <path d="M21 2C9 4 3 12 8 26" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+      <path d="M2 18l6 9 9-3" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 // ─── Sabit hızlı promptlar ───────────────────────────────────────────────────
 const DOC_PROMPTS = [
   { icon: AlignLeft,  label: 'Özetle',        text: 'Bu belgeyi 5–7 madde halinde özetle.' },
@@ -441,6 +451,16 @@ export default function ChatPage() {
                   ? `"${selectedDoc.original_name}" üzerine soru sorabilirsiniz.`
                   : 'Bir belge seçin veya soruyla birlikte dosya ekleyin.'}
               </p>
+
+              <motion.span
+                aria-hidden="true"
+                initial={reduced ? false : { opacity: 0, rotate: -12, scale: 0.7 }}
+                animate={{ opacity: 1, rotate: -2, scale: 1 }}
+                transition={{ type: 'spring', stiffness: 230, damping: 15, delay: 0.45 }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginTop: 14, fontFamily: 'var(--font-hand)', fontWeight: 700, fontSize: '1.3rem', lineHeight: 1, color: 'var(--color-accent)' }}
+              >
+                hazır bir başlangıç seç <DoodleArrow />
+              </motion.span>
 
               <div className={styles.quickGrid}>
                 {(selectedDoc ? DOC_PROMPTS : GENERAL_PROMPTS).map(qp => {

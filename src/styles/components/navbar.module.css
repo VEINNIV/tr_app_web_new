@@ -517,6 +517,98 @@
   margin: var(--space-2) var(--space-3);
 }
 
+/* ========================================================================
+   "Porselen" pazarlama varyantı — landing rotalarında açık frosted cam.
+   Landing her zaman açık temadır; uygulama temasından bağımsız sabittir.
+   ======================================================================== */
+.navMarketing.navbarScrolled.navbarWrapper { padding: 12px 16px 0; }
+.navMarketing.navbarScrolled .navbarInner {
+  max-width: 1140px;
+  height: 62px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(22px) saturate(1.5);
+  -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  border: 1px solid rgba(18, 22, 33, 0.08);
+  box-shadow: 0 2px 6px rgba(16, 24, 40, 0.05), 0 18px 48px -12px rgba(16, 24, 40, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+/* Marka */
+.navMarketing .navTitleTrans,
+.navMarketing .navTitleWordly {
+  font-family: 'Gabarito', 'Hanken Grotesk', system-ui, sans-serif;
+  font-weight: 800;
+  font-size: 1.15rem;
+  letter-spacing: -0.02em;
+}
+.navMarketing .navTitleTrans { color: #0066FF; }
+.navMarketing .navTitleWordly { color: #13151C; }
+.navMarketing .navLogo {
+  border-radius: 12px;
+  background: linear-gradient(150deg, #FFFFFF, #F0F4FB);
+  box-shadow: inset 0 0 0 1px rgba(0, 102, 255, 0.14), 0 4px 14px rgba(0, 102, 255, 0.14);
+}
+
+/* Bağlantılar — hap formlu, aktif olan koyu kapsülle işaretlenir */
+.navMarketing .navLink {
+  font-family: 'Hanken Grotesk', system-ui, sans-serif;
+  font-size: 0.84rem;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  border-radius: 999px;
+  color: #4E5562;
+  padding: 8px 15px;
+}
+.navMarketing .navLink:hover { color: #13151C; background: rgba(18, 22, 33, 0.05); }
+.navMarketing .navLinkActive,
+.navMarketing .navLinkActive:hover { color: #fff; font-weight: 650; background: transparent; }
+.navMarketing .navLinkIndicator {
+  background: #13151C;
+  border-radius: 999px;
+  box-shadow: 0 4px 14px rgba(16, 24, 40, 0.25);
+  top: 2px; bottom: 2px;
+}
+
+/* CTA — mavi cam hap */
+.navMarketing .navCta {
+  border-radius: 999px;
+  background: linear-gradient(118deg, #38B6FF 0%, #0066FF 52%, #0046C2 100%);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 6px 18px rgba(0, 102, 255, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.navMarketing .navCta:hover {
+  background: linear-gradient(118deg, #38B6FF 0%, #0066FF 52%, #0046C2 100%);
+  color: #fff;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 26px rgba(0, 102, 255, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+.navMarketing .navLinkAuth { color: #4E5562; border-radius: 999px; }
+.navMarketing .navLinkAuth:hover { color: #13151C; }
+
+.navMarketing .themeToggle {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.7);
+  border-color: rgba(18, 22, 33, 0.1);
+  color: #4E5562;
+}
+.navMarketing .themeToggle:hover {
+  color: #13151C;
+  border-color: rgba(18, 22, 33, 0.2);
+  background: #fff;
+}
+
+/* Üst (scroll edilmemiş) durumda da açık zemin üstündeyiz */
+.navMarketing .mobileToggle { color: #13151C; }
+.navMarketing .profileBtn {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(18, 22, 33, 0.1);
+}
+.navMarketing .profileName { color: #13151C; }
+.navMarketing .profilePlan { color: #878E9B; }
+
 /* ── Responsive ────────────────────── */
 @media (max-width: 900px) {
   .navLinks { display: none; }

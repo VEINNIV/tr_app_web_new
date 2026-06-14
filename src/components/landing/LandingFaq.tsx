@@ -1,12 +1,14 @@
 /**
  * LandingFaq — anasayfa Sıkça Sorulan Sorular bölümü.
  *
- * İçerik tamamen GERÇEK ve sitede görünür (native <details> ile). Bu yüzden FAQPage
- * JSON-LD eklemek meşrudur (görünmeyen içerik için schema = ban riski; burada yok).
- * Soru/cevaplar mevcut gerçek bilgilerden türetildi (fiyat, diller, limit, güvenlik, iade).
+ * İçerik tamamen GERÇEK ve sitede görünür (kontrollü akordiyon; cevap DOM'da,
+ * yalnızca yüksekliği animasyonlu). Bu yüzden FAQPage JSON-LD eklemek meşrudur
+ * (görünmeyen içerik için schema = ban riski; burada yok). Soru/cevaplar mevcut
+ * gerçek bilgilerden türetildi (fiyat, diller, limit, güvenlik, iade).
  */
-import { useEffect } from 'react';
-import { HelpCircle, ChevronDown } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import SectionHeader from './SectionHeader';
+import styles from '../../styles/components/landing.module.css';
 
 interface QA { q: string; a: string }
 
@@ -21,7 +23,7 @@ const FAQ: QA[] = [
   },
   {
     q: 'Ücretsiz kullanabilir miyim?',
-    a: 'Evet. Ücretsiz planda 10 kredi ile başlarsınız. Daha fazlası için Öğrenci (₺49/ay) ve Profesyonel (₺149/ay) planları vardır. İşlemler krediyle yapılır; kalan krediyi her zaman görebilirsiniz.',
+    a: 'Evet. Ücretsiz planda 10 kredi ile başlarsınız. Daha fazlası için Öğrenci ve Profesyonel planları vardır; güncel fiyatları Fiyatlandırma bölümünde görebilirsiniz. İşlemler krediyle yapılır; kalan krediyi her zaman görebilirsiniz.',
   },
   {
     q: 'Yükleyebileceğim dosya boyutu sınırı nedir?',
@@ -45,11 +47,9 @@ const FAQ: QA[] = [
   },
 ];
 
-const wrap: React.CSSProperties = {
-  maxWidth: 820, margin: '0 auto', padding: '0 22px',
-};
-
 export default function LandingFaq() {
+  const [openIdx, setOpenIdx] = useState<number | null>(0);
+
   useEffect(() => {
     const node = {
       '@context': 'https://schema.org',
@@ -69,33 +69,30 @@ export default function LandingFaq() {
   }, []);
 
   return (
-    <section style={{ padding: 'clamp(56px, 9vw, 96px) 0' }}>
-      <div style={{ textAlign: 'center', marginBottom: 'clamp(28px, 5vw, 44px)' }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '5px 13px', borderRadius: 999, fontSize: '0.74rem', fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--color-accent)', background: 'var(--color-accent-light)', border: '1px solid var(--color-accent-medium)' }}>
-          <HelpCircle size={13} /> Sıkça Sorulan Sorular
-        </span>
-        <h2 style={{ fontSize: 'clamp(1.7rem, 4.5vw, 2.5rem)', fontWeight: 800, letterSpacing: '-0.035em', lineHeight: 1.08, margin: '15px 0 0', color: 'var(--color-text-primary)' }}>
-          Aklınızdaki sorular
-        </h2>
-      </div>
+    <section className={styles.faqSection}>
+      <SectionHeader label="07 · SSS" title="Aklınızdaki sorular" />
 
-      <div style={{ ...wrap, display: 'grid', gap: 12 }}>
-        {FAQ.map((item, i) => (
-          <details
-            key={i}
-            style={{ borderRadius: 16, background: 'var(--color-surface)', border: '1px solid var(--color-border)', boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}
-          >
-            <summary
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, padding: '18px 20px', cursor: 'pointer', listStyle: 'none', fontSize: '1rem', fontWeight: 700, color: 'var(--color-text-primary)' }}
-            >
-              {item.q}
-              <ChevronDown size={18} style={{ flexShrink: 0, color: 'var(--color-text-tertiary)' }} />
-            </summary>
-            <div style={{ padding: '0 20px 18px', fontSize: '0.92rem', lineHeight: 1.65, color: 'var(--color-text-secondary)' }}>
-              {item.a}
+      <div className={styles.faqList}>
+        {FAQ.map((item, i) => {
+          const open = openIdx === i;
+          return (
+            <div key={i} className={`${styles.faqItem} ${open ? styles.faqItemOpen : ''}`}>
+              <button
+                type="button"
+                className={styles.faqSummary}
+                aria-expanded={open}
+                onClick={() => setOpenIdx(open ? null : i)}
+              >
+                {item.q}
+              </button>
+              <div className={styles.faqAnswerWrap} aria-hidden={!open}>
+                <div className={styles.faqAnswerInner}>
+                  <div className={styles.faqAnswer}>{item.a}</div>
+                </div>
+              </div>
             </div>
-          </details>
-        ))}
+          );
+        })}
       </div>
     </section>
   );

@@ -1,13 +1,20 @@
 /**
- * TransLingua — DashboardPage
+ * TransWordly — DashboardPage · "Çalışma Stüdyosu"
+ *
+ * Karşılama + yönlendirme odaklı, sadeleştirilmiş redesign. Landing'in
+ * "Porselen & kağıt" diliyle uyumlu: Caveat el yazısı notları, elle çizilmiş
+ * kıvrık oklar, yapışkan-not ipucu. Kalabalığı azaltmak için favori şeridi
+ * (navbar'da zaten var) ve "yakında" rayı (Araçlar sayfasında var) kaldırıldı.
+ * Veri katmanı DEĞİŞMEDİ: documents / translations / dueCards sorguları,
+ * kredi yapılandırması ve onboarding tur hedefleri (#tour-*) birebir korunur.
  */
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, useReducedMotion } from 'framer-motion';
 import {
-  FileText, Languages, MessageSquare, Clock,
-  Zap, BookOpen, Shield, ArrowRight, ChevronRight,
-  Activity, Coins, CheckCircle2, Sunrise, Sun, Sunset, Moon, Brain, Play, Compass,
+  FileText, Languages, MessageSquare, Clock, Zap, Shield, ArrowRight,
+  ChevronRight, Coins, CheckCircle2, Sunrise, Sun, Sunset, Moon, Brain,
+  Play, Compass, Sparkles, Lightbulb, Check,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -19,14 +26,13 @@ import type { Document } from '../types';
 import { useAnimatedNumber, SPRING_TIGHT } from '../components/ui/motion';
 import { useOnboardingTour } from '../hooks/useOnboardingTour';
 import { useToolPrefs } from '../hooks/useToolPrefs';
-import { getFeatureBySlug } from '../lib/upcomingFeatures';
+import { getFeatureBySlug, READY_FEATURES } from '../lib/upcomingFeatures';
 import OnboardingTour from '../components/OnboardingTour';
-import QuickAccessStrip from '../components/ui/QuickAccessStrip';
 import styles from '../styles/components/dashboard.module.css';
 
 const stagger = {
   hidden: {},
-  visible: { transition: { staggerChildren: 0.07 } },
+  visible: { transition: { staggerChildren: 0.06 } },
 };
 
 const item = {
@@ -34,17 +40,52 @@ const item = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' as const } },
 };
 
+/* Çeviri dışındaki hazır araçlar → galeri karoları */
+const GALLERY_FEATURES = READY_FEATURES.filter(f => f.slug !== 'translate');
+
+/* Günün ipucu — gerçek özelliklere işaret eder, gün gün döner */
+const TIPS = [
+  'Çeviri sayfasında PDF’ini sürükleyip bırakman yeterli — kaynak dil otomatik algılanır.',
+  'AI Chat’te cevaplar belgenin içinden gelir; sayfa referansıyla doğrulayabilirsin.',
+  'Ders Notu aracı, fotoğraflardan bile yapılandırılmış not çıkarır.',
+  'Araçlar sayfasında yıldıza dokunarak sık kullandıklarını üst menüye sabitleyebilirsin.',
+  'Sözlük aracı, alanına özel terimlerin çevirilerde tutarlı kullanılmasını sağlar.',
+  'Yazım Asistanı metnini akademikleştirir, parafraz eder ve dil bilgisini düzeltir.',
+];
+
+/* Kredi halkası geometrisi */
+const RING_R = 54;
+const RING_C = 2 * Math.PI * RING_R;
+
+/* Elle çizilmiş kıvrık ok — kağıt-craft aksanı (renk currentColor'dan gelir) */
+function DoodleArrow({ dir = 'down' }: { dir?: 'down' | 'downRight' }) {
+  if (dir === 'downRight') {
+    return (
+      <svg viewBox="0 0 40 32" fill="none" aria-hidden="true">
+        <path d="M3 4C6 19 16 27 34 24" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+        <path d="M25 28l9-4-2-9" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 30 30" fill="none" aria-hidden="true">
+      <path d="M21 2C9 4 3 12 8 26" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+      <path d="M2 18l6 9 9-3" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export default function DashboardPage() {
   const { profile, isAdmin, loading: authLoading, refreshProfile } = useAuth();
   const reduced = useReducedMotion();
   // Tur yalnızca kurulum sihirbazı tamamlandıktan SONRA başlar (ikisi sırayla aksın)
   const { runTour, finishTour } = useOnboardingTour(profile?.onboarding_completed === true);
-  const { recordUse } = useToolPrefs();
+  const { recordUse, pinned, usage } = useToolPrefs();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [totalTranslations, setTotalTranslations] = useState(0);
   const [dueCards, setDueCards] = useState(0);
   const [loading, setLoading] = useState(true);
-  // Sayfa başı çeviri maliyeti (canlı app_config) → "≈ X PDF" gösterimi için
+  // Sayfa başı çeviri maliyeti (canlı app_config) → "≈ X sayfa" gösterimi için
   const [perPage, setPerPage] = useState<number>(CREDIT_COSTS.TRANSLATION_PER_PAGE);
 
   useEffect(() => {
@@ -54,7 +95,7 @@ export default function DashboardPage() {
   const cDocs = useAnimatedNumber(documents.length);
   const cTrans = useAnimatedNumber(totalTranslations);
   const cCredits = useAnimatedNumber(profile?.credits_remaining ?? 0);
-  const cUsed = useAnimatedNumber((profile?.credits_monthly_limit ?? 0) - (profile?.credits_remaining ?? 0));
+  const cDue = useAnimatedNumber(dueCards);
 
   useEffect(() => {
     if (!profile) return;
@@ -72,17 +113,17 @@ export default function DashboardPage() {
 
   if (authLoading || !profile) {
     return (
-      <div className={styles.dashboard} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
-        <div style={{ textAlign: 'center' }}>
+      <div className={`${styles.dashboard} ${styles.centerWrap}`}>
+        <div className={styles.centerBox}>
           {authLoading ? (
             <>
-              <div style={{ width: 36, height: 36, border: '3px solid var(--color-border)', borderTopColor: 'var(--color-accent)', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 1rem' }} />
-              <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>Yükleniyor...</p>
+              <div className={styles.spinner} />
+              <p className={styles.centerText}>Yükleniyor...</p>
             </>
           ) : (
             <>
-              <p style={{ color: 'var(--color-text-secondary)', marginBottom: '1rem' }}>Profil yüklenemedi.</p>
-              <button onClick={refreshProfile} style={{ padding: '0.5rem 1.25rem', background: 'var(--color-accent)', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>Yeniden Dene</button>
+              <p className={styles.centerText}>Profil yüklenemedi.</p>
+              <button onClick={refreshProfile} className={styles.retryBtn}>Yeniden Dene</button>
             </>
           )}
         </div>
@@ -93,6 +134,7 @@ export default function DashboardPage() {
   const creditPercent = profile.credits_monthly_limit > 0
     ? Math.round((profile.credits_remaining / profile.credits_monthly_limit) * 100)
     : 0;
+  const ringPct = Math.max(0, Math.min(100, creditPercent));
   const displayName = profile.nickname || profile.full_name || profile.email.split('@')[0];
   const firstName = displayName.split(' ')[0];
   const isFirstTime = !loading && documents.length === 0;
@@ -103,7 +145,6 @@ export default function DashboardPage() {
     hour < 12 ? 'Günaydın' :
     hour < 18 ? 'İyi günler' :
     hour < 22 ? 'İyi akşamlar' : 'İyi geceler';
-  // Zaman dilimine göre zarif ikon (ai-slop emoji yerine tutarlı lucide ikonu)
   const GreetIcon =
     hour < 5 ? Moon :
     hour < 12 ? Sunrise :
@@ -115,328 +156,360 @@ export default function DashboardPage() {
     hour < 18 ? '#f59e0b' :
     hour < 22 ? '#fb7185' : '#818cf8';
 
+  const todayLabel = new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  /* Duruma göre akıllı alt başlık — kullanıcıyı bir sonraki adıma yönlendirir */
+  const heroSub = isFirstTime
+    ? 'Her şey hazır — ilk PDF’ini yükle, düzeni bozmadan Türkçeleştirelim.'
+    : dueCards > 0
+      ? `Bugün seni ${dueCards} tekrar kartı bekliyor. Önce kısa bir tekrarla ısınmak ister misin?`
+      : 'Kaldığın yerden devam edelim. Bugün ne çevirelim?';
+
+  /* CTA üstündeki el yazısı not — bağlama göre değişir */
+  const ctaNote = isFirstTime ? 'ilk adım burada' : 'hadi başlayalım';
+
+  /* Kredi artık hero'daki halkada gösterildiği için stat şeridinde yok — tekrar etmesin */
   const stats = [
-    { icon: FileText, value: cDocs, label: 'Belge', color: '#6366f1' },
-    { icon: CheckCircle2, value: cTrans, label: 'Çeviri', color: '#10b981' },
-    { icon: Coins, value: cCredits, label: 'Kredi', color: '#f59e0b' },
-    { icon: Activity, value: cUsed, label: 'Kullanılan', color: '#ec4899' },
+    { icon: FileText,     value: cDocs,  label: 'Belge',        color: '#6366f1' },
+    { icon: CheckCircle2, value: cTrans, label: 'Çeviri',       color: '#10b981' },
+    { icon: Brain,        value: cDue,   label: 'Bugün Tekrar', color: '#14b8a6' },
   ];
 
-  const actions = [
-    { to: '/translate', Icon: Languages, label: 'Yeni Çeviri', desc: 'PDF yükle, dil seç', accent: '#6366f1' },
-    { to: '/documents', Icon: FileText, label: 'Belgelerim', desc: 'Tüm dosyalarım', accent: '#10b981' },
-    { to: '/study-notes', Icon: BookOpen, label: 'Ders Notu', desc: 'Görsellerden not', accent: '#8b5cf6' },
-    { to: '/study', Icon: Brain, label: 'Çalış', desc: 'Aralıklı tekrar (SRS)', accent: '#14b8a6' },
-    { to: '/chat', Icon: MessageSquare, label: 'AI Chat', desc: 'Belgeye soru sor', accent: '#0ea5e9' },
-    { to: '/tools', Icon: Compass, label: 'Araçlar', desc: 'Tüm sistemler + yakında', accent: '#6366f1' },
-    ...(isAdmin ? [{ to: '/admin', Icon: Shield, label: 'Admin', desc: 'Kullanıcı yönet', accent: '#f43f5e' }] : []),
+  /* Başlangıç rehberi — tamamı gerçek durumdan hesaplanır (sunucu + cihaz kullanımı) */
+  const checklist = [
+    { key: 'translate',   label: 'İlk belgeni çevir',       to: '/translate',   done: documents.length > 0 || totalTranslations > 0 },
+    { key: 'chat',        label: 'Belgene soru sor',        to: '/chat',        done: (usage['chat'] ?? 0) > 0 },
+    { key: 'study-notes', label: 'Ders notu çıkar',         to: '/study-notes', done: (usage['study-notes'] ?? 0) > 0 },
+    { key: 'study',       label: 'Aralıklı tekrara başla',  to: '/study',       done: (usage['study'] ?? 0) > 0 || dueCards > 0 },
+    { key: 'pin',         label: 'Favori aracını sabitle',  to: '/tools',       done: pinned.length > 0 },
   ];
+  const doneCount = checklist.filter(c => c.done).length;
+  const showChecklist = !loading && doneCount < checklist.length;
+
+  const galleryItems = [
+    ...GALLERY_FEATURES.map(f => ({ slug: f.slug, to: f.to, title: f.title, desc: f.desc, Icon: f.Icon, accent: f.accent })),
+    { slug: 'tools', to: '/tools', title: 'Tüm Araçlar', desc: 'Hazır + yakında gelecek her şey', Icon: Compass, accent: '#6366f1' },
+    ...(isAdmin ? [{ slug: 'admin', to: '/admin', title: 'Admin', desc: 'Kullanıcı ve kredi yönetimi', Icon: Shield, accent: '#f43f5e' }] : []),
+  ];
+
+  const tip = TIPS[new Date().getDate() % TIPS.length];
 
   return (
     <div className={styles.dashboard}>
       <OnboardingTour run={runTour} onFinish={finishTour} />
 
-      {/* ── Header row ── */}
-      <motion.div
+      {/* ── KOMUTA PANELİ: karşılama + krediler + sayılar tek yüzeyde ── */}
+      <motion.section
         id="tour-header"
-        className={styles.header}
-        initial={{ opacity: 0, y: -12 }}
+        className={styles.hero}
+        initial={{ opacity: 0, y: -14 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
+        transition={{ duration: 0.5, ease: 'easeOut' }}
       >
-        <div className={styles.headerLeft}>
-          <motion.div
-            className={styles.headerIcon}
-            whileHover={reduced ? undefined : { rotate: -6, scale: 1.05 }}
-            transition={SPRING_TIGHT}
-          >
-            <img src="/trans_wordly.png" alt="" width={26} height={26} draggable={false} />
-          </motion.div>
-          <div>
-            <h1 className={styles.headerTitle}>
-              {greeting}, <span className={styles.headerName}>{firstName}</span>
+        <div className={styles.heroGlowA} aria-hidden="true" />
+        <div className={styles.heroGlowB} aria-hidden="true" />
+
+        <div className={styles.heroBody}>
+          <div className={styles.heroLeft}>
+            <span className={styles.heroKicker}>
               <motion.span
-                style={{ display: 'inline-flex', verticalAlign: 'middle', marginLeft: 8, color: greetIconColor }}
+                style={{ display: 'inline-flex', color: greetIconColor }}
                 initial={reduced ? false : { rotate: -12, scale: 0.6, opacity: 0 }}
                 animate={{ rotate: 0, scale: 1, opacity: 1 }}
                 transition={{ type: 'spring', stiffness: 260, damping: 16, delay: 0.15 }}
               >
-                <GreetIcon size={20} strokeWidth={2.2} />
+                <GreetIcon size={15} strokeWidth={2.2} />
               </motion.span>
+              {todayLabel}
+            </span>
+            <h1 className={styles.heroTitle}>
+              {greeting}, <span className={styles.heroName}>{firstName}</span>
             </h1>
-            <p className={styles.headerSub}>Bugün ne çevirelim?</p>
-          </div>
-        </div>
-        <div className={styles.headerRight}>
-          <span className={styles.planBadge}>{profile.plan.toUpperCase()}</span>
-          <motion.div
-            whileHover={reduced ? undefined : { y: -2 }}
-            whileTap={reduced ? undefined : { scale: 0.96 }}
-            transition={SPRING_TIGHT}
-          >
-            <Link to="/translate" className={styles.primaryBtn}>
+            <p className={styles.heroSub}>{heroSub}</p>
+
+            <div className={styles.heroCtas}>
               <motion.span
-                style={{ display: 'inline-flex' }}
-                animate={reduced ? undefined : { rotate: [0, -8, 8, 0] }}
-                transition={{ duration: 1.6, repeat: Infinity, repeatDelay: 4, ease: 'easeInOut' }}
+                className={styles.ctaDoodle}
+                initial={reduced ? false : { opacity: 0, rotate: -16, scale: 0.7 }}
+                animate={{ opacity: 1, rotate: -4, scale: 1 }}
+                transition={{ type: 'spring', stiffness: 240, damping: 15, delay: 0.55 }}
+                aria-hidden="true"
               >
-                <Zap size={14} />
+                {ctaNote} <DoodleArrow />
               </motion.span>
-              Çeviri Başlat
-            </Link>
-          </motion.div>
-        </div>
-      </motion.div>
-
-      {/* ── Stats row ── */}
-      <motion.div
-        id="tour-stats"
-        className={styles.statsRow}
-        variants={stagger}
-        initial="hidden"
-        animate="visible"
-      >
-        {stats.map(({ icon: Icon, value, label, color }) => (
-          <motion.div
-            key={label}
-            className={styles.statCard}
-            variants={item}
-            whileHover={reduced ? undefined : { y: -3 }}
-            transition={SPRING_TIGHT}
-          >
-            <div className={styles.statTop}>
-              <motion.div
-                className={styles.statIconWrap}
-                style={{ color }}
-                whileHover={reduced ? undefined : { rotate: -8, scale: 1.1 }}
-                transition={SPRING_TIGHT}
-              >
-                <Icon size={16} strokeWidth={2.5} />
+              <motion.div whileHover={reduced ? undefined : { y: -2 }} whileTap={reduced ? undefined : { scale: 0.97 }} transition={SPRING_TIGHT}>
+                <Link to="/translate" className={styles.heroPrimary} onClick={() => recordUse('translate')}>
+                  <Zap size={15} /> Çeviri Başlat
+                </Link>
               </motion.div>
-              <span className={styles.statLabel}>{label}</span>
+              <motion.div whileHover={reduced ? undefined : { y: -2 }} whileTap={reduced ? undefined : { scale: 0.97 }} transition={SPRING_TIGHT}>
+                <Link to="/chat" className={styles.heroGhost} onClick={() => recordUse('chat')}>
+                  <MessageSquare size={15} /> Belgene Soru Sor
+                </Link>
+              </motion.div>
             </div>
-            <div className={styles.statNum}>{value}</div>
-          </motion.div>
-        ))}
-      </motion.div>
+          </div>
 
-      {/* ── Hızlı Erişim (favori) şeridi — kredi kartının üstünde ── */}
-      <QuickAccessStrip />
-
-      {/* ── Credit bar ── */}
-      <motion.div
-        id="tour-credits"
-        className={styles.creditCard}
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2, duration: 0.4 }}
-      >
-        <div className={styles.creditTop}>
-          <span className={styles.creditTitle}>Aylık Kredi</span>
-          <div className={styles.creditNum}>
-            <span className={styles.creditRemain}>{profile.credits_remaining}</span>
-            <span className={styles.creditTotal}> / {profile.credits_monthly_limit}</span>
+          {/* Kredi paneli — kimlik bilgisinin hemen yanında */}
+          <div className={styles.heroCredit} id="tour-credits">
+            <div className={styles.heroCreditTop}>
+              <span className={styles.heroCreditLabel}><Coins size={13} /> Aylık kredin</span>
+              <span className={styles.planBadge}>{profile.plan.toUpperCase()}</span>
+            </div>
+            <div className={styles.ringWrap}>
+              <svg viewBox="0 0 128 128" className={styles.ringSvg} role="img" aria-label={`Kredi: ${profile.credits_remaining} / ${profile.credits_monthly_limit}`}>
+                <defs>
+                  <linearGradient id="twRingGrad" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="#38B6FF" />
+                    <stop offset="100%" stopColor="#0057FF" />
+                  </linearGradient>
+                </defs>
+                <circle cx="64" cy="64" r={RING_R} className={styles.ringTrack} />
+                <motion.circle
+                  cx="64" cy="64" r={RING_R}
+                  className={styles.ringFill}
+                  stroke="url(#twRingGrad)"
+                  strokeDasharray={RING_C}
+                  initial={{ strokeDashoffset: RING_C }}
+                  animate={{ strokeDashoffset: RING_C * (1 - ringPct / 100) }}
+                  transition={{ duration: 1.2, ease: 'easeOut', delay: 0.35 }}
+                  transform="rotate(-90 64 64)"
+                />
+              </svg>
+              <div className={styles.ringCenter}>
+                <span className={styles.ringNum}>{cCredits}</span>
+                <span className={styles.ringTotal}>/ {profile.credits_monthly_limit}</span>
+              </div>
+            </div>
+            <span className={styles.ringMetaLine}>
+              <Languages size={13} />
+              ≈ <strong>{pdfPerCredits(profile.credits_remaining, perPage)} sayfa</strong> kaldı
+            </span>
+            {profile.credits_reset_at && (
+              <span className={styles.ringReset}>
+                <Clock size={12} /> {new Date(profile.credits_reset_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })} yenilenir
+              </span>
+            )}
+            {creditPercent <= 20 && (
+              <Link to="/#pricing" className={styles.ringUpgrade}>
+                <Zap size={13} /> Kredi Yükle
+              </Link>
+            )}
           </div>
         </div>
-        {profile.credits_reset_at && (
-          <div className={styles.creditSub}>
-            {new Date(profile.credits_reset_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })} tarihinde sıfırlanır
-          </div>
-        )}
-        <div className={styles.creditTrack}>
-          <motion.div
-            className={styles.creditFill}
-            style={{ '--pct': `${creditPercent}%` } as React.CSSProperties}
-            initial={{ width: 0 }}
-            animate={{ width: `${creditPercent}%` }}
-            transition={{ duration: 1.1, ease: 'easeOut', delay: 0.3 }}
-          />
-        </div>
-        <div className={styles.creditFooter}>
-          <span>{profile.credits_monthly_limit - profile.credits_remaining} kredi kullanıldı</span>
-          <span>%{creditPercent} kaldı</span>
-        </div>
 
-        {/* Dinamik değer + düşük kredi yükseltmesi (sepet/ödeme akışına bağlanır) */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--color-border)', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <Languages size={14} style={{ color: 'var(--color-accent)' }} />
-            Kalan krediyle <strong style={{ color: 'var(--color-text-primary)' }}>≈ {pdfPerCredits(profile.credits_remaining, perPage)} sayfa</strong> çevirebilirsin
-          </span>
-          {creditPercent <= 20 && (
-            <Link
-              to="/#pricing"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 13px', borderRadius: 999, background: 'var(--color-accent)', color: '#fff', fontSize: '0.78rem', fontWeight: 700, textDecoration: 'none' }}
-            >
-              <Zap size={13} /> Kredi yükle
-            </Link>
-          )}
-        </div>
-      </motion.div>
-
-      {/* ── Bugün tekrar (SRS) banner ── */}
-      {dueCards > 0 && (
+        {/* Stat şeridi — panelin alt bandı, ince çizgiyle ayrık */}
         <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.22, duration: 0.4 }}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
-            padding: '16px 20px', marginBottom: 'var(--space-5, 20px)', borderRadius: 16,
-            background: 'linear-gradient(135deg, rgba(20,184,166,0.12), rgba(14,165,233,0.12))',
-            border: '1px solid var(--color-border)',
-          }}
-        >
-          <div style={{ width: 40, height: 40, display: 'grid', placeItems: 'center', borderRadius: 11, background: 'rgba(20,184,166,0.18)', flexShrink: 0 }}>
-            <Brain size={20} color="#14b8a6" />
-          </div>
-          <div style={{ flex: 1, minWidth: 160 }}>
-            <div style={{ fontWeight: 800, fontSize: '0.98rem', color: 'var(--color-text-primary)' }}>
-              Bugün {dueCards} kart tekrar edilecek
-            </div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)' }}>
-              Aralıklı tekrar serini sürdür 🔥
-            </div>
-          </div>
-          <Link
-            to="/study"
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 7, padding: '10px 20px',
-              background: '#14b8a6', color: '#fff', borderRadius: 12,
-              fontSize: '0.85rem', fontWeight: 700, textDecoration: 'none',
-            }}
-          >
-            <Play size={15} /> Çalış
-          </Link>
-        </motion.div>
-      )}
-
-      {/* ── Two column layout ── */}
-      <div className={styles.gridTwo}>
-
-        {/* Quick actions */}
-        <motion.div
+          id="tour-stats"
+          className={styles.heroStats}
           variants={stagger}
           initial="hidden"
           animate="visible"
         >
-          <h2 className={styles.sectionLabel}>
-            <Zap size={13} />
-            Hızlı Erişim
-          </h2>
-          <div id="tour-actions" className={styles.actionsList}>
-            {actions.map(({ to, Icon, label, desc, accent }) => (
-              <motion.div
-                key={to}
-                variants={item}
-                whileHover={reduced ? undefined : { x: 4 }}
-                whileTap={reduced ? undefined : { scale: 0.985 }}
-                transition={SPRING_TIGHT}
-              >
-                <Link
-                  to={to}
-                  className={styles.actionRow}
-                  onClick={() => {
-                    const slug = to.replace(/^\//, '');
-                    if (getFeatureBySlug(slug)?.status === 'ready') recordUse(slug);
-                  }}
-                >
-                  <div className={styles.actionIcon} style={{ '--accent': accent } as React.CSSProperties}>
-                    <Icon size={16} strokeWidth={2} />
-                  </div>
-                  <div className={styles.actionText}>
-                    <span className={styles.actionLabel}>{label}</span>
-                    <span className={styles.actionDesc}>{desc}</span>
-                  </div>
-                  <ChevronRight size={14} className={styles.actionChev} />
-                </Link>
-              </motion.div>
-            ))}
-          </div>
+          {stats.map(({ icon: Icon, value, label, color }) => (
+            <motion.div
+              key={label}
+              className={styles.statCard}
+              style={{ '--c': color } as React.CSSProperties}
+              variants={item}
+              whileHover={reduced ? undefined : { y: -3 }}
+              transition={SPRING_TIGHT}
+            >
+              <div className={styles.statIcon}><Icon size={16} strokeWidth={2.4} /></div>
+              <div className={styles.statBody}>
+                <span className={styles.statNum}>{value}</span>
+                <span className={styles.statLabel}>{label}</span>
+              </div>
+            </motion.div>
+          ))}
         </motion.div>
+      </motion.section>
 
-        {/* Recent documents */}
+      {/* ── Bugün tekrar (SRS) bandı ── */}
+      {dueCards > 0 && (
         <motion.div
+          className={styles.srsBand}
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2, duration: 0.4 }}
+        >
+          <div className={styles.srsIcon}><Brain size={20} /></div>
+          <div className={styles.srsText}>
+            <span className={styles.srsTitle}>Bugün {dueCards} kart tekrar edilecek</span>
+            <span className={styles.srsSub}>Aralıklı tekrar serini sürdür — birkaç dakika yeter.</span>
+          </div>
+          <span className={styles.srsHand}>seriyi bozma!</span>
+          <Link to="/study" className={styles.srsBtn} onClick={() => recordUse('study')}>
+            <Play size={14} /> Çalış
+          </Link>
+        </motion.div>
+      )}
+
+      {/* ── Başlangıç rehberi — ne yapabileceğini adım adım öğretir ── */}
+      {showChecklist && (
+        <motion.div
+          className={styles.guide}
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.25, duration: 0.4 }}
         >
-          <h2 className={styles.sectionLabel}>
-            <Clock size={13} />
-            Son Belgeler
-          </h2>
+          <div className={styles.guideHead}>
+            <span className={styles.guideTitle}><Sparkles size={14} /> Başlangıç rehberi</span>
+            <span className={styles.guideCount}>{doneCount}/{checklist.length}</span>
+          </div>
+          <div className={styles.guideTrack}>
+            <motion.div
+              className={styles.guideFill}
+              initial={{ width: 0 }}
+              animate={{ width: `${(doneCount / checklist.length) * 100}%` }}
+              transition={{ duration: 0.8, ease: 'easeOut', delay: 0.4 }}
+            />
+          </div>
+          <div className={styles.guideItems}>
+            {checklist.map(c => (
+              <Link
+                key={c.key}
+                to={c.to}
+                className={`${styles.guideItem} ${c.done ? styles.guideItemDone : ''}`}
+              >
+                <span className={styles.guideDot}>{c.done && <Check size={11} strokeWidth={3} />}</span>
+                {c.label}
+              </Link>
+            ))}
+          </div>
+        </motion.div>
+      )}
 
-          {isFirstTime ? (
-            <motion.div
-              className={styles.emptyState}
-              initial={{ opacity: 0, scale: 0.96 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-            >
-              <motion.div
-                className={styles.emptyIcon}
-                animate={reduced ? undefined : { y: [0, -4, 0] }}
-                transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-              >
-                <FileText size={22} strokeWidth={1.5} />
-              </motion.div>
-              <p className={styles.emptyTitle}>Henüz belge yok</p>
-              <p className={styles.emptyDesc}>İlk PDF belgenizi yükleyerek başlayın</p>
-              <motion.div
-                whileHover={reduced ? undefined : { y: -2 }}
-                whileTap={reduced ? undefined : { scale: 0.96 }}
-                transition={SPRING_TIGHT}
-                style={{ display: 'inline-block' }}
-              >
-                <Link to="/translate" className={styles.emptyBtn}>
-                  Belge Yükle <ArrowRight size={13} />
-                </Link>
-              </motion.div>
-            </motion.div>
-          ) : (
-            <motion.div
-              className={styles.docList}
-              variants={stagger}
-              initial="hidden"
-              animate="visible"
-            >
-              {documents.map(doc => (
-                <motion.div
-                  key={doc.id}
-                  className={styles.docRow}
-                  variants={item}
-                  whileHover={reduced ? undefined : { x: 3 }}
-                  transition={SPRING_TIGHT}
-                >
-                  <div className={styles.docIconWrap}>
-                    <FileText size={14} strokeWidth={2} />
-                  </div>
-                  <div className={styles.docMeta}>
-                    <span className={styles.docName}>{doc.original_name}</span>
-                    <span className={styles.docDate}>
-                      {doc.page_count ? `${doc.page_count} sayfa · ` : ''}
-                      {formatTrDate(doc.created_at)}
-                    </span>
-                  </div>
-                  <span className={`${styles.docBadge} ${doc.status === 'completed' ? styles.done : doc.status === 'error' ? styles.err : styles.proc}`}>
-                    {STATUS_LABELS[doc.status] || doc.status}
+      {/* ── Ana ızgara: stüdyo (sol) + durum (sağ) ── */}
+      <div className={styles.gridMain}>
+
+        {/* Sol: araç galerisi */}
+        <motion.div variants={stagger} initial="hidden" animate="visible">
+          <div className={styles.sectionHead}>
+            <h2 className={styles.sectionLabel}><Compass size={13} /> Stüdyo — neler yapabilirsin?</h2>
+            <span className={styles.handAside}>en güçlü araç <DoodleArrow dir="downRight" /></span>
+          </div>
+
+          <div id="tour-actions" className={styles.gallery}>
+            {/* Amiral gemisi: Belge Çevirisi */}
+            <motion.div variants={item}>
+              <Link to="/translate" className={styles.flagCard} onClick={() => recordUse('translate')}>
+                <div className={styles.flagText}>
+                  <span className={styles.flagKicker}><Languages size={13} /> Amiral gemisi</span>
+                  <span className={styles.flagTitle}>Belge Çevirisi</span>
+                  <span className={styles.flagDesc}>
+                    PDF, Word veya slayt yükle; tablolar, formüller ve düzen korunarak Türkçeye çevrilsin.
                   </span>
-                </motion.div>
-              ))}
-              <Link to="/documents" className={styles.viewAll}>
-                Tümünü görüntüle
-                <motion.span
-                  style={{ display: 'inline-flex' }}
-                  initial={{ x: 0 }}
-                  whileHover={reduced ? undefined : { x: 4 }}
-                  transition={SPRING_TIGHT}
-                >
-                  <ArrowRight size={13} />
-                </motion.span>
+                  <span className={styles.flagCta}>Çeviriye başla <ArrowRight size={14} /></span>
+                  <span className={styles.flagHand}>✦ düzen birebir korunur</span>
+                </div>
+                <div className={styles.flagViz} aria-hidden="true">
+                  <div className={styles.flagVizCol}>
+                    <span className={styles.flagVizTag}>EN</span>
+                    <span className={styles.flagVizLine} style={{ width: '90%' }} />
+                    <span className={styles.flagVizLine} style={{ width: '68%' }} />
+                    <span className={styles.flagVizLine} style={{ width: '80%' }} />
+                  </div>
+                  <ArrowRight size={13} className={styles.flagVizArrow} />
+                  <div className={styles.flagVizCol}>
+                    <span className={`${styles.flagVizTag} ${styles.flagVizTagTR}`}>TR</span>
+                    <span className={`${styles.flagVizLine} ${styles.flagVizLineTR}`} style={{ width: '88%' }} />
+                    <span className={`${styles.flagVizLine} ${styles.flagVizLineTR}`} style={{ width: '70%' }} />
+                    <span className={`${styles.flagVizLine} ${styles.flagVizLineTR}`} style={{ width: '78%' }} />
+                  </div>
+                </div>
               </Link>
             </motion.div>
-          )}
+
+            {/* Diğer araç karoları */}
+            <div className={styles.toolGrid}>
+              {galleryItems.map(({ slug, to, title, desc, Icon, accent }) => (
+                <motion.div key={slug} variants={item}>
+                  <Link
+                    to={to}
+                    className={styles.toolCard}
+                    style={{ '--ac': accent } as React.CSSProperties}
+                    onClick={() => {
+                      if (getFeatureBySlug(slug)?.status === 'ready') recordUse(slug);
+                    }}
+                  >
+                    <div className={styles.toolIcon}><Icon size={18} strokeWidth={2.1} /></div>
+                    <div className={styles.toolText}>
+                      <span className={styles.toolTitle}>{title}</span>
+                      <span className={styles.toolDesc}>{desc}</span>
+                    </div>
+                    <ChevronRight size={15} className={styles.toolChev} />
+                  </Link>
+                </motion.div>
+              ))}
+            </div>
+          </div>
         </motion.div>
+
+        {/* Sağ: son belgeler + ipucu (krediler artık komuta panelinde) */}
+        <div className={styles.sideCol}>
+
+          {/* Son belgeler */}
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.25, duration: 0.4 }}
+          >
+            <h2 className={styles.sectionLabel}><Clock size={13} /> Son Belgeler</h2>
+
+            {isFirstTime ? (
+              <div className={styles.emptyState}>
+                <motion.div
+                  className={styles.emptyIcon}
+                  animate={reduced ? undefined : { y: [0, -4, 0] }}
+                  transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+                >
+                  <FileText size={22} strokeWidth={1.5} />
+                </motion.div>
+                <p className={styles.emptyTitle}>Henüz belge yok</p>
+                <p className={styles.emptyDesc}>İlk PDF belgeni yükle — çeviri, özet ve soru-cevap buradan başlıyor.</p>
+                <Link to="/translate" className={styles.emptyBtn} onClick={() => recordUse('translate')}>
+                  Belge Yükle <ArrowRight size={13} />
+                </Link>
+              </div>
+            ) : (
+              <div className={styles.docList}>
+                {documents.map(doc => (
+                  <div key={doc.id} className={styles.docRow}>
+                    <div className={styles.docIcon}><FileText size={14} strokeWidth={2} /></div>
+                    <div className={styles.docMeta}>
+                      <span className={styles.docName}>{doc.original_name}</span>
+                      <span className={styles.docDate}>
+                        {doc.page_count ? `${doc.page_count} sayfa · ` : ''}
+                        {formatTrDate(doc.created_at)}
+                      </span>
+                    </div>
+                    <span className={`${styles.docBadge} ${doc.status === 'completed' ? styles.done : doc.status === 'error' ? styles.err : styles.proc}`}>
+                      {STATUS_LABELS[doc.status] || doc.status}
+                    </span>
+                  </div>
+                ))}
+                <Link to="/documents" className={styles.viewAll} onClick={() => recordUse('documents')}>
+                  Tümünü görüntüle <ArrowRight size={13} />
+                </Link>
+              </div>
+            )}
+          </motion.div>
+
+          {/* Günün ipucu — yapışkan not */}
+          <motion.div
+            className={styles.tipCard}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3, duration: 0.4 }}
+          >
+            <div className={styles.tipIcon}><Lightbulb size={16} /></div>
+            <div className={styles.tipText}>
+              <span className={styles.tipTitle}>Biliyor muydun?</span>
+              <span className={styles.tipBody}>{tip}</span>
+            </div>
+          </motion.div>
+        </div>
       </div>
     </div>
   );
