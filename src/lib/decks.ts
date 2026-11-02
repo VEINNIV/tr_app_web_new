@@ -7,7 +7,7 @@
  */
 import { supabase } from './supabase';
 import { review, type Grade } from './srs';
-import type { GeneratedCard, FlashcardType, FlashcardGenType } from './ai';
+import type { GeneratedCard, FlashcardType, FlashcardGenType, CardEn } from './ai';
 
 export type DeckSourceType = 'document' | 'study_note' | 'manual';
 /** Deste düzeyi kart tipi — 'mixed' karma deste; "ek sorular" üretiminde varsayılan. */
@@ -34,6 +34,8 @@ export interface Flashcard {
   tag: string | null;
   options: string[] | null;
   answer: string | null;
+  /** İngilizce karşılık (null: eski kart). */
+  en: CardEn | null;
   ease: number;
   interval: number;
   repetitions: number;
@@ -53,6 +55,7 @@ function cardRows(deckId: string, userId: string, cards: GeneratedCard[]) {
     tag: c.tag ?? null,
     options: c.options ?? null,
     answer: c.answer ?? null,
+    en: c.en ?? null,
   }));
 }
 

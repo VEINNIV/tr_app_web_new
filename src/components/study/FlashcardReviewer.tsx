@@ -43,9 +43,15 @@ export default function FlashcardReviewer({ cards, deckTitle, onReview, onExit, 
   const [busy, setBusy] = useState(false);
   const [reviewed, setReviewed] = useState(0);
 
+  const [lang, setLang] = useState<'tr' | 'en'>('tr');
+  const hasEn = useMemo(() => cards.some(c => c.en), [cards]);
+
   const total = useMemo(() => cards.length, [cards.length]);
   const current = queue[0];
   const done = !current;
+  // Gösterilen metin: EN seçiliyse ve kartın İngilizcesi varsa o; cevap kontrolü hep TR kanonik değerle yapılır.
+  const isEn = lang === 'en' && !!current?.en;
+  const view = isEn ? { ...current, ...current.en } : current;
 
   const isMcq = !!current && current.card_type === 'mcq' && (current.options?.length ?? 0) >= 2;
   const isTF = !!current && current.card_type === 'truefalse' && !!current.answer;
@@ -138,6 +144,15 @@ export default function FlashcardReviewer({ cards, deckTitle, onReview, onExit, 
             />
           </div>
         </div>
+        {hasEn && (
+          <button
+            onClick={() => setLang(l => (l === 'tr' ? 'en' : 'tr'))}
+            style={{ ...iconBtn, width: 'auto', padding: '0 12px', fontSize: '0.78rem', fontWeight: 800 }}
+            title="Dil: Türkçe / English"
+          >
+            {lang === 'tr' ? 'TR → EN' : 'EN → TR'}
+          </button>
+        )}
         <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-text-tertiary)', minWidth: 54, textAlign: 'right' }}>
           {Math.min(reviewed, total)}/{total}
         </span>
@@ -160,9 +175,10 @@ export default function FlashcardReviewer({ cards, deckTitle, onReview, onExit, 
         ) : isMcq ? (
           /* ─── ÇOKTAN SEÇMELİ ─── */
           <div style={cardWrap}>
-            <QuestionCard tag={current.tag} text={current.front} hint={!answered ? current.hint : undefined} />
+            <QuestionCard tag={view.tag} text={view.front} hint={!answered ? view.hint : undefined} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%' }}>
               {current.options!.map((opt, i) => {
+                const label = view.options?.[i] ?? opt;
                 const isCorrect = opt === current.answer;
                 const isPicked = answered?.selected === opt;
                 let border = 'var(--color-border)', bg = 'var(--color-surface)', color = 'var(--color-text-primary)';
@@ -189,19 +205,19 @@ export default function FlashcardReviewer({ cards, deckTitle, onReview, onExit, 
                     }}>
                       {answered && isCorrect ? <Check size={16} /> : answered && isPicked ? <XCircle size={16} /> : String.fromCharCode(65 + i)}
                     </span>
-                    {opt}
+                    {label}
                   </button>
                 );
               })}
             </div>
-            {answered && <Feedback correct={answered.correct} explanation={current.back} onNext={next} busy={busy} />}
+            {answered && <Feedback correct={answered.correct} explanation={view.back} onNext={next} busy={busy} en={isEn} />}
           </div>
         ) : isTF ? (
           /* ─── DOĞRU / YANLIŞ ─── */
           <div style={cardWrap}>
-            <QuestionCard tag={current.tag} text={current.front} hint={!answered ? current.hint : undefined} />
+            <QuestionCard tag={view.tag} text={view.front} hint={!answered ? view.hint : undefined} />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, width: '100%' }}>
-              {([['true', 'Doğru'], ['false', 'Yanlış']] as const).map(([val, label]) => {
+              {([['true', isEn ? 'True' : 'Doğru'], ['false', isEn ? 'False' : 'Yanlış']] as const).map(([val, label]) => {
                 const isCorrect = val === current.answer;
                 const isPicked = answered?.selected === val;
                 let border = 'var(--color-border)', bg = 'var(--color-surface)', color = 'var(--color-text-primary)';
@@ -228,7 +244,7 @@ export default function FlashcardReviewer({ cards, deckTitle, onReview, onExit, 
                 );
               })}
             </div>
-            {answered && <Feedback correct={answered.correct} explanation={current.back} onNext={next} busy={busy} />}
+            {answered && <Feedback correct={answered.correct} explanation={view.back} onNext={next} busy={busy} en={isEn} />}
           </div>
         ) : (
           /* ─── KLASİK ─── */
@@ -247,18 +263,18 @@ export default function FlashcardReviewer({ cards, deckTitle, onReview, onExit, 
                     background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 20, boxShadow: 'var(--shadow-lg)',
                   }}
                 >
-                  {current.tag && <Tag text={current.tag} />}
+                  {view.tag && <Tag text={view.tag} />}
                   <div style={{ fontSize: flipped ? '1.05rem' : '1.25rem', fontWeight: flipped ? 600 : 700, color: 'var(--color-text-primary)', lineHeight: 1.5 }}>
-                    {flipped ? current.back : current.front}
+                    {flipped ? view.back : view.front}
                   </div>
-                  {!flipped && current.hint && (
+                  {!flipped && view.hint && (
                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', color: 'var(--color-text-tertiary)' }}>
-                      <Lightbulb size={13} /> {current.hint}
+                      <Lightbulb size={13} /> {view.hint}
                     </div>
                   )}
                   {flipped && (
                     <div style={{ marginTop: 6, paddingTop: 14, borderTop: '1px solid var(--color-border)', fontSize: '0.8rem', color: 'var(--color-text-tertiary)' }}>
-                      Soru: {current.front}
+                      {isEn ? 'Question' : 'Soru'}: {view.front}
                     </div>
                   )}
                 </motion.div>
@@ -321,7 +337,7 @@ function QuestionCard({ tag, text, hint }: { tag: string | null; text: string; h
   );
 }
 
-function Feedback({ correct, explanation, onNext, busy }: { correct: boolean; explanation: string; onNext: () => void; busy: boolean }) {
+function Feedback({ correct, explanation, onNext, busy, en }: { correct: boolean; explanation: string; onNext: () => void; busy: boolean; en?: boolean }) {
   const color = correct ? OK : NO;
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -332,13 +348,13 @@ function Feedback({ correct, explanation, onNext, busy }: { correct: boolean; ex
         <span style={{ flexShrink: 0, color }}>{correct ? <Check size={18} /> : <XCircle size={18} />}</span>
         <div>
           <div style={{ fontSize: '0.85rem', fontWeight: 800, color, marginBottom: explanation ? 4 : 0 }}>
-            {correct ? 'Doğru!' : 'Yanlış'}
+            {correct ? (en ? 'Correct!' : 'Doğru!') : (en ? 'Wrong' : 'Yanlış')}
           </div>
           {explanation && <div style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)', lineHeight: 1.5 }}>{explanation}</div>}
         </div>
       </div>
       <button onClick={onNext} disabled={busy} style={{ ...primaryBtn, opacity: busy ? 0.6 : 1 }}>
-        Sonraki <kbd style={kbd}>Boşluk</kbd>
+        {en ? 'Next' : 'Sonraki'} <kbd style={kbd}>{en ? 'Space' : 'Boşluk'}</kbd>
       </button>
     </motion.div>
   );

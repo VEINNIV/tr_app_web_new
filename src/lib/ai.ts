@@ -1231,9 +1231,20 @@ export type FlashcardType = 'classic' | 'mcq' | 'truefalse';
 /** Üretim isteği: tek bir tip ya da karışık ('mixed'). */
 export type FlashcardGenType = FlashcardType | 'mixed';
 
+/** Kartın İngilizce karşılığı (İngilizce bölüm okuyanlar için); mcq'da options TR ile aynı sırada. */
+export interface CardEn {
+  front: string;
+  back: string;
+  hint?: string;
+  tag?: string;
+  options?: string[];
+}
+
 export interface GeneratedCard {
   /** Kart tipi — reviewer buna göre render eder. */
   type: FlashcardType;
+  /** İngilizce karşılık; yoksa (eski kartlar) dil düğmesi etkisiz. */
+  en?: CardEn;
   /** Soru / kavram (mcq+tf için: soru veya önerme). */
   front: string;
   /** Cevap (classic) ya da açıklama (mcq/tf). */
@@ -1298,6 +1309,7 @@ export async function generateFlashcards(
     `Sen bir öğrenme asistanısın ve verilen materyalden aralıklı tekrar (flashcard) kartları üretiyorsun.
 KURALLAR:
 • Türkçe üret. Materyalin dili farklı olsa bile kartlar Türkçe olsun.
+• HER karta ayrıca "en" alanı ekle: kartın birebir İngilizce çevirisi {"front":"...","back":"...","hint":"(varsa)","tag":"(varsa)","options":[...]}. mcq'da "en.options" TR "options" ile AYNI sırada ve aynı sayıda olsun (en.answer yazma). Teknik terimlerin standart İngilizce karşılığını kullan.
 • Her kart önemli bir kavramı/olguyu test etsin; bağlama bağımlı ("yukarıdaki", "bu metinde") ifade kullanma.
 • En önemli ${count} civarı kavrama odaklan. Önemsiz ayrıntıdan kart üretme.
 • SADECE geçerli JSON döndür. Markdown, açıklama, kod bloğu YOK.
@@ -1318,7 +1330,7 @@ Kart üretilemiyorsa: {"cards":[]}`;
     contents,
     systemInstruction: systemPrompt,
     temperature: 0.3,
-    maxOutputTokens: 8192,
+    maxOutputTokens: 16384,
     operationId,
     signal,
   });
@@ -1344,18 +1356,34 @@ Kart üretilemiyorsa: {"cards":[]}`;
     const tag = typeof rec.tag === 'string' && rec.tag.trim() ? rec.tag.trim().slice(0, 40) : undefined;
     const common = { front, ...(hint ? { hint } : {}), ...(tag ? { tag } : {}) };
 
+    const rawEn = rec.en && typeof rec.en === 'object' ? rec.en as Record<string, unknown> : null;
+    const enStr = (k: string) => (typeof rawEn?.[k] === 'string' && (rawEn[k] as string).trim() ? (rawEn[k] as string).trim() : undefined);
+    const enFront = enStr('front');
+    const enBack = enStr('back');
+
     if (rawType === 'mcq') {
-      const opts = Array.isArray(rec.options)
-        ? rec.options.filter((o): o is string => typeof o === 'string' && o.trim().length > 0).map(o => o.trim())
-        : [];
+      const rawOpts = Array.isArray(rec.options) ? rec.options : [];
+      const rawEnOpts = Array.isArray(rawEn?.options) ? rawEn.options as unknown[] : [];
+      // TR şık + paralel EN şık çiftleri; boş/tekrarlı TR şık atılır, sonra çiftler birlikte karıştırılır.
+      const pairs: { tr: string; en: string | null }[] = [];
+      rawOpts.forEach((o, i) => {
+        if (typeof o !== 'string' || !o.trim()) return;
+        const tr = o.trim();
+        if (pairs.some(p => p.tr === tr)) return;
+        const e = rawEnOpts.length === rawOpts.length && typeof rawEnOpts[i] === 'string' ? (rawEnOpts[i] as string).trim() : '';
+        pairs.push({ tr, en: e || null });
+      });
       const answer = typeof rec.answer === 'string' ? rec.answer.trim() : '';
       // Geçersiz mcq (yetersiz şık / cevap şıklarda yok) → atla.
-      if (opts.length < 2 || !answer) continue;
-      const uniq = Array.from(new Set(opts));
-      const correct = uniq.find(o => o === answer) ?? uniq.find(o => o.toLowerCase() === answer.toLowerCase());
+      if (pairs.length < 2 || !answer) continue;
+      const correct = pairs.find(p => p.tr === answer) ?? pairs.find(p => p.tr.toLowerCase() === answer.toLowerCase());
       if (!correct) continue;
-      const back = typeof rec.back === 'string' && rec.back.trim() ? rec.back.trim() : `Doğru cevap: ${correct}`;
-      cards.push({ ...common, type: 'mcq', options: shuffle(uniq), answer: correct, back });
+      const back = typeof rec.back === 'string' && rec.back.trim() ? rec.back.trim() : `Doğru cevap: ${correct.tr}`;
+      const sh = shuffle(pairs);
+      const en = enFront && sh.every(p => p.en)
+        ? { front: enFront, back: enBack ?? back, hint: enStr('hint'), tag: enStr('tag'), options: sh.map(p => p.en as string) }
+        : undefined;
+      cards.push({ ...common, type: 'mcq', options: sh.map(p => p.tr), answer: correct.tr, back, ...(en ? { en } : {}) });
     } else if (rawType === 'truefalse') {
       const a = typeof rec.answer === 'string' ? rec.answer.trim().toLowerCase() : '';
       const isTrue = ['true', 'doğru', 'dogru', 'd', 'evet'].includes(a);
@@ -1365,11 +1393,13 @@ Kart üretilemiyorsa: {"cards":[]}`;
       const back = typeof rec.back === 'string' && rec.back.trim()
         ? rec.back.trim()
         : (ans === 'true' ? 'Bu önerme doğru.' : 'Bu önerme yanlış.');
-      cards.push({ ...common, type: 'truefalse', answer: ans, back });
+      const en = enFront ? { front: enFront, back: enBack ?? back, hint: enStr('hint'), tag: enStr('tag') } : undefined;
+      cards.push({ ...common, type: 'truefalse', answer: ans, back, ...(en ? { en } : {}) });
     } else {
       const back = typeof rec.back === 'string' ? rec.back.trim() : '';
       if (!back) continue;
-      cards.push({ ...common, type: 'classic', back });
+      const en = enFront && enBack ? { front: enFront, back: enBack, hint: enStr('hint'), tag: enStr('tag') } : undefined;
+      cards.push({ ...common, type: 'classic', back, ...(en ? { en } : {}) });
     }
   }
   return cards;
