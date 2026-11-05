@@ -1,5 +1,25 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+
+/**
+ * Which commit this build is made from, so the admin-only version badge can show it.
+ * Coolify sets SOURCE_COMMIT when asked to; otherwise we read .git/HEAD ourselves (no git binary needed).
+ * Returns '' when neither is available (local dev without git).
+ */
+function currentCommit(): string {
+  const fromEnv = process.env.SOURCE_COMMIT?.trim()
+  if (fromEnv) return fromEnv
+  try {
+    const gitDir = path.resolve(__dirname, '.git')
+    const head = fs.readFileSync(path.join(gitDir, 'HEAD'), 'utf8').trim()
+    if (!head.startsWith('ref: ')) return head
+    return fs.readFileSync(path.join(gitDir, head.slice(5)), 'utf8').trim()
+  } catch {
+    return ''
+  }
+}
 
 const CHUNKS: Record<string, string[]> = {
   'vendor-react': ['react', 'react-dom', 'react-router-dom'],
@@ -18,6 +38,11 @@ const CHUNKS: Record<string, string[]> = {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+
+  // Build-time stamp shown by components/ui/VersionBadge.tsx (admins only).
+  define: {
+    __APP_VERSION__: JSON.stringify({ commit: currentCommit(), builtAt: new Date().toISOString() }),
+  },
 
   resolve: {
     alias: {

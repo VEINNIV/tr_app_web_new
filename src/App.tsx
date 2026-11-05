@@ -10,6 +10,7 @@ import Navbar from './components/ui/Navbar';
 import BottomNav from './components/ui/BottomNav';
 import TranslationStatusBar from './components/TranslationStatusBar';
 import CookieConsent from './components/ui/CookieConsent';
+import VersionBadge from './components/ui/VersionBadge';
 import EnvErrorPage from './components/EnvErrorPage';
 import OnboardingModal from './components/OnboardingModal';
 import { checkEnv } from './lib/env';
@@ -121,6 +122,7 @@ function AppLayout() {
         </Suspense>
       </main>
       <TranslationStatusBar />
+      <VersionBadge />
       <CookieConsent />
       {showBottomNav && <BottomNav />}
       {showOnboarding && (
